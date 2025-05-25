@@ -396,7 +396,7 @@ struct LinestringCasts {
 	//------------------------------------------------------------------------------------------------------------------
 	// GEOMETRY -> LINESTRING_3D
 	//------------------------------------------------------------------------------------------------------------------
-	static bool FromGeometryCast(Vector &source, Vector &result, idx_t count, CastParameters &parameters) {
+	static bool FromGeometryCast3D(Vector &source, Vector &result, idx_t count, CastParameters &parameters) {
 		auto &lstate = LocalState::ResetAndGet(parameters);
 
 		idx_t total_coords = 0;
@@ -451,7 +451,7 @@ struct LinestringCasts {
 		                                    BoundCastInfo(FromGeometryCast, nullptr, LocalState::InitCast), 1);
 		// GEOMETRY -> LINESTRING_3D
 		ExtensionUtil::RegisterCastFunction(db, GeoTypes::GEOMETRY(), GeoTypes::LINESTRING_3D(),
-		                                    BoundCastInfo(FromGeometryCast, nullptr, LocalState::InitCast), 1);
+		                                    BoundCastInfo(FromGeometryCast3D, nullptr, LocalState::InitCast), 1);
 	}
 };
 
@@ -585,7 +585,7 @@ struct PolygonCasts {
 	//------------------------------------------------------------------------------------------------------------------
 	// GEOMETRY -> POLYGON_3D
 	//------------------------------------------------------------------------------------------------------------------
-	static bool FromGeometryCast(Vector &source, Vector &result, idx_t count, CastParameters &parameters) {
+	static bool FromGeometryCast3D(Vector &source, Vector &result, idx_t count, CastParameters &parameters) {
 		auto &lstate = LocalState::ResetAndGet(parameters);
 		auto &ring_vec = ListVector::GetEntry(result);
 
@@ -665,6 +665,9 @@ struct PolygonCasts {
 		// GEOMETRY -> POLYGON_2D
 		ExtensionUtil::RegisterCastFunction(db, GeoTypes::GEOMETRY(), GeoTypes::POLYGON_2D(),
 		                                    BoundCastInfo(FromGeometryCast, nullptr, LocalState::InitCast), 1);
+		// GEOMETRY -> POLYGON_3D
+		ExtensionUtil::RegisterCastFunction(db, GeoTypes::GEOMETRY(), GeoTypes::POLYGON_3D(),
+		                                    BoundCastInfo(FromGeometryCast3D, nullptr, LocalState::InitCast), 1);
 	}
 };
 
