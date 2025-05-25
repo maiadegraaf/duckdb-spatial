@@ -49,10 +49,23 @@ LogicalType GeoTypes::LINESTRING_2D() {
 	return type;
 }
 
+LogicalType GeoTypes::LINESTRING_3D() {
+	auto type = LogicalType::LIST(LogicalType::STRUCT({{"x", LogicalType::DOUBLE}, {"y", LogicalType::DOUBLE}, {"z", LogicalType::DOUBLE}}));
+	type.SetAlias("LINESTRING_3D");
+	return type;
+}
+
 LogicalType GeoTypes::POLYGON_2D() {
 	auto type = LogicalType::LIST(
 	    LogicalType::LIST(LogicalType::STRUCT({{"x", LogicalType::DOUBLE}, {"y", LogicalType::DOUBLE}})));
 	type.SetAlias("POLYGON_2D");
+	return type;
+}
+
+LogicalType GeoTypes::POLYGON_3D() {
+	auto type = LogicalType::LIST(
+	    LogicalType::LIST(LogicalType::STRUCT({{"x", LogicalType::DOUBLE}, {"y", LogicalType::DOUBLE}, {"z", LogicalType::DOUBLE}})));
+	type.SetAlias("POLYGON_3D");
 	return type;
 }
 
@@ -94,8 +107,14 @@ void GeoTypes::Register(DatabaseInstance &db) {
 	// LineString2D
 	ExtensionUtil::RegisterType(db, "LINESTRING_2D", GeoTypes::LINESTRING_2D());
 
+	// LineString3D
+	ExtensionUtil::RegisterType(db, "LINESTRING_3D", GeoTypes::LINESTRING_3D());
+
 	// Polygon2D
 	ExtensionUtil::RegisterType(db, "POLYGON_2D", GeoTypes::POLYGON_2D());
+
+	// Polygon3D
+	ExtensionUtil::RegisterType(db, "POLYGON_3D", GeoTypes::POLYGON_3D());
 
 	// Box2D
 	ExtensionUtil::RegisterType(db, "BOX_2D", GeoTypes::BOX_2D());

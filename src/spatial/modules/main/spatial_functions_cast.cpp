@@ -310,7 +310,7 @@ struct PointCasts {
 };
 
 //======================================================================================================================
-// LINESTRING_2D Casts
+// LINESTRING_{2D,3D} Casts
 //======================================================================================================================
 
 struct LinestringCasts {
@@ -394,6 +394,49 @@ struct LinestringCasts {
 	}
 
 	//------------------------------------------------------------------------------------------------------------------
+	// GEOMETRY -> LINESTRING_3D
+	//------------------------------------------------------------------------------------------------------------------
+	static bool FromGeometryCast(Vector &source, Vector &result, idx_t count, CastParameters &parameters) {
+		auto &lstate = LocalState::ResetAndGet(parameters);
+
+		idx_t total_coords = 0;
+
+		UnaryExecutor::Execute<string_t, list_entry_t>(source, result, count, [&](const string_t &blob) {
+			sgl::geometry line;
+			lstate.Deserialize(blob, line);
+
+			if (line.get_type() != sgl::geometry_type::LINESTRING) {
+				// TODO: Dont throw here, return NULL instead to allow TRY_CAST
+				throw ConversionException("Cannot cast non-linestring GEOMETRY to LINESTRING_3D");
+			}
+
+			const auto line_size = line.get_count();
+
+			const auto entry = list_entry_t(total_coords, line_size);
+			total_coords += line_size;
+			ListVector::Reserve(result, total_coords);
+
+			// Re-fetch the coord vector children, as the ListVector::Reserve() call may have invalidated the pointers
+			auto &coord_vec = ListVector::GetEntry(result);
+			auto &coord_vec_children = StructVector::GetEntries(coord_vec);
+
+			const auto x_data = FlatVector::GetData<double>(*coord_vec_children[0]);
+			const auto y_data = FlatVector::GetData<double>(*coord_vec_children[1]);
+			const auto z_data = FlatVector::GetData<double>(*coord_vec_children[2]);
+
+			for (idx_t i = 0; i < line_size; i++) {
+				const auto vertex = line.get_vertex_xyzm(i);
+				x_data[entry.offset + i] = vertex.x;
+				y_data[entry.offset + i] = vertex.y;
+				z_data[entry.offset + i] = vertex.zm;
+			}
+			return entry;
+		});
+		ListVector::SetListSize(result, total_coords);
+		return true;
+	}
+
+	//------------------------------------------------------------------------------------------------------------------
 	// Register
 	//------------------------------------------------------------------------------------------------------------------
 	static void Register(DatabaseInstance &db) {
@@ -406,11 +449,14 @@ struct LinestringCasts {
 		// GEOMETRY -> LINESTRING_2D
 		ExtensionUtil::RegisterCastFunction(db, GeoTypes::GEOMETRY(), GeoTypes::LINESTRING_2D(),
 		                                    BoundCastInfo(FromGeometryCast, nullptr, LocalState::InitCast), 1);
+		// GEOMETRY -> LINESTRING_3D
+		ExtensionUtil::RegisterCastFunction(db, GeoTypes::GEOMETRY(), GeoTypes::LINESTRING_3D(),
+		                                    BoundCastInfo(FromGeometryCast, nullptr, LocalState::InitCast), 1);
 	}
 };
 
 //======================================================================================================================
-// POLYGON_2D Casts
+// POLYGON_{2D,3D} Casts
 //======================================================================================================================
 
 struct PolygonCasts {
@@ -517,6 +563,77 @@ struct PolygonCasts {
 						const auto vertext = head->get_vertex_xy(j);
 						x_data[ring_entry.offset + j] = vertext.x;
 						y_data[ring_entry.offset + j] = vertext.y;
+					}
+					total_coords += ring_size;
+
+					ring_idx++;
+				} while (head != tail);
+			}
+
+			total_rings += poly_size;
+
+			return poly_entry;
+		});
+
+		ListVector::SetListSize(result, total_rings);
+		ListVector::SetListSize(ring_vec, total_coords);
+
+		return true;
+	}
+
+
+	//------------------------------------------------------------------------------------------------------------------
+	// GEOMETRY -> POLYGON_3D
+	//------------------------------------------------------------------------------------------------------------------
+	static bool FromGeometryCast(Vector &source, Vector &result, idx_t count, CastParameters &parameters) {
+		auto &lstate = LocalState::ResetAndGet(parameters);
+		auto &ring_vec = ListVector::GetEntry(result);
+
+		idx_t total_rings = 0;
+		idx_t total_coords = 0;
+
+		UnaryExecutor::Execute<string_t, list_entry_t>(source, result, count, [&](const string_t &blob) {
+			sgl::geometry poly;
+			lstate.Deserialize(blob, poly);
+
+			// TODO: Dont throw here, return NULL instead to allow TRY_CAST
+			if (poly.get_type() != sgl::geometry_type::POLYGON) {
+				throw ConversionException("Cannot cast non-polygon GEOMETRY to POLYGON_3D");
+			}
+
+			const auto poly_size = poly.get_count();
+			const auto poly_entry = list_entry_t(total_rings, poly_size);
+
+			ListVector::Reserve(result, total_rings + poly_size);
+
+			const auto tail = poly.get_last_part();
+			auto head = tail;
+
+			if (head) {
+				idx_t ring_idx = 0;
+				do {
+					D_ASSERT(ring_idx < poly_size);
+					head = head->get_next();
+
+					const auto ring_size = head->get_count();
+					const auto ring_entry = list_entry_t(total_coords, ring_size);
+
+					ListVector::Reserve(ring_vec, total_coords + ring_size);
+
+					const auto ring_entries = ListVector::GetData(ring_vec);
+					auto &coord_vec = ListVector::GetEntry(ring_vec);
+					auto &coord_vec_children = StructVector::GetEntries(coord_vec);
+					const auto x_data = FlatVector::GetData<double>(*coord_vec_children[0]);
+					const auto y_data = FlatVector::GetData<double>(*coord_vec_children[1]);
+					const auto z_data = FlatVector::GetData<double>(*coord_vec_children[2]);
+
+					ring_entries[total_rings + ring_idx] = ring_entry;
+
+					for (idx_t j = 0; j < ring_size; j++) {
+						const auto vertext = head->get_vertex_xyzm(j);
+						x_data[ring_entry.offset + j] = vertext.x;
+						y_data[ring_entry.offset + j] = vertext.y;
+						z_data[ring_entry.offset + j] = vertext.zm;
 					}
 					total_coords += ring_size;
 
