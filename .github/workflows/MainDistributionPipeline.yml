@@ -5,13 +5,13 @@ name: Main Extension Distribution Pipeline
 on:
   pull_request:
     branches:
-      - main
+      - v1.3.0
     paths-ignore:
       - '**/README.md'
       - 'doc/**'
   push:
     branches:
-      - main
+      - v1.3.0
     paths-ignore:
       - '**/README.md'
       - 'doc/**'
