@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <cstddef>
 #include <string>
+#include <cmath>
 
 #ifdef DUCKDB_SPATIAL_EXTENSION
 #include "duckdb/common/assert.hpp"
