@@ -1016,7 +1016,7 @@ struct ST_DistanceWithin {
 	}
 
 	static void Register(DatabaseInstance &db) {
-		FunctionBuilder::RegisterScalar(db, "ST_DWithin", [](ScalarFunctionBuilder &func) {
+		FunctionBuilder::RegisterScalar(db, "ST_DWithin_GEOS", [](ScalarFunctionBuilder &func) {
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("geom1", GeoTypes::GEOMETRY());
 				variant.AddParameter("geom2", GeoTypes::GEOMETRY());

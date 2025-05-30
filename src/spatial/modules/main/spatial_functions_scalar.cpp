@@ -2421,6 +2421,181 @@ struct ST_Distance {
 };
 
 //======================================================================================================================
+// ST_DistanceWithin
+//======================================================================================================================
+
+struct ST_DistanceWithin {
+
+	//------------------------------------------------------------------------------------------------------------------
+	// Bind
+	//------------------------------------------------------------------------------------------------------------------
+	class BindData final : public FunctionData {
+	public:
+		double distance;
+		bool is_constant = false;
+
+		explicit BindData(double distance) : distance(distance), is_constant(true) {}
+
+		unique_ptr<FunctionData> Copy() const override {
+			return make_uniq<BindData>(distance);
+		}
+
+		bool Equals(const FunctionData &other) const override {
+			auto &other_data = other.Cast<BindData>();
+			return is_constant == other_data.is_constant && distance == other_data.distance;
+		}
+	};
+
+	// We try to constant-fold the distance parameter here, because it's a very common have a constant distance
+	static unique_ptr<FunctionData> Bind(ClientContext &context, ScalarFunction &bound_function,
+											   vector<unique_ptr<Expression>> &arguments) {
+
+		if (arguments.back()->IsFoldable()) {
+			const auto dist_expr = ExpressionExecutor::EvaluateScalar(context, *arguments.back());
+			const auto dist_value = dist_expr.GetValue<double>();
+
+			// Erase argument
+			Function::EraseArgument(bound_function, arguments, 2);
+			return make_uniq<BindData>(dist_value);
+		}
+
+		return nullptr;
+	}
+
+	//------------------------------------------------------------------------------------------------------------------
+	// Execute
+	//------------------------------------------------------------------------------------------------------------------
+	static void Execute(DataChunk &args, ExpressionState &state, Vector &result) {
+		auto &lstate = LocalState::ResetAndGet(state);
+		const auto count = args.size();
+
+		auto &lhs_vec = args.data[0];
+		auto &rhs_vec = args.data[1];
+
+		if (args.ColumnCount() == 3) {
+			auto &dst_vec = args.data[2];
+
+			TernaryExecutor::Execute<string_t, string_t, double, bool>(
+				lhs_vec, rhs_vec, dst_vec, result, count,
+				[&](const string_t &lhs_blob, const string_t &rhs_blob, double distance) {
+
+					sgl::prepared_geometry lhs_geom;
+					sgl::prepared_geometry rhs_geom;
+
+					lstate.Deserialize(lhs_blob, lhs_geom);
+					lstate.Deserialize(rhs_blob, rhs_geom);
+
+					// Calculate the distance
+					double dist = 0.0;
+					if (sgl::ops::get_euclidean_distance(lhs_geom, rhs_geom, dist)) {
+						return dist <= distance;
+					}
+					return false; // TODO: Null
+				});
+		} else {
+			// No distance argument, so we use the bind data
+			auto &func_expr = state.expr.Cast<BoundFunctionExpression>();
+			auto &bind_data = func_expr.bind_info->Cast<BindData>();
+
+			const auto distance = bind_data.distance;
+
+			const auto lhs_is_const =
+				lhs_vec.GetVectorType() == VectorType::CONSTANT_VECTOR && !ConstantVector::IsNull(lhs_vec);
+			const auto rhs_is_const =
+				rhs_vec.GetVectorType() == VectorType::CONSTANT_VECTOR && !ConstantVector::IsNull(rhs_vec);
+
+			if (lhs_is_const && rhs_is_const) {
+				result.SetVectorType(VectorType::CONSTANT_VECTOR);
+				const auto &lhs_blob = ConstantVector::GetData<string_t>(lhs_vec)[0];
+				const auto &rhs_blob = ConstantVector::GetData<string_t>(rhs_vec)[0];
+
+				sgl::prepared_geometry lhs_geom;
+				sgl::prepared_geometry rhs_geom;
+
+				lstate.Deserialize(lhs_blob, lhs_geom);
+				lstate.Deserialize(rhs_blob, rhs_geom);
+
+				// Calculate the distance
+				double dist = 0.0;
+				if (sgl::ops::get_euclidean_distance(lhs_geom, rhs_geom, dist)) {
+					ConstantVector::GetData<bool>(result)[0] = dist <= distance;
+				} else {
+					ConstantVector::GetData<bool>(result)[0] = false; // TODO: Null
+				}
+			}
+			else if (lhs_is_const != rhs_is_const) {
+				auto &const_vec = lhs_is_const ? lhs_vec : rhs_vec;
+				auto &probe_vec = lhs_is_const ? rhs_vec : lhs_vec;
+
+				const auto &const_blob = ConstantVector::GetData<string_t>(const_vec)[0];
+				sgl::prepared_geometry const_geom;
+				lstate.Deserialize(const_blob, const_geom);
+
+				UnaryExecutor::Execute<string_t, bool>(
+					probe_vec, result, count,
+					[&](const string_t &probe_blob) {
+						sgl::geometry probe_geom;
+						lstate.Deserialize(probe_blob, probe_geom);
+
+						// Calculate the distance
+						double dist = 0.0;
+						if (sgl::ops::get_euclidean_distance(const_geom, probe_geom, dist)) {
+							return dist <= distance;
+						}
+						return false; // TODO: Null
+					});
+
+				return;
+			} else {
+				BinaryExecutor::Execute<string_t, string_t, bool>(
+					lhs_vec, rhs_vec, result, count,
+					[&](const string_t &lhs_blob, const string_t &rhs_blob) {
+
+						sgl::prepared_geometry lhs_geom;
+						sgl::prepared_geometry rhs_geom;
+
+						lstate.Deserialize(lhs_blob, lhs_geom);
+						lstate.Deserialize(rhs_blob, rhs_geom);
+
+						// Calculate the distance
+						double dist = 0.0;
+						if (sgl::ops::get_euclidean_distance(lhs_geom, rhs_geom, dist)) {
+							return dist <= distance;
+						}
+						return false; // TODO: Null
+					});
+			}
+		}
+	}
+
+	//------------------------------------------------------------------------------------------------------------------
+	// Register
+	//------------------------------------------------------------------------------------------------------------------
+	static void Register(DatabaseInstance &db) {
+		FunctionBuilder::RegisterScalar(db, "ST_DWithin", [](ScalarFunctionBuilder &func) {
+			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("geom1", GeoTypes::GEOMETRY());
+				variant.AddParameter("geom2", GeoTypes::GEOMETRY());
+				variant.AddParameter("distance", LogicalType::DOUBLE);
+				variant.SetReturnType(LogicalType::BOOLEAN);
+
+				variant.SetInit(LocalState::Init);
+				variant.SetFunction(Execute);
+				variant.SetBind(Bind);
+			});
+
+			func.SetDescription(R"(
+				Returns if two geometries are within a target distance of each-other
+			)");
+
+			func.SetTag("ext", "spatial");
+			func.SetTag("category", "relation");
+		});
+	}
+};
+
+
+//======================================================================================================================
 // ST_Dump
 //======================================================================================================================
 
@@ -8199,6 +8374,7 @@ void RegisterSpatialScalarFunctions(DatabaseInstance &db) {
 	ST_Contains::Register(db);
 	ST_Dimension::Register(db);
 	ST_Distance::Register(db);
+	ST_DistanceWithin::Register(db);
 	ST_Dump::Register(db);
 	ST_EndPoint::Register(db);
 	ST_Extent::Register(db);
