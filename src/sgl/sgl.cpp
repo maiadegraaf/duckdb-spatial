@@ -1,7 +1,5 @@
 #include "sgl.hpp"
 
-#include "duckdb/common/assert.hpp"
-
 #include <algorithm>
 #include <cstdlib>
 #include <cstring>
@@ -2434,6 +2432,8 @@ bool prepared_geometry::try_get_distance_recursive(uint32_t level, uint32_t entr
 			memcpy(&next, vertex_array + i * vertex_width, sizeof(vertex_xy));
 
 			distance = std::min(distance, vertex_segment_distance(vertex, prev, next));
+
+			prev = next;
 		}
 
 		return true; // We found a distance

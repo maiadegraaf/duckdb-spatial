@@ -8,13 +8,12 @@
 #include <cstddef>
 #include <string>
 
-#ifndef SGL_ASSERT
-#ifndef NDEBUG
+#ifdef DUCKDB_SPATIAL_EXTENSION
+#include "duckdb/common/assert.hpp"
+#define SGL_ASSERT(x) D_ASSERT(x)
+#else
 #include <cassert>
 #define SGL_ASSERT(x) assert(x)
-#else
-#define SGL_ASSERT(x) ((void)0)
-#endif
 #endif
 
 //======================================================================================================================
