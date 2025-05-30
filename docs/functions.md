@@ -126,6 +126,7 @@
 | [`ST_ZMFlag`](#st_zmflag) | Returns a flag indicating the presence of Z and M values in the input geometry. |
 | [`ST_ZMax`](#st_zmax) | Returns the maximum Z coordinate of a geometry |
 | [`ST_ZMin`](#st_zmin) | Returns the minimum Z coordinate of a geometry |
+| [`DuckDB_PROJ_Version`](#duckdb_proj_version) | Returns the current (runtime) version of the PROJ library. |
 
 **[Aggregate Functions](#aggregate-functions)**
 
@@ -2619,6 +2620,49 @@ Returns the minimum Z coordinate of a geometry
 
 ```sql
 SELECT ST_ZMin(ST_Point(1, 2, 3))
+```
+
+----
+
+### DuckDB_PROJ_Version
+
+
+#### Signature
+
+```sql
+VARCHAR DuckDB_PROJ_Version ()
+```
+
+#### Description
+
+Returns runtime version of the supporting PROJ library.
+
+#### Example
+
+```sql
+SELECT DuckDB_PROJ_Version()
+```
+
+----
+
+
+### DuckDB_PROJ_Compiled_Version
+
+
+#### Signature
+
+```sql
+VARCHAR DuckDB_PROJ_Compiled_Version ()
+```
+
+#### Description
+
+Returns compile-time version of the supporting PROJ library.
+
+#### Example
+
+```sql
+SELECT DuckDB_PROJ_Compiled_Version()
 ```
 
 ----

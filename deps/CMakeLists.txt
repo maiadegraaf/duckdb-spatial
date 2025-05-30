@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(dependecies-build)
+project(dependencies-build)
 
 # Install and build dependencies locally
 include(ExternalProject)

@@ -8,6 +8,7 @@
 #include "duckdb/parser/parsed_data/create_table_function_info.hpp"
 #include "duckdb/execution/expression_executor.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
+#include "duckdb/main/extension_util.hpp"
 
 #include "proj.h"
 #include "geodesic.h"
@@ -1102,6 +1103,88 @@ struct ST_DWithin_Spheroid {
 	}
 };
 
+struct DuckDB_Proj_Version {
+
+	static void Execute(DataChunk &args, ExpressionState &state, Vector &result) {
+		D_ASSERT(args.ColumnCount() == 0);
+		PJ_INFO pj_info = proj_info();
+		string_t version(pj_info.version);
+		auto val = Value(version);
+		result.Reference(val);
+	}
+
+	static constexpr auto DESCRIPTION = R"(
+		Returns a text description of the PROJ library version that is being used by this instance of DuckDB.
+	)";
+
+	static constexpr auto EXAMPLE = R"(
+	SELECT duckdb_proj_version();
+	┌───────────────────────┐
+	│ duckdb_proj_version() │
+	│        varchar        │
+	├───────────────────────┤
+	│ 9.1.1                 │
+	└───────────────────────┘
+	)";
+
+	static void Register(DatabaseInstance &db) {
+		FunctionBuilder::RegisterScalar(db, "DuckDB_Proj_Version", [](ScalarFunctionBuilder &func) {
+			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.SetReturnType(LogicalType::VARCHAR);
+
+				variant.SetFunction(Execute);
+			});
+
+			func.SetExample(EXAMPLE);
+			func.SetDescription(DESCRIPTION);
+
+			func.SetTag("ext", "spatial");
+			func.SetTag("category", "meta");
+		});
+	}
+};
+
+
+struct DuckDB_Proj_Compiled_Version {
+
+	static void Execute(DataChunk &args, ExpressionState &state, Vector &result) {
+		D_ASSERT(args.ColumnCount() == 0);
+		string_t version(pj_release);
+		auto val = Value(version);
+		result.Reference(val);
+	}
+
+	static constexpr auto DESCRIPTION = R"(
+		Returns a text description of the PROJ library version that that this instance of DuckDB was compiled against.
+	)";
+
+	static constexpr auto EXAMPLE = R"(
+	SELECT duckdb_proj_compiled_version();
+	┌────────────────────────────────┐
+	│ duckdb_proj_compiled_version() │
+	│            varchar             │
+	├────────────────────────────────┤
+	│ Rel. 9.1.1, December 1st, 2022 │
+	└────────────────────────────────┘
+	)";
+
+	static void Register(DatabaseInstance &db) {
+		FunctionBuilder::RegisterScalar(db, "DuckDB_PROJ_Compiled_Version", [](ScalarFunctionBuilder &func) {
+			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.SetReturnType(LogicalType::VARCHAR);
+
+				variant.SetFunction(Execute);
+			});
+
+			func.SetExample(EXAMPLE);
+			func.SetDescription(DESCRIPTION);
+
+			func.SetTag("ext", "spatial");
+			func.SetTag("category", "meta");
+		});
+	}
+};
+
 } // namespace
 
 //######################################################################################################################
@@ -1121,6 +1204,10 @@ void RegisterProjModule(DatabaseInstance &db) {
 	ST_Length_Spheroid::Register(db);
 	ST_Distance_Spheroid::Register(db);
 	ST_DWithin_Spheroid::Register(db);
+
+	// Meta functions for proj lib
+	DuckDB_Proj_Version::Register(db);
+	DuckDB_Proj_Compiled_Version::Register(db);
 }
 
 } // namespace duckdb
