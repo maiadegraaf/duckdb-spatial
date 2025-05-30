@@ -4,6 +4,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <cmath>
+#include <new>
+#include <string> // TODO: Remove this, it is only used for error messages in WKT reader
 
 //======================================================================================================================
 // Internal Algorithms
@@ -451,10 +453,10 @@ uint32_t ops::get_total_extent_xy(const geometry &geom, extent_xy &ext) {
 		for (uint32_t i = 0; i < vertex_count; i++) {
 			memcpy(&vertex, vertex_array + i * vertex_width, sizeof(vertex_xy));
 
-			ext.min.x = std::min(ext.min.x, vertex.x);
-			ext.min.y = std::min(ext.min.y, vertex.y);
-			ext.max.x = std::max(ext.max.x, vertex.x);
-			ext.max.y = std::max(ext.max.y, vertex.y);
+			ext.min.x = math::min(ext.min.x, vertex.x);
+			ext.min.y = math::min(ext.min.y, vertex.y);
+			ext.max.x = math::max(ext.max.x, vertex.x);
+			ext.max.y = math::max(ext.max.y, vertex.y);
 		}
 
 		count += vertex_count;
@@ -475,14 +477,14 @@ uint32_t ops::get_total_extent_xyzm(const geometry &geom, extent_xyzm &ext) {
 		for (uint32_t i = 0; i < vertex_count; i++) {
 			memcpy(&vertex, vertex_array + i * vertex_width, vertex_width);
 
-			ext.min.x = std::min(ext.min.x, vertex.x);
-			ext.min.y = std::min(ext.min.y, vertex.y);
-			ext.min.z = std::min(ext.min.z, vertex.z);
-			ext.min.m = std::min(ext.min.m, vertex.m);
-			ext.max.x = std::max(ext.max.x, vertex.x);
-			ext.max.y = std::max(ext.max.y, vertex.y);
-			ext.max.z = std::max(ext.max.z, vertex.z);
-			ext.max.m = std::max(ext.max.m, vertex.m);
+			ext.min.x = math::min(ext.min.x, vertex.x);
+			ext.min.y = math::min(ext.min.y, vertex.y);
+			ext.min.z = math::min(ext.min.z, vertex.z);
+			ext.min.m = math::min(ext.min.m, vertex.m);
+			ext.max.x = math::max(ext.max.x, vertex.x);
+			ext.max.y = math::max(ext.max.y, vertex.y);
+			ext.max.z = math::max(ext.max.z, vertex.z);
+			ext.max.m = math::max(ext.max.m, vertex.m);
 		}
 
 		count += vertex_count;
@@ -503,15 +505,15 @@ int32_t ops::get_max_surface_dimension(const geometry &geom, const bool ignore_e
 			switch (part->get_type()) {
 			case geometry_type::POINT:
 			case geometry_type::MULTI_POINT:
-				max_dim = std::max(max_dim, 0);
+				max_dim = math::max(max_dim, 0);
 				break;
 			case geometry_type::LINESTRING:
 			case geometry_type::MULTI_LINESTRING:
-				max_dim = std::max(max_dim, 1);
+				max_dim = math::max(max_dim, 1);
 				break;
 			case geometry_type::POLYGON:
 			case geometry_type::MULTI_POLYGON:
-				max_dim = std::max(max_dim, 2);
+				max_dim = math::max(max_dim, 2);
 				break;
 			case geometry_type::GEOMETRY_COLLECTION:
 				if (part->is_empty()) {
@@ -624,7 +626,7 @@ bool linestring::interpolate(const geometry &geom, double frac, vertex_xyzm &out
 	}
 
 	// Clamp the fraction to [0, 1]
-	frac = std::min(std::max(frac, 0.0), 1.0);
+	frac = math::min(math::max(frac, 0.0), 1.0);
 
 	// Special cases
 	if(frac == 0) {
@@ -692,7 +694,7 @@ void linestring::interpolate_points(allocator &alloc, const geometry &geom, doub
 	}
 
 	// Clamp the fraction to [0, 1]
-	frac = std::min(std::max(frac, 0.0), 1.0);
+	frac = math::min(math::max(frac, 0.0), 1.0);
 
 	const auto vertex_width = geom.get_vertex_width();
 	const auto vertex_array = geom.get_vertex_array();
@@ -783,8 +785,8 @@ void linestring::substring(allocator &alloc, const geometry &geom, double beg_fr
 		return;
 	}
 
-	beg_frac = std::min(std::max(beg_frac, 0.0), 1.0);
-	end_frac = std::min(std::max(end_frac, 0.0), 1.0);
+	beg_frac = math::min(math::max(beg_frac, 0.0), 1.0);
+	end_frac = math::min(math::max(end_frac, 0.0), 1.0);
 
 	const auto vertex_width = geom.get_vertex_width();
 	const auto vertex_array = geom.get_vertex_array();
@@ -1396,7 +1398,7 @@ double vertex_segment_distance(const vertex_xy &p, const vertex_xy &v, const ver
 	}
 
 	const auto t = ((p.x - v.x) * (w.x - v.x) + (p.y - v.y) * (w.y - v.y)) / l2;
-	const auto t_clamped = std::max(0.0, std::min(1.0, t));
+	const auto t_clamped = math::max(0.0, math::min(1.0, t));
 	const auto x = v.x + t_clamped * (w.x - v.x);
 	const auto y = v.y + t_clamped * (w.y - v.y);
 
@@ -1424,7 +1426,7 @@ double segment_segment_distance(const vertex_xy &a, const vertex_xy &b, const ve
 		const auto dist_b = vertex_segment_distance(b, c, d);
 		const auto dist_c = vertex_segment_distance(c, a, b);
 		const auto dist_d = vertex_segment_distance(d, a, b);
-		return std::min(std::min(dist_a, dist_b), std::min(dist_c, dist_d));
+		return math::min(math::min(dist_a, dist_b), math::min(dist_c, dist_d));
 	}
 
 	const auto r = ((a.y - c.y) * (d.x - c.x)) - ((a.x - c.x) * (d.y - c.y));
@@ -1439,7 +1441,7 @@ double segment_segment_distance(const vertex_xy &a, const vertex_xy &b, const ve
 		const auto dist_b = vertex_segment_distance(b, c, d);
 		const auto dist_c = vertex_segment_distance(c, a, b);
 		const auto dist_d = vertex_segment_distance(d, a, b);
-		return std::min(std::min(dist_a, dist_b), std::min(dist_c, dist_d));
+		return math::min(math::min(dist_a, dist_b), math::min(dist_c, dist_d));
 	}
 
 	// Intersection, so no distance!
@@ -1457,7 +1459,7 @@ struct distance_result {
 	}
 
 	void set(const double &dist) {
-		distance = std::min(distance, dist);
+		distance = math::min(distance, dist);
 	}
 };
 
@@ -1873,7 +1875,10 @@ void flip_vertices(allocator &allocator, geometry &geom) {
 		vertex_xyzm vertex = {0, 0, 0, 0};
 		for (uint32_t i = 0; i < vertex_count; i++) {
 			memcpy(&vertex, old_vertex_array + i * vertex_width, vertex_width);
-			std::swap(vertex.x, vertex.y); // Flip x and y
+			// Flip x and y
+			const auto tmp = vertex.x;
+			vertex.x = vertex.y;
+			vertex.y = tmp;
 			memcpy(new_vertex_array + i * vertex_width, &vertex, vertex_width);
 		}
 
@@ -2277,16 +2282,16 @@ void prepared_geometry::build(allocator &allocator) {
 		box = extent_xy::smallest();
 
 		const auto beg = i * NODE_SIZE;
-		const auto end = std::min(beg + NODE_SIZE, vertex_count);
+		const auto end = math::min(beg + NODE_SIZE, vertex_count);
 
 		for (uint32_t j = beg; j < end; j++) {
 			vertex_xy curr = {0, 0};
 			memcpy(&curr, vertex_array + j * vertex_width, sizeof(vertex_xy));
 
-			box.min.x = std::min(box.min.x, curr.x);
-			box.min.y = std::min(box.min.y, curr.y);
-			box.max.x = std::max(box.max.x, curr.x);
-			box.max.y = std::max(box.max.y, curr.y);
+			box.min.x = math::min(box.min.x, curr.x);
+			box.min.y = math::min(box.min.y, curr.y);
+			box.max.x = math::max(box.max.x, curr.x);
+			box.max.y = math::max(box.max.y, curr.y);
 		}
 	}
 
@@ -2300,15 +2305,15 @@ void prepared_geometry::build(allocator &allocator) {
 			box = extent_xy::smallest();
 
 			const auto beg = j * NODE_SIZE;
-			const auto end = std::min(beg + NODE_SIZE, prev.entry_count);
+			const auto end = math::min(beg + NODE_SIZE, prev.entry_count);
 
 			for(uint32_t k = beg; k < end; k++) {
 				auto &prev_box = prev.entry_array[k];
 
-				box.min.x = std::min(box.min.x, prev_box.min.x);
-				box.min.y = std::min(box.min.y, prev_box.min.y);
-				box.max.x = std::max(box.max.x, prev_box.max.x);
-				box.max.y = std::max(box.max.y, prev_box.max.y);
+				box.min.x = math::min(box.min.x, prev_box.min.x);
+				box.min.y = math::min(box.min.y, prev_box.min.y);
+				box.max.x = math::max(box.max.x, prev_box.max.x);
+				box.max.y = math::max(box.max.y, prev_box.max.y);
 			}
 		}
 	}
@@ -2351,7 +2356,7 @@ point_in_polygon_result prepared_geometry::contains(const vertex_xy &vert) const
 
 			// Now, we are at a leaf, so we need to check the segments
 			const auto beg_idx = entry * NODE_SIZE;
-			const auto end_idx = std::min(beg_idx + NODE_SIZE, index.items_count);
+			const auto end_idx = math::min(beg_idx + NODE_SIZE, index.items_count);
 
 			// Loop over the segments
 			vertex_xy prev;
@@ -2418,7 +2423,7 @@ bool prepared_geometry::try_get_distance_recursive(uint32_t level, uint32_t entr
 		const auto vertex_width = get_vertex_width();
 
 		const auto beg_idx = entry * NODE_SIZE;
-		const auto end_idx = std::min(beg_idx + NODE_SIZE, index.items_count);
+		const auto end_idx = math::min(beg_idx + NODE_SIZE, index.items_count);
 
 		if (beg_idx >= end_idx) {
 			return false; // No segments to check
@@ -2430,7 +2435,7 @@ bool prepared_geometry::try_get_distance_recursive(uint32_t level, uint32_t entr
 			vertex_xy next;
 			memcpy(&next, vertex_array + i * vertex_width, sizeof(vertex_xy));
 
-			distance = std::min(distance, vertex_segment_distance(vertex, prev, next));
+			distance = math::min(distance, vertex_segment_distance(vertex, prev, next));
 
 			prev = next;
 		}
@@ -2440,7 +2445,7 @@ bool prepared_geometry::try_get_distance_recursive(uint32_t level, uint32_t entr
 
 	// Find child nodes
 	const auto beg_idx = entry * NODE_SIZE;
-	const auto end_idx = std::min(beg_idx + NODE_SIZE, index.level_array[level + 1].entry_count);
+	const auto end_idx = math::min(beg_idx + NODE_SIZE, index.level_array[level + 1].entry_count);
 
 	if (beg_idx >= end_idx) {
 		return false; // No child nodes to check
@@ -2467,13 +2472,13 @@ bool prepared_geometry::try_get_distance_recursive(uint32_t level, uint32_t entr
 
 		const double term2 = squared(rmk_y - qy) + squared(rMi_x - qx);
 
-		return std::max(std::min(term1, term2), 0.0); // Ensure we don't have negative distances
+		return math::max(math::min(term1, term2), 0.0); // Ensure we don't have negative distances
 	};
 
 	const auto get_min_distance = [](const extent_xy &r, const vertex_xy &q) {
 		const double dx = (q.x < r.min.x) ? r.min.x - q.x : (q.x > r.max.x) ? q.x - r.max.x : 0.0;
 		const double dy = (q.y < r.min.y) ? r.min.y - q.y : (q.y > r.max.y) ? q.y - r.max.y : 0.0;
-		return std::max((dx * dx + dy * dy), 0.0); // Ensure we don't have negative distances
+		return math::max((dx * dx + dy * dy), 0.0); // Ensure we don't have negative distances
 	};
 
 	// Compute the minimum maximum distance for this level
@@ -2481,7 +2486,7 @@ bool prepared_geometry::try_get_distance_recursive(uint32_t level, uint32_t entr
 	for (auto i = beg_idx; i < end_idx; i++) {
 		// Get the box for this entry
 		const auto &box = index.level_array[level + 1].entry_array[i];
-		min_max_dist = std::min(min_max_dist, get_min_max_distance(box, vertex));
+		min_max_dist = math::min(min_max_dist, get_min_max_distance(box, vertex));
 	}
 
 	bool found_any = false;
@@ -2536,7 +2541,7 @@ public:
 
 	void push_back(const double *vertex) {
 		if (vertex_count >= vertex_total) {
-			const auto new_total = std::max(vertex_total * 2, 8u);
+			const auto new_total = math::max(vertex_total * 2, 8u);
 			const auto old_total = vertex_total;
 
 			const auto new_size = vertex_width * new_total * sizeof(double);
@@ -2927,8 +2932,8 @@ const char *wkt_reader::get_error_message() const {
 
 	// Return a string of the current position in the input string
 	constexpr auto len = 32;
-	const auto range_beg = std::max(pos - len, buf);
-	const auto range_end = std::min(pos + 1, end);
+	const auto range_beg = math::max(pos - len, buf);
+	const auto range_end = math::min(pos + 1, end);
 	auto range = std::string(range_beg, range_end);
 	if (range_beg != buf) {
 		range = "..." + range;
@@ -3355,10 +3360,10 @@ bool wkb_reader::try_parse_stats(extent_xy &out_extent, size_t &out_vertex_count
 			if(nan_as_empty && all_nan) {
 				break;
 			}
-			extent.min.x = std::min(extent.min.x, x);
-			extent.min.y = std::min(extent.min.y, y);
-			extent.max.x = std::max(extent.max.x, x);
-			extent.max.y = std::max(extent.max.y, y);
+			extent.min.x = math::min(extent.min.x, x);
+			extent.min.y = math::min(extent.min.y, y);
+			extent.max.x = math::max(extent.max.x, x);
+			extent.max.y = math::max(extent.max.y, y);
 			vertex_count++;
 		} break;
 		case geometry_type::LINESTRING: {
@@ -3385,10 +3390,10 @@ bool wkb_reader::try_parse_stats(extent_xy &out_extent, size_t &out_vertex_count
 						return false;
 					}
 				}
-				extent.min.x = std::min(extent.min.x, x);
-				extent.min.y = std::min(extent.min.y, y);
-				extent.max.x = std::max(extent.max.x, x);
-				extent.max.y = std::max(extent.max.y, y);
+				extent.min.x = math::min(extent.min.x, x);
+				extent.min.y = math::min(extent.min.y, y);
+				extent.max.x = math::max(extent.max.x, x);
+				extent.max.y = math::max(extent.max.y, y);
 			}
 			vertex_count += num_points;
 		} break;
@@ -3421,10 +3426,10 @@ bool wkb_reader::try_parse_stats(extent_xy &out_extent, size_t &out_vertex_count
 							return false;
 						}
 					}
-					extent.min.x = std::min(extent.min.x, x);
-					extent.min.y = std::min(extent.min.y, y);
-					extent.max.x = std::max(extent.max.x, x);
-					extent.max.y = std::max(extent.max.y, y);
+					extent.min.x = math::min(extent.min.x, x);
+					extent.min.y = math::min(extent.min.y, y);
+					extent.max.x = math::max(extent.max.x, x);
+					extent.max.y = math::max(extent.max.y, y);
 				}
 				vertex_count += num_points;
 			}

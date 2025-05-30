@@ -6,8 +6,8 @@
 
 #include <cstdint>
 #include <cstddef>
-#include <string>
 #include <cmath>
+#include <cstring>
 
 #ifdef DUCKDB_SPATIAL_EXTENSION
 #include "duckdb/common/assert.hpp"
@@ -41,6 +41,17 @@ public:
 	}
 };
 
+} // namespace sgl
+
+//======================================================================================================================
+// Math
+//======================================================================================================================
+namespace sgl {
+namespace math {
+	// Avoid including <algorithm> in the header to keep dependencies minimal
+	template <class T> const T& max (const T& a, const T& b) { return (a < b) ? b : a; }
+	template <class T> const T& min (const T& a, const T& b) { return !(b < a) ? a : b; }
+}
 } // namespace sgl
 //======================================================================================================================
 // Vertex
@@ -125,8 +136,8 @@ struct extent_xy {
 			return 0.0;
 		}
 
-		const auto dx = std::max(min.x - other.x, other.x - max.x);
-		const auto dy = std::max(min.y - other.y, other.y - max.y);
+		const auto dx = math::max(min.x - other.x, other.x - max.x);
+		const auto dy = math::max(min.y - other.y, other.y - max.y);
 		return std::sqrt(dx * dx + dy * dy);
 	}
 };
