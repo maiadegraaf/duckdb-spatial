@@ -2148,6 +2148,114 @@ struct ST_Dimension {
 // ST_Distance
 //======================================================================================================================
 
+struct ST_Azimuth {
+
+	//------------------------------------------------------------------------------------------------------------------
+	// Execute
+	//------------------------------------------------------------------------------------------------------------------
+	static void Execute(DataChunk &args, ExpressionState &state, Vector &result) {
+		D_ASSERT(args.data.size() == 2);
+		auto &left = args.data[0];
+		auto &right = args.data[1];
+		auto count = args.size();
+
+		left.Flatten(count);
+		right.Flatten(count);
+
+		auto &left_entries = StructVector::GetEntries(left);
+		auto &right_entries = StructVector::GetEntries(right);
+
+		auto left_x = FlatVector::GetData<double>(*left_entries[0]);
+		auto left_y = FlatVector::GetData<double>(*left_entries[1]);
+		auto right_x = FlatVector::GetData<double>(*right_entries[0]);
+		auto right_y = FlatVector::GetData<double>(*right_entries[1]);
+
+		auto &left_validity = FlatVector::Validity(left);
+		auto &right_validity = FlatVector::Validity(right);
+
+		auto out_data = FlatVector::GetData<double>(result);
+		for (idx_t i = 0; i < count; i++) {
+			// Check if either one is NULL
+			if (!left_validity.RowIsValid(i) || !right_validity.RowIsValid(i)) {
+				out_data[i] = std::numeric_limits<double>::quiet_NaN();
+				continue;
+			}
+
+			// Check if points are coincident
+			if (left_x[i] == right_x[i] && left_y[i] == right_y[i]) {
+				out_data[i] = std::numeric_limits<double>::quiet_NaN();
+				continue;
+			}
+
+			double angle = std::atan2(
+				right_y[i] - left_y[i],
+				right_x[i] - left_x[i]
+			);
+
+			// atan2 returns angle from positive X axis, counter-clockwise while
+			// we want angle from positive Y axis, clockwise.
+			double azimuth = M_PI / 2.0 - angle;
+			
+			// ensure angle is positive
+			if (azimuth < 0) {
+				azimuth += 2.0 * M_PI;
+			}
+			
+			out_data[i] = azimuth;
+		}
+
+		if (count == 1) {
+			result.SetVectorType(VectorType::CONSTANT_VECTOR);
+		}
+	}
+
+	//------------------------------------------------------------------------------------------------------------------
+	// Documentation
+	//------------------------------------------------------------------------------------------------------------------
+	static constexpr auto DESCRIPTION = R"(
+		Returns the azimuth in radians of the target point from the origin point, or NaN if the two points are coincident.
+		
+		The azimuth is measured clockwise from true north (positive Y axis). The result is in the range [0, 2π).
+		To convert to degrees, use the degrees() function on the result.
+	)";
+	
+	static constexpr auto EXAMPLE = R"(
+		-- Azimuth between two points (in radians)
+		SELECT ST_Azimuth(ST_Point(0, 0), ST_Point(1, 1));
+		----
+		0.7853981633974483
+		
+		-- Convert to degrees
+		SELECT degrees(ST_Azimuth(ST_Point(25, 45), ST_Point(75, 100))) AS azimuth_degrees;
+		----
+		41.987
+	)";
+
+	//------------------------------------------------------------------------------------------------------------------
+	// Register
+	//------------------------------------------------------------------------------------------------------------------
+	static void Register(DatabaseInstance &db) {
+		FunctionBuilder::RegisterScalar(db, "ST_Azimuth", [](ScalarFunctionBuilder &func) {
+			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("origin", GeoTypes::POINT_2D());
+				variant.AddParameter("target", GeoTypes::POINT_2D());
+				variant.SetReturnType(LogicalType::DOUBLE);
+				variant.SetFunction(Execute);
+			});
+
+			func.SetDescription(DESCRIPTION);
+			func.SetExample(EXAMPLE);
+
+			func.SetTag("ext", "spatial");
+			func.SetTag("category", "property");
+		});
+	}
+};
+
+//======================================================================================================================
+// ST_Distance
+//======================================================================================================================
+
 struct ST_Distance {
 
 	//------------------------------------------------------------------------------------------------------------------
@@ -8260,6 +8368,7 @@ void RegisterSpatialScalarFunctions(DatabaseInstance &db) {
 	ST_AsWKB::Register(db);
 	ST_AsHEXWKB::Register(db);
 	ST_AsSVG::Register(db);
+	ST_Azimuth::Register(db);
 	ST_Centroid::Register(db);
 	ST_Collect::Register(db);
 	ST_CollectionExtract::Register(db);
