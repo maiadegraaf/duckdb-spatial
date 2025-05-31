@@ -2151,9 +2151,57 @@ struct ST_Dimension {
 struct ST_Azimuth {
 
 	//------------------------------------------------------------------------------------------------------------------
-	// Execute
+	// GEOMETRY
 	//------------------------------------------------------------------------------------------------------------------
-	static void Execute(DataChunk &args, ExpressionState &state, Vector &result) {
+	static void ExecuteGeometry(DataChunk &args, ExpressionState &state, Vector &result) {
+		auto &lstate = LocalState::ResetAndGet(state);
+
+		BinaryExecutor::Execute<string_t, string_t, double>(
+		    args.data[0], args.data[1], result, args.size(), [&](const string_t &l_blob, const string_t &r_blob) {
+			    sgl::geometry lhs;
+			    sgl::geometry rhs;
+
+			    lstate.Deserialize(l_blob, lhs);
+			    lstate.Deserialize(r_blob, rhs);
+
+			    if (lhs.get_type() != sgl::geometry_type::POINT || rhs.get_type() != sgl::geometry_type::POINT) {
+				    throw InvalidInputException("ST_Azimuth only accepts POINT geometries");
+			    }
+
+			    if (lhs.is_empty() || rhs.is_empty()) {
+				    return std::numeric_limits<double>::quiet_NaN();
+			    }
+
+			    const auto lv = lhs.get_vertex_xy(0);
+			    const auto rv = rhs.get_vertex_xy(0);
+
+			    // Check if points are coincident
+			    if (lv.x == rv.x && lv.y == rv.y) {
+				    return std::numeric_limits<double>::quiet_NaN();
+			    }
+
+				double angle = std::atan2(
+					rv.y - lv.y,
+					rv.x - lv.x
+				);
+
+				// atan2 returns angle from positive X axis, counter-clockwise while
+				// we want angle from positive Y axis, clockwise.
+				double azimuth = M_PI / 2.0 - angle;
+				
+				// ensure angle is positive
+				if (azimuth < 0) {
+					azimuth += 2.0 * M_PI;
+				}
+			    
+			    return azimuth;
+		    });
+	}
+
+	//------------------------------------------------------------------------------------------------------------------
+	// POINT_2D
+	//------------------------------------------------------------------------------------------------------------------
+	static void ExecutePoint(DataChunk &args, ExpressionState &state, Vector &result) {
 		D_ASSERT(args.data.size() == 2);
 		auto &left = args.data[0];
 		auto &right = args.data[1];
@@ -2237,10 +2285,19 @@ struct ST_Azimuth {
 	static void Register(DatabaseInstance &db) {
 		FunctionBuilder::RegisterScalar(db, "ST_Azimuth", [](ScalarFunctionBuilder &func) {
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("origin", GeoTypes::GEOMETRY());
+				variant.AddParameter("target", GeoTypes::GEOMETRY());
+				variant.SetReturnType(LogicalType::DOUBLE);
+
+				variant.SetInit(LocalState::Init);
+				variant.SetFunction(ExecuteGeometry);
+			});
+
+			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("origin", GeoTypes::POINT_2D());
 				variant.AddParameter("target", GeoTypes::POINT_2D());
 				variant.SetReturnType(LogicalType::DOUBLE);
-				variant.SetFunction(Execute);
+				variant.SetFunction(ExecutePoint);
 			});
 
 			func.SetDescription(DESCRIPTION);
