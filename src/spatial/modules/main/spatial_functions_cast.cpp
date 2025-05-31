@@ -223,6 +223,14 @@ struct PointCasts {
 	}
 
 	//------------------------------------------------------------------------------------------------------------------
+	// POINT_3D -> VARCHAR
+	//------------------------------------------------------------------------------------------------------------------
+	static bool ToVarcharCast3D(Vector &source, Vector &result, idx_t count, CastParameters &parameters) {
+		CoreVectorOperations::Point3DToVarchar(source, result, count);
+		return true;
+	}
+
+	//------------------------------------------------------------------------------------------------------------------
 	// POINT_2D -> GEOMETRY
 	//------------------------------------------------------------------------------------------------------------------
 	static bool ToGeometryCast(Vector &source, Vector &result, idx_t count, CastParameters &parameters) {
@@ -269,6 +277,33 @@ struct PointCasts {
 	}
 
 	//------------------------------------------------------------------------------------------------------------------
+	// GEOMETRY -> POINT_3D
+	//------------------------------------------------------------------------------------------------------------------
+	static bool FromGeometryCast3D(Vector &source, Vector &result, idx_t count, CastParameters &parameters) {
+		using POINT_TYPE = StructTypeTernary<double, double, double>;
+		using GEOMETRY_TYPE = PrimitiveType<string_t>;
+
+		auto &lstate = LocalState::ResetAndGet(parameters);
+
+		GenericExecutor::ExecuteUnary<GEOMETRY_TYPE, POINT_TYPE>(source, result, count, [&](const GEOMETRY_TYPE &blob) {
+			sgl::geometry geom;
+			lstate.Deserialize(blob.val, geom);
+
+			if (geom.get_type() != sgl::geometry_type::POINT) {
+				throw ConversionException("Cannot cast non-point GEOMETRY to POINT_2D");
+			}
+			if (geom.is_empty()) {
+				// TODO: Maybe make this return NULL instead
+				throw ConversionException("Cannot cast empty point GEOMETRY to POINT_2D");
+			}
+			const auto vertex = geom.get_vertex_xyzm(0);
+			return POINT_TYPE {vertex.x, vertex.y, vertex.zm};
+		});
+
+		return true;
+	}
+
+	//------------------------------------------------------------------------------------------------------------------
 	// POINT(N) -> POINT_2D
 	//------------------------------------------------------------------------------------------------------------------
 	static bool ToPoint2DCast(Vector &source, Vector &result, idx_t count, CastParameters &) {
@@ -296,12 +331,18 @@ struct PointCasts {
 		// POINT_2D -> VARCHAR
 		ExtensionUtil::RegisterCastFunction(db, GeoTypes::POINT_2D(), LogicalType::VARCHAR,
 		                                    BoundCastInfo(ToVarcharCast), 1);
+		// POINT_3D -> VARCHAR
+		ExtensionUtil::RegisterCastFunction(db, GeoTypes::POINT_3D(), LogicalType::VARCHAR,
+		                                    BoundCastInfo(ToVarcharCast3D), 1);
 		// POINT_2D -> GEOMETRY
 		ExtensionUtil::RegisterCastFunction(db, GeoTypes::POINT_2D(), GeoTypes::GEOMETRY(),
 		                                    BoundCastInfo(ToGeometryCast, nullptr, LocalState::InitCast), 1);
 		// GEOMETRY -> POINT_2D
 		ExtensionUtil::RegisterCastFunction(db, GeoTypes::GEOMETRY(), GeoTypes::POINT_2D(),
 		                                    BoundCastInfo(FromGeometryCast, nullptr, LocalState::InitCast), 1);
+		// GEOMETRY -> POINT_3D
+		ExtensionUtil::RegisterCastFunction(db, GeoTypes::GEOMETRY(), GeoTypes::POINT_3D(),
+		                                    BoundCastInfo(FromGeometryCast3D, nullptr, LocalState::InitCast), 1);
 		// POINT_3D -> POINT_2D
 		ExtensionUtil::RegisterCastFunction(db, GeoTypes::POINT_3D(), GeoTypes::POINT_2D(), ToPoint2DCast, 1);
 		// POINT_4D -> POINT_2D
@@ -320,6 +361,14 @@ struct LinestringCasts {
 	//------------------------------------------------------------------------------------------------------------------
 	static bool ToVarcharCast(Vector &source, Vector &result, idx_t count, CastParameters &) {
 		CoreVectorOperations::LineString2DToVarchar(source, result, count);
+		return true;
+	}
+
+	//------------------------------------------------------------------------------------------------------------------
+	// LINESTRING_3D -> VARCHAR
+	//------------------------------------------------------------------------------------------------------------------
+	static bool ToVarcharCast3D(Vector &source, Vector &result, idx_t count, CastParameters &) {
+		CoreVectorOperations::LineString3DToVarchar(source, result, count);
 		return true;
 	}
 
@@ -443,6 +492,9 @@ struct LinestringCasts {
 		// LINESTRING_2D -> VARCHAR
 		ExtensionUtil::RegisterCastFunction(db, GeoTypes::LINESTRING_2D(), LogicalType::VARCHAR,
 		                                    BoundCastInfo(ToVarcharCast), 1);
+		// LINESTRING_3D -> VARCHAR
+		ExtensionUtil::RegisterCastFunction(db, GeoTypes::LINESTRING_3D(), LogicalType::VARCHAR,
+		                                    BoundCastInfo(ToVarcharCast3D), 1);
 		// LINESTRING_2D -> GEOMETRY
 		ExtensionUtil::RegisterCastFunction(db, GeoTypes::LINESTRING_2D(), GeoTypes::GEOMETRY(),
 		                                    BoundCastInfo(ToGeometryCast, nullptr, LocalState::InitCast), 1);
@@ -466,6 +518,14 @@ struct PolygonCasts {
 	//------------------------------------------------------------------------------------------------------------------
 	static bool ToVarcharCast(Vector &source, Vector &result, idx_t count, CastParameters &parameters) {
 		CoreVectorOperations::Polygon2DToVarchar(source, result, count);
+		return true;
+	}
+
+	//------------------------------------------------------------------------------------------------------------------
+	// POLYGON_3D -> VARCHAR
+	//------------------------------------------------------------------------------------------------------------------
+	static bool ToVarcharCast3D(Vector &source, Vector &result, idx_t count, CastParameters &parameters) {
+		CoreVectorOperations::Polygon3DToVarchar(source, result, count);
 		return true;
 	}
 
@@ -659,6 +719,9 @@ struct PolygonCasts {
 		// POLYGON_2D -> VARCHAR
 		ExtensionUtil::RegisterCastFunction(db, GeoTypes::POLYGON_2D(), LogicalType::VARCHAR,
 		                                    BoundCastInfo(ToVarcharCast), 1);
+		// POLYGON_3D -> VARCHAR
+		ExtensionUtil::RegisterCastFunction(db, GeoTypes::POLYGON_3D(), LogicalType::VARCHAR,
+		                                    BoundCastInfo(ToVarcharCast3D), 1);
 		// POLYGON_2D -> GEOMETRY
 		ExtensionUtil::RegisterCastFunction(db, GeoTypes::POLYGON_2D(), GeoTypes::GEOMETRY(),
 		                                    BoundCastInfo(ToGeometryCast, nullptr, LocalState::InitCast), 1);
@@ -776,6 +839,26 @@ void CoreVectorOperations::Point2DToVarchar(Vector &source, Vector &result, idx_
 }
 
 //------------------------------------------------------------------------------
+// POINT_3D -> VARCHAR
+//------------------------------------------------------------------------------
+void CoreVectorOperations::Point3DToVarchar(Vector &source, Vector &result, idx_t count) {
+	using POINT_TYPE = StructTypeTernary<double, double, double>;
+	using VARCHAR_TYPE = PrimitiveType<string_t>;
+
+	GenericExecutor::ExecuteUnary<POINT_TYPE, VARCHAR_TYPE>(source, result, count, [&](POINT_TYPE &point) {
+		auto x = point.a_val;
+		auto y = point.b_val;
+		auto z = point.c_val;
+
+		if (std::isnan(x) || std::isnan(y) || std::isnan(z)) {
+			return StringVector::AddString(result, "POINT EMPTY");
+		}
+
+		return StringVector::AddString(result, StringUtil::Format("POINT Z (%s)", MathUtil::format_coord(x, y, z)));
+	});
+}
+
+//------------------------------------------------------------------------------
 // LINESTRING_2D -> VARCHAR
 //------------------------------------------------------------------------------
 void CoreVectorOperations::LineString2DToVarchar(Vector &source, Vector &result, idx_t count) {
@@ -805,6 +888,37 @@ void CoreVectorOperations::LineString2DToVarchar(Vector &source, Vector &result,
 }
 
 //------------------------------------------------------------------------------
+// LINESTRING_3D -> VARCHAR
+//------------------------------------------------------------------------------
+void CoreVectorOperations::LineString3DToVarchar(Vector &source, Vector &result, idx_t count) {
+	auto &inner = ListVector::GetEntry(source);
+	auto &children = StructVector::GetEntries(inner);
+	auto x_data = FlatVector::GetData<double>(*children[0]);
+	auto y_data = FlatVector::GetData<double>(*children[1]);
+	auto z_data = FlatVector::GetData<double>(*children[2]);
+
+	UnaryExecutor::Execute<list_entry_t, string_t>(source, result, count, [&](list_entry_t &line) {
+		auto offset = line.offset;
+		auto length = line.length;
+
+		if (length == 0) {
+			return StringVector::AddString(result, "LINESTRING EMPTY");
+		}
+
+		string result_str = "LINESTRING Z (";
+		for (idx_t i = offset; i < offset + length; i++) {
+			result_str += MathUtil::format_coord(x_data[i], y_data[i], z_data[i]);
+			if (i < offset + length - 1) {
+				result_str += ", ";
+			}
+		}
+		result_str += ")";
+		return StringVector::AddString(result, result_str);
+	});
+}
+
+
+//------------------------------------------------------------------------------
 // POLYGON_2D -> VARCHAR
 //------------------------------------------------------------------------------
 void CoreVectorOperations::Polygon2DToVarchar(Vector &source, Vector &result, idx_t count) {
@@ -832,6 +946,49 @@ void CoreVectorOperations::Polygon2DToVarchar(Vector &source, Vector &result, id
 			result_str += "(";
 			for (idx_t j = ring_offset; j < ring_offset + ring_length; j++) {
 				result_str += MathUtil::format_coord(x_data[j], y_data[j]);
+				if (j < ring_offset + ring_length - 1) {
+					result_str += ", ";
+				}
+			}
+			result_str += ")";
+			if (i < offset + length - 1) {
+				result_str += ", ";
+			}
+		}
+		result_str += ")";
+		return StringVector::AddString(result, result_str);
+	});
+}
+
+//------------------------------------------------------------------------------
+// POLYGON_3D -> VARCHAR
+//------------------------------------------------------------------------------
+void CoreVectorOperations::Polygon3DToVarchar(Vector &source, Vector &result, idx_t count) {
+	auto &poly_vector = source;
+	auto &ring_vector = ListVector::GetEntry(poly_vector);
+	auto ring_entries = ListVector::GetData(ring_vector);
+	auto &point_vector = ListVector::GetEntry(ring_vector);
+	auto &point_children = StructVector::GetEntries(point_vector);
+	auto x_data = FlatVector::GetData<double>(*point_children[0]);
+	auto y_data = FlatVector::GetData<double>(*point_children[1]);
+	auto z_data = FlatVector::GetData<double>(*point_children[2]);
+
+	UnaryExecutor::Execute<list_entry_t, string_t>(poly_vector, result, count, [&](list_entry_t polygon_entry) {
+		auto offset = polygon_entry.offset;
+		auto length = polygon_entry.length;
+
+		if (length == 0) {
+			return StringVector::AddString(result, "POLYGON EMPTY");
+		}
+
+		string result_str = "POLYGON Z (";
+		for (idx_t i = offset; i < offset + length; i++) {
+			auto ring_entry = ring_entries[i];
+			auto ring_offset = ring_entry.offset;
+			auto ring_length = ring_entry.length;
+			result_str += "(";
+			for (idx_t j = ring_offset; j < ring_offset + ring_length; j++) {
+				result_str += MathUtil::format_coord(x_data[j], y_data[j], z_data[j]);
 				if (j < ring_offset + ring_length - 1) {
 					result_str += ", ";
 				}
