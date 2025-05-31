@@ -260,7 +260,7 @@ struct PointCasts {
 
 		GenericExecutor::ExecuteUnary<POINT_TYPE, GEOMETRY_TYPE>(source, result, count, [&](const POINT_TYPE &point) {
 			const double buffer[3] = {point.a_val, point.b_val, point.c_val};
-			sgl::geometry geom(sgl::geometry_type::POINT, false, false);
+			sgl::geometry geom(sgl::geometry_type::POINT, true, false);
 			geom.set_vertex_data(reinterpret_cast<const uint8_t *>(buffer), 1);
 
 			return lstate.Serialize(result, geom);
@@ -470,7 +470,7 @@ struct LinestringCasts {
 				vertex_data_ptr[i * 3 + 2] = z_data[line.offset + i];
 			}
 
-			sgl::geometry geom(sgl::geometry_type::LINESTRING, false, false);
+			sgl::geometry geom(sgl::geometry_type::LINESTRING, true, false);
 			geom.set_vertex_data(vertex_data_mem, line.length);
 
 			return lstate.Serialize(result, geom);
@@ -669,7 +669,7 @@ struct PolygonCasts {
 		const auto z_data = FlatVector::GetData<double>(*coord_vec_children[2]);
 
 		UnaryExecutor::Execute<list_entry_t, string_t>(source, result, count, [&](const list_entry_t &poly) {
-			sgl::geometry geom(sgl::geometry_type::POLYGON, false, false);
+			sgl::geometry geom(sgl::geometry_type::POLYGON, true, false);
 
 			for (idx_t i = 0; i < poly.length; i++) {
 				const auto ring_entry = ring_entries[poly.offset + i];
