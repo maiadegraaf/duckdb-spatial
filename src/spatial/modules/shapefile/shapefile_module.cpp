@@ -464,7 +464,7 @@ struct ST_ReadSHP {
 			vertex_ptr[0] = shape->padfX[0];
 			vertex_ptr[1] = shape->padfY[0];
 
-			point.set_vertex_data(vertex_mem, 1);
+			point.set_vertex_array(vertex_mem, 1);
 		}
 	};
 
@@ -483,7 +483,7 @@ struct ST_ReadSHP {
 					vertex_ptr[i * 2] = shape->padfX[i];
 					vertex_ptr[i * 2 + 1] = shape->padfY[i];
 				}
-				line.set_vertex_data(vertex_mem, shape->nVertices);
+				line.set_vertex_array(vertex_mem, shape->nVertices);
 
 				// Return the line
 				return;
@@ -499,7 +499,7 @@ struct ST_ReadSHP {
 
 				// Allocate a new line
 				const auto line_mem = arena.AllocateAligned(sizeof(sgl::geometry));
-				const auto line_ptr = new (line_mem) sgl::geometry(sgl::geometry_type::LINESTRING);
+				const auto line_ptr = new (line_mem) sgl::geometry(sgl::geometry_type::LINESTRING, false, false);
 
 				// Allocate memory for the vertices
 				const auto vertex_mem = arena.AllocateAligned(sizeof(double) * 2 * line_size);
@@ -513,7 +513,7 @@ struct ST_ReadSHP {
 				}
 
 				// Set the vertex data and append to the multi-line
-				line_ptr->set_vertex_data(vertex_mem, line_size);
+				line_ptr->set_vertex_array(vertex_mem, line_size);
 				line.append_part(line_ptr);
 
 				start = end;
@@ -551,7 +551,7 @@ struct ST_ReadSHP {
 
 					const auto ring_size = end - start;
 					const auto ring_mem = arena.AllocateAligned(sizeof(sgl::geometry));
-					const auto ring = new (ring_mem) sgl::geometry(sgl::geometry_type::LINESTRING);
+					const auto ring = new (ring_mem) sgl::geometry(sgl::geometry_type::LINESTRING, false, false);
 
 					const auto vertex_mem = arena.AllocateAligned(sizeof(double) * 2 * ring_size);
 					const auto vertex_ptr = reinterpret_cast<double *>(vertex_mem);
@@ -562,7 +562,7 @@ struct ST_ReadSHP {
 						vertex_ptr[j * 2 + 1] = shape->padfY[offset];
 					}
 
-					ring->set_vertex_data(vertex_mem, ring_size);
+					ring->set_vertex_array(vertex_mem, ring_size);
 					poly.append_part(ring);
 
 					start = end;
@@ -581,7 +581,7 @@ struct ST_ReadSHP {
 				                          : polygon_part_starts[polygon_idx + 1];
 
 				const auto poly_mem = arena.AllocateAligned(sizeof(sgl::geometry));
-				const auto poly_ptr = new (poly_mem) sgl::geometry(sgl::geometry_type::POLYGON);
+				const auto poly_ptr = new (poly_mem) sgl::geometry(sgl::geometry_type::POLYGON, false, false);
 
 				for (auto ring_idx = part_start; ring_idx < part_end; ring_idx++) {
 					const auto start = shape->panPartStart[ring_idx];
@@ -590,7 +590,7 @@ struct ST_ReadSHP {
 					const auto ring_size = end - start;
 
 					const auto ring_mem = arena.AllocateAligned(sizeof(sgl::geometry));
-					const auto ring_ptr = new (ring_mem) sgl::geometry(sgl::geometry_type::LINESTRING);
+					const auto ring_ptr = new (ring_mem) sgl::geometry(sgl::geometry_type::LINESTRING, false, false);
 
 					const auto vertex_mem = arena.AllocateAligned(sizeof(double) * 2 * ring_size);
 					const auto vertex_ptr = reinterpret_cast<double *>(vertex_mem);
@@ -601,7 +601,7 @@ struct ST_ReadSHP {
 						vertex_ptr[j * 2 + 1] = shape->padfY[offset];
 					}
 
-					ring_ptr->set_vertex_data(vertex_mem, ring_size);
+					ring_ptr->set_vertex_array(vertex_mem, ring_size);
 					poly_ptr->append_part(ring_ptr);
 				}
 
@@ -616,7 +616,7 @@ struct ST_ReadSHP {
 
 			for (int i = 0; i < shape->nVertices; i++) {
 				const auto point_mem = arena.AllocateAligned(sizeof(sgl::geometry));
-				const auto point_ptr = new (point_mem) sgl::geometry(sgl::geometry_type::POINT);
+				const auto point_ptr = new (point_mem) sgl::geometry(sgl::geometry_type::POINT, false, false);
 
 				const auto vertex_mem = arena.AllocateAligned(sizeof(double) * 2);
 				const auto vertex_ptr = reinterpret_cast<double *>(vertex_mem);
@@ -624,7 +624,7 @@ struct ST_ReadSHP {
 				vertex_ptr[0] = shape->padfX[i];
 				vertex_ptr[1] = shape->padfY[i];
 
-				point_ptr->set_vertex_data(vertex_mem, 1);
+				point_ptr->set_vertex_array(vertex_mem, 1);
 				mpoint.append_part(point_ptr);
 			}
 		}
@@ -1013,7 +1013,7 @@ struct Shapefile_Meta {
 			auto &file = bind_data.files[state.current_file_idx + out_idx];
 
 			auto file_handle = fs.OpenFile(file, FileFlags::FILE_FLAGS_READ);
-			auto shp_handle = OpenSHPFile(fs, file.path.c_str());
+			auto shp_handle = OpenSHPFile(fs, file.path);
 
 			double min_bound[4];
 			double max_bound[4];

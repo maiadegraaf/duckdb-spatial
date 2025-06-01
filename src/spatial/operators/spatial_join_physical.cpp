@@ -186,7 +186,7 @@ public:
 			const auto hx = static_cast<uint32_t>(hw * ((node_box.min.x + node_box.max.x) / 2 - tree_box.min.x));
 			const auto hy = static_cast<uint32_t>(hh * ((node_box.min.y + node_box.max.y) / 2 - tree_box.min.y));
 
-			curve[i] = sgl::util::hilbert_encode(16, hx, hy);
+			curve[i] = sgl::math::hilbert_encode(16, hx, hy);
 		}
 
 		// Now, sort the indices based on their curve value

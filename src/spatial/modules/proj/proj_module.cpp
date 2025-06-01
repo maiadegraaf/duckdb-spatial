@@ -319,12 +319,12 @@ struct ST_Transform {
 			    sgl::geometry geom;
 			    lstate.Deserialize(blob, geom);
 
-			    sgl::ops::replace_vertices(&alloc, &geom, crs, [](void *arg, sgl::vertex_xyzm *vertex) {
+			    sgl::ops::transform_vertices(alloc, geom, crs, [](void *arg, sgl::vertex_xyzm &vertex) {
 				    const auto crs_ptr = static_cast<PJ *>(arg);
 				    const auto transformed =
-				        proj_trans(crs_ptr, PJ_FWD, proj_coord(vertex->x, vertex->y, vertex->zm, 0)).xy;
-				    vertex->x = transformed.x;
-				    vertex->y = transformed.y;
+				        proj_trans(crs_ptr, PJ_FWD, proj_coord(vertex.x, vertex.y, vertex.z, 0)).xy;
+				    vertex.x = transformed.x;
+				    vertex.y = transformed.y;
 			    });
 
 			    return lstate.Serialize(result, geom);
@@ -611,15 +611,15 @@ struct ST_Area_Spheroid {
 			lstate.accum = 0;
 
 			// Visit all polygons
-			sgl::ops::visit_by_dimension(&geom, 2, &lstate, [](void *arg, const sgl::geometry *part) {
-				if (part->get_type() != sgl::geometry_type::POLYGON) {
+			sgl::ops::visit_polygon_geometries(geom, &lstate, [](void *arg, const sgl::geometry &part) {
+				if (part.get_type() != sgl::geometry_type::POLYGON) {
 					return;
 				}
 
 				auto &sstate = *static_cast<GeodesicLocalState *>(arg);
 
 				// Calculate the area of the polygon
-				const auto tail = part->get_last_part();
+				const auto tail = part.get_last_part();
 				auto ring = tail;
 				if (!ring) {
 					return;
@@ -630,7 +630,7 @@ struct ST_Area_Spheroid {
 				do {
 					ring = ring->get_next();
 
-					const auto vertex_count = ring->get_count();
+					const auto vertex_count = ring->get_vertex_count();
 					if (vertex_count < 4) {
 						continue;
 					}
@@ -773,15 +773,15 @@ struct ST_Perimeter_Spheroid {
 			lstate.accum = 0;
 
 			// Visit all polygons
-			sgl::ops::visit_by_dimension(&geom, 2, &lstate, [](void *arg, const sgl::geometry *part) {
-				if (part->get_type() != sgl::geometry_type::POLYGON) {
+			sgl::ops::visit_polygon_geometries(geom, &lstate, [](void *arg, const sgl::geometry &part) {
+				if (part.get_type() != sgl::geometry_type::POLYGON) {
 					return;
 				}
 
 				auto &sstate = *static_cast<GeodesicLocalState *>(arg);
 
 				// Calculate the perimeter of the polygon
-				const auto tail = part->get_last_part();
+				const auto tail = part.get_last_part();
 				auto ring = tail;
 				if (!ring) {
 					return;
@@ -789,7 +789,7 @@ struct ST_Perimeter_Spheroid {
 				do {
 					ring = ring->get_next();
 
-					const auto vertex_count = ring->get_count();
+					const auto vertex_count = ring->get_vertex_count();
 					if (vertex_count < 4) {
 						continue;
 					}
@@ -917,15 +917,15 @@ struct ST_Length_Spheroid {
 			// Reset the state
 			lstate.accum = 0;
 
-			// Visit all polygons
-			sgl::ops::visit_by_dimension(&geom, 1, &lstate, [](void *arg, const sgl::geometry *part) {
-				if (part->get_type() != sgl::geometry_type::LINESTRING) {
+			// Visit all linestrings
+			sgl::ops::visit_linestring_geometries(geom, &lstate, [](void *arg, const sgl::geometry &part) {
+				if (part.get_type() != sgl::geometry_type::LINESTRING) {
 					return;
 				}
 
 				auto &sstate = *static_cast<GeodesicLocalState *>(arg);
 
-				const auto vertex_count = part->get_count();
+				const auto vertex_count = part.get_vertex_count();
 				if (vertex_count < 2) {
 					return;
 				}
@@ -933,7 +933,7 @@ struct ST_Length_Spheroid {
 				geod_polygon_clear(&sstate.poly);
 
 				for (uint32_t i = 0; i < vertex_count; i++) {
-					const auto vertex = part->get_vertex_xy(i);
+					const auto vertex = part.get_vertex_xy(i);
 					geod_polygon_addpoint(&sstate.geod, &sstate.poly, vertex.x, vertex.y);
 				}
 
@@ -1143,7 +1143,6 @@ struct DuckDB_Proj_Version {
 		});
 	}
 };
-
 
 struct DuckDB_Proj_Compiled_Version {
 

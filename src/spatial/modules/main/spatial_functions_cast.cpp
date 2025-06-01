@@ -94,8 +94,7 @@ struct GeometryCasts {
 		auto &lstate = LocalState::ResetAndGet(parameters);
 		auto &alloc = lstate.GetAllocator();
 
-		sgl::ops::wkt_reader reader = {};
-		reader.alloc = &alloc;
+		sgl::wkt_reader reader(alloc);
 
 		auto success = true;
 
@@ -104,15 +103,12 @@ struct GeometryCasts {
 			    const auto wkt_ptr = wkt.GetDataUnsafe();
 			    const auto wkt_len = wkt.GetSize();
 
-			    reader.buf = wkt_ptr;
-			    reader.end = wkt_ptr + wkt_len;
-
 			    sgl::geometry geom;
 
-			    if (!sgl::ops::wkt_reader_try_parse(&reader, &geom)) {
+			    if (!reader.try_parse(geom, wkt_ptr, wkt_len)) {
 				    if (success) {
 					    success = false;
-					    const auto error = sgl::ops::wkt_reader_get_error_message(&reader);
+					    const auto error = reader.get_error_message();
 					    HandleCastError::AssignError(error, parameters.error_message);
 				    }
 				    mask.SetInvalid(row_idx);
@@ -141,30 +137,21 @@ struct GeometryCasts {
 		auto &lstate = LocalState::ResetAndGet(params);
 		auto &alloc = lstate.GetAllocator();
 
-		constexpr auto MAX_STACK_DEPTH = 128;
-		uint32_t recursion_stack[MAX_STACK_DEPTH];
-
-		sgl::ops::wkb_reader reader = {};
-		reader.copy_vertices = false;
-		reader.alloc = &alloc;
-		reader.allow_mixed_zm = false;
-		reader.nan_as_empty = true;
-
-		reader.stack_buf = recursion_stack;
-		reader.stack_cap = MAX_STACK_DEPTH;
+		sgl::wkb_reader reader(alloc);
+		reader.set_nan_as_empty(true);
 
 		bool success = true;
 
 		UnaryExecutor::ExecuteWithNulls<string_t, string_t>(
 		    source, result, count, [&](const string_t &wkb, ValidityMask &mask, idx_t row_idx) {
-			    reader.buf = wkb.GetDataUnsafe();
-			    reader.end = reader.buf + wkb.GetSize();
+			    const auto wkb_ptr = wkb.GetDataUnsafe();
+			    const auto wkb_len = wkb.GetSize();
 
-			    sgl::geometry geom(sgl::geometry_type::INVALID);
+			    sgl::geometry geom;
 
 			    // Try parse, if it fails, assign error message and return NULL
-			    if (!sgl::ops::wkb_reader_try_parse(&reader, &geom)) {
-				    const auto error = sgl::ops::wkb_reader_get_error_message(&reader);
+			    if (!reader.try_parse(geom, wkb_ptr, wkb_len)) {
+				    const auto error = reader.get_error_message();
 				    if (success) {
 					    success = false;
 					    HandleCastError::AssignError(error, params.error_message);
@@ -234,7 +221,7 @@ struct PointCasts {
 		GenericExecutor::ExecuteUnary<POINT_TYPE, GEOMETRY_TYPE>(source, result, count, [&](const POINT_TYPE &point) {
 			const double buffer[2] = {point.a_val, point.b_val};
 			sgl::geometry geom(sgl::geometry_type::POINT, false, false);
-			geom.set_vertex_data(reinterpret_cast<const uint8_t *>(buffer), 1);
+			geom.set_vertex_array(buffer, 1);
 
 			return lstate.Serialize(result, geom);
 		});
@@ -345,7 +332,7 @@ struct LinestringCasts {
 			}
 
 			sgl::geometry geom(sgl::geometry_type::LINESTRING, false, false);
-			geom.set_vertex_data(vertex_data_mem, line.length);
+			geom.set_vertex_array(vertex_data_mem, line.length);
 
 			return lstate.Serialize(result, geom);
 		});
@@ -369,7 +356,7 @@ struct LinestringCasts {
 				throw ConversionException("Cannot cast non-linestring GEOMETRY to LINESTRING_2D");
 			}
 
-			const auto line_size = line.get_count();
+			const auto line_size = line.get_vertex_count();
 
 			const auto entry = list_entry_t(total_coords, line_size);
 			total_coords += line_size;
@@ -445,7 +432,7 @@ struct PolygonCasts {
 
 				// Allocate part
 				const auto ring_mem = arena.AllocateAligned(sizeof(sgl::geometry));
-				const auto ring_ptr = new (ring_mem) sgl::geometry(sgl::geometry_type::LINESTRING);
+				const auto ring_ptr = new (ring_mem) sgl::geometry(sgl::geometry_type::LINESTRING, false, false);
 
 				// Allocate data
 				const auto ring_data_mem = arena.AllocateAligned(sizeof(double) * 2 * ring_entry.length);
@@ -456,7 +443,7 @@ struct PolygonCasts {
 					ring_data_ptr[j * 2 + 1] = y_data[ring_entry.offset + j];
 				}
 
-				ring_ptr->set_vertex_data(ring_data_mem, ring_entry.length);
+				ring_ptr->set_vertex_array(ring_data_mem, ring_entry.length);
 
 				// Append part
 				geom.append_part(ring_ptr);
@@ -486,7 +473,7 @@ struct PolygonCasts {
 				throw ConversionException("Cannot cast non-polygon GEOMETRY to POLYGON_2D");
 			}
 
-			const auto poly_size = poly.get_count();
+			const auto poly_size = poly.get_part_count();
 			const auto poly_entry = list_entry_t(total_rings, poly_size);
 
 			ListVector::Reserve(result, total_rings + poly_size);
@@ -500,7 +487,7 @@ struct PolygonCasts {
 					D_ASSERT(ring_idx < poly_size);
 					head = head->get_next();
 
-					const auto ring_size = head->get_count();
+					const auto ring_size = head->get_vertex_count();
 					const auto ring_entry = list_entry_t(total_coords, ring_size);
 
 					ListVector::Reserve(ring_vec, total_coords + ring_size);
@@ -581,7 +568,7 @@ struct BoxCasts {
 			const auto maxy = box.d_val;
 
 			sgl::geometry poly;
-			sgl::polygon::init_from_box(&poly, &alloc, minx, miny, maxx, maxy);
+			sgl::polygon::init_from_bbox(alloc, minx, miny, maxx, maxy, poly);
 
 			return lstate.Serialize(result, poly);
 		});
@@ -603,7 +590,7 @@ struct BoxCasts {
 			const auto maxy = box.d_val;
 
 			sgl::geometry poly;
-			sgl::polygon::init_from_box(&poly, &alloc, minx, miny, maxx, maxy);
+			sgl::polygon::init_from_bbox(alloc, minx, miny, maxx, maxy, poly);
 
 			return lstate.Serialize(result, poly);
 		});
