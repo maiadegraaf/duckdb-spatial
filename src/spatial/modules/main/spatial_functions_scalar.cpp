@@ -2174,27 +2174,7 @@ struct ST_Azimuth {
 
 			    const auto lv = lhs.get_vertex_xy(0);
 			    const auto rv = rhs.get_vertex_xy(0);
-
-			    // Check if points are coincident
-			    if (lv.x == rv.x && lv.y == rv.y) {
-				    return std::numeric_limits<double>::quiet_NaN();
-			    }
-
-				double angle = std::atan2(
-					rv.y - lv.y,
-					rv.x - lv.x
-				);
-
-				// atan2 returns angle from positive X axis, counter-clockwise while
-				// we want angle from positive Y axis, clockwise.
-				double azimuth = M_PI / 2.0 - angle;
-				
-				// ensure angle is positive
-				if (azimuth < 0) {
-					azimuth += 2.0 * M_PI;
-				}
-			    
-			    return azimuth;
+				return calcAngle(lv.x, lv.y, rv.x, rv.y);
 		    });
 	}
 
@@ -2228,33 +2208,30 @@ struct ST_Azimuth {
 				out_data[i] = std::numeric_limits<double>::quiet_NaN();
 				continue;
 			}
-
-			// Check if points are coincident
-			if (left_x[i] == right_x[i] && left_y[i] == right_y[i]) {
-				out_data[i] = std::numeric_limits<double>::quiet_NaN();
-				continue;
-			}
-
-			double angle = std::atan2(
-				right_y[i] - left_y[i],
-				right_x[i] - left_x[i]
-			);
-
-			// atan2 returns angle from positive X axis, counter-clockwise while
-			// we want angle from positive Y axis, clockwise.
-			double azimuth = M_PI / 2.0 - angle;
-			
-			// ensure angle is positive
-			if (azimuth < 0) {
-				azimuth += 2.0 * M_PI;
-			}
-			
-			out_data[i] = azimuth;
+			out_data[i] = calcAngle(left_x[i], left_y[i], right_x[i], right_y[i]);
 		}
 
 		if (count == 1) {
 			result.SetVectorType(VectorType::CONSTANT_VECTOR);
 		}
+	}
+
+	static double calcAngle(double x1, double y1, double x2, double y2) {
+		// Check if points are coincident
+		if (x1 == x2 && y1 == y2) {
+			return std::numeric_limits<double>::quiet_NaN();
+		}
+
+		// atan2 returns angle from positive X axis, counter-clockwise while
+		// we want angle from positive Y axis, clockwise.
+		double azimuth = M_PI / 2.0 - std::atan2(y2 - y1, x2 - x1);
+		
+		// ensure angle is positive
+		if (azimuth < 0) {
+			azimuth += 2.0 * M_PI;
+		}
+
+		return azimuth;
 	}
 
 	//------------------------------------------------------------------------------------------------------------------
