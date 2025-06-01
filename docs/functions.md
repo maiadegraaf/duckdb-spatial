@@ -5,7 +5,7 @@
 
 | Function | Summary |
 | --- | --- |
-| [`ST_Affine`](#st_affine) | Apply an affine transformation to a geometry |
+| [`ST_Affine`](#st_affine) | Applies an affine transformation to a geometry. |
 | [`ST_Area`](#st_area) | Compute the area of a geometry. |
 | [`ST_Area_Spheroid`](#st_area_spheroid) | Returns the area of a geometry in meters, using an ellipsoidal model of the earth |
 | [`ST_AsGeoJSON`](#st_asgeojson) | Returns the geometry as a GeoJSON fragment |
@@ -108,22 +108,16 @@
 | [`ST_ReducePrecision`](#st_reduceprecision) | Returns the geometry with all vertices reduced to the given precision |
 | [`ST_RemoveRepeatedPoints`](#st_removerepeatedpoints) | Remove repeated points from a LINESTRING. |
 | [`ST_Reverse`](#st_reverse) | Returns the geometry with the order of its vertices reversed |
-| [`ST_Rotate`](#st_rotate) | Alias for [`ST_RotateZ`](#st_rotatez) |
-| [`ST_RotateX`](#st_rotatex) | Rotate a geometry around the X-axis |
-| [`ST_RotateY`](#st_rotatey) | Rotate a geometry around the Y-axis |
-| [`ST_RotateZ`](#st_rotatez) | Rotate a geometry around the Z-axis |
-| [`ST_Scale`](#st_scale) | Scale a geometry by factors along X, Y, and optionally Z axes |
 | [`ST_ShortestLine`](#st_shortestline) | Returns the shortest line between two geometries |
 | [`ST_Simplify`](#st_simplify) | Returns a simplified version of the geometry |
 | [`ST_SimplifyPreserveTopology`](#st_simplifypreservetopology) | Returns a simplified version of the geometry that preserves topology |
 | [`ST_StartPoint`](#st_startpoint) | Returns the start point of a LINESTRING. |
 | [`ST_Touches`](#st_touches) | Returns true if the geometries touch |
 | [`ST_Transform`](#st_transform) | Transforms a geometry between two coordinate systems |
-| [`ST_TransScale`](#st_transscale) | Translate and scale a geometry |
-| [`ST_Translate`](#st_translate) | Translate a geometry by offsets along X, Y, and optionally Z axes |
 | [`ST_Union`](#st_union) | Returns the union of two geometries |
 | [`ST_VoronoiDiagram`](#st_voronoidiagram) | Returns the Voronoi diagram of the supplied MultiPoint geometry |
 | [`ST_Within`](#st_within) | Returns true if the first geometry is within the second |
+| [`ST_WithinProperly`](#st_withinproperly) | Returns true if the first geometry \"properly\" is contained by the second geometry |
 | [`ST_X`](#st_x) | Returns the X coordinate of a point geometry |
 | [`ST_XMax`](#st_xmax) | Returns the maximum X coordinate of a geometry |
 | [`ST_XMin`](#st_xmin) | Returns the minimum X coordinate of a geometry |
@@ -164,7 +158,7 @@
 ### ST_Affine
 
 
-#### Signature
+#### Signatures
 
 ```sql
 GEOMETRY ST_Affine (geom GEOMETRY, a DOUBLE, b DOUBLE, c DOUBLE, d DOUBLE, e DOUBLE, f DOUBLE, g DOUBLE, h DOUBLE, i DOUBLE, xoff DOUBLE, yoff DOUBLE, zoff DOUBLE)
@@ -173,40 +167,42 @@ GEOMETRY ST_Affine (geom GEOMETRY, a DOUBLE, b DOUBLE, d DOUBLE, e DOUBLE, xoff 
 
 #### Description
 
-Apply an affine transformation to a geometry
+Applies an affine transformation to a geometry.
 
-The transformation is defined by the matrix:
+For the 2D variant, the transformation matrix is defined as follows:
 ```
-| a  b  c  xoff |
-| d  e  f  yoff |
-| g  h  i  zoff |
-| 0  0  0  1    |
+| a b xoff |
+| d e yoff |
+| 0 0 1    |
 ```
 
-The transformed coordinates are calculated as:
-- x' = a*x + b*y + c*z + xoff
-- y' = d*x + e*y + f*z + yoff
-- z' = g*x + h*y + i*z + zoff
+For the 3D variant, the transformation matrix is defined as follows:
+```
+| a b c xoff |
+| d e f yoff |
+| g h i zoff |
+| 0 0 0 1    |
+```
 
-For 2D geometries, the Z coordinate is assumed to be 0.
+The transformation is applied to all vertices of the geometry.
 
 #### Example
 
 ```sql
 -- Translate a point by (2, 3)
 SELECT ST_AsText(ST_Affine(ST_Point(1, 1),
-                           1, 0,   -- a, b
-                           0, 1,   -- d, e
-                           2, 3)); -- xoff, yoff
+                        1, 0,   -- a, b
+                        0, 1,   -- d, e
+                        2, 3)); -- xoff, yoff
 ----
 POINT (3 4)
 
 -- Scale a geometry by factor 2 in X and Y
 SELECT ST_AsText(ST_Affine(ST_Point(1, 1),
-                           2, 0, 0,   -- a, b, c
-                           0, 2, 0,   -- d, e, f
-                           0, 0, 1,   -- g, h, i
-                           0, 0, 0)); -- xoff, yoff, zoff
+                        2, 0, 0,   -- a, b, c
+                        0, 2, 0,   -- d, e, f
+                        0, 0, 1,   -- g, h, i
+                        0, 0, 0)); -- xoff, yoff, zoff
 ----
 POINT (2 2)
 ```
@@ -475,12 +471,12 @@ Unlike ST_Polygonize, this function does not fill in holes.
 #### Signatures
 
 ```sql
+GEOMETRY ST_Centroid (geom GEOMETRY)
 POINT_2D ST_Centroid (point POINT_2D)
 POINT_2D ST_Centroid (linestring LINESTRING_2D)
 POINT_2D ST_Centroid (polygon POLYGON_2D)
 POINT_2D ST_Centroid (box BOX_2D)
 POINT_2D ST_Centroid (box BOX_2DF)
-GEOMETRY ST_Centroid (geom GEOMETRY)
 ```
 
 #### Description
@@ -1747,17 +1743,6 @@ Returns the maximum inscribed circle of the input geometry, optionally with a to
 By default, the tolerance is computed as `max(width, height) / 1000`.
 The return value is a struct with the center of the circle, the nearest point to the center on the boundary of the geometry, and the radius of the circle.
 
-#### Example
-
-```sql
--- Find the maximum inscribed circle of a square
-SELECT ST_MaximumInscribedCircle(
-    ST_GeomFromText('POLYGON((0 0, 10 0, 10 10, 0 10, 0 0))')
-);
-----
-{'center': POINT (5 5), 'nearest': POINT (5 0), 'radius': 5.0}
-```
-
 ----
 
 ### ST_MinimumRotatedRectangle
@@ -1871,17 +1856,6 @@ GEOMETRY ST_Node (geom GEOMETRY)
 #### Description
 
 Returns a "noded" MultiLinestring, produced by combining a collection of input linestrings and adding additional vertices where they intersect.
-
-#### Example
-
-```sql
--- Create a noded multilinestring from two intersecting lines
-SELECT ST_AsText(ST_Node(
-    ST_GeomFromText('MULTILINESTRING((0 0, 2 2), (0 2, 2 0))')
-));
-----
-MULTILINESTRING ((0 0, 1 1), (1 1, 2 2), (0 2, 1 1), (1 1, 2 0))
-```
 
 ----
 
@@ -2164,17 +2138,6 @@ GEOMETRY ST_Polygonize (geometries GEOMETRY[])
 
 Returns a polygonized representation of the input geometries
 
-#### Example
-
-```sql
--- Create a polygon from a closed linestring ring
-SELECT ST_AsText(ST_Polygonize([
-    ST_GeomFromText('LINESTRING(0 0, 0 10, 10 10, 10 0, 0 0)')
-]));
----
-GEOMETRYCOLLECTION (POLYGON ((0 0, 0 10, 10 10, 10 0, 0 0)))
-```
-
 ----
 
 ### ST_QuadKey
@@ -2253,117 +2216,6 @@ GEOMETRY ST_Reverse (geom GEOMETRY)
 #### Description
 
 Returns the geometry with the order of its vertices reversed
-
-----
-
-### ST_RotateX
-
-
-#### Signature
-
-```sql
-GEOMETRY ST_RotateX (geom GEOMETRY, angle DOUBLE)
-```
-
-#### Description
-
-Rotate a geometry around the X-axis
-
-The rotation angle is specified in radians. Positive angles rotate counter-clockwise when looking along the positive X-axis toward the origin.
-
-For 2D geometries, this function has no effect as rotation around the X-axis only affects Y and Z coordinates.
-
-#### Example
-
-```sql
--- Rotate a 3D point 90 degrees (π/2 radians) around the X-axis
-SELECT ST_AsText(ST_RotateX(ST_GeomFromText('POINT Z(0 1 0)'), pi()/2));
-----
-POINT Z (0 0 1)
-```
-
-----
-
-### ST_RotateY
-
-
-#### Signature
-
-```sql
-GEOMETRY ST_RotateY (geom GEOMETRY, angle DOUBLE)
-```
-
-#### Description
-
-Rotate a geometry around the Y-axis.
-
-#### Example
-
-```sql
--- Rotate a 3D point 90 degrees (π/2 radians) around the Y-axis
-SELECT ST_AsText(ST_RotateY(ST_GeomFromText('POINT Z(1 0 0)'), pi()/2));
-----
-POINT Z (0 0 -1)
-```
-
-----
-
-### ST_RotateZ
-
-
-#### Signature
-
-```sql
-GEOMETRY ST_RotateZ (geom GEOMETRY, angle DOUBLE)
-```
-
-#### Description
-
-Rotate a geometry around the Z-axis. This is the most common rotation for 2D geometries, rotating in the XY plane
-
-#### Example
-
-```sql
--- Rotate a point 90 degrees (π/2 radians) around the Z-axis
-SELECT ST_AsText(ST_RotateZ(ST_Point(1, 0), pi()/2));
-----
-POINT (0 1)
-```
-
-----
-
-### ST_Scale
-
-
-#### Signatures
-
-```sql
-GEOMETRY ST_Scale (geom GEOMETRY, scale_x DOUBLE, scale_y DOUBLE)
-GEOMETRY ST_Scale (geom GEOMETRY, scale_x DOUBLE, scale_y DOUBLE, scale_z DOUBLE)
-```
-
-#### Description
-
-Scale a geometry by factors along X, Y, and optionally Z axes
-
-Scales the geometry from the origin (0, 0, 0). If you need to scale from a different point, use ST_Translate to move the geometry to the origin, apply ST_Scale, then translate back.
-
-#### Example
-
-```sql
--- Scale a point by factor 2 in X and 3 in Y
-SELECT ST_AsText(ST_Scale(ST_Point(1, 1), 2, 3));
-----
-POINT (2 3)
-
--- Scale a 3D point
-SELECT ST_AsText(ST_Scale(
-    ST_GeomFromText('POINT Z(1 2 3)'),
-    2, 2, 2
-));
-----
-POINT Z (2 4 6)
-```
 
 ----
 
@@ -2526,67 +2378,6 @@ POINT (-5.203046090608746 49.96006137018598)
 
 ----
 
-### ST_TransScale
-
-
-#### Signatures
-
-```sql
-GEOMETRY ST_TransScale (geom GEOMETRY, delta_x DOUBLE, delta_y DOUBLE, scale_x DOUBLE, scale_y DOUBLE)
-```
-
-#### Description
-
-Translate and scale a geometry
-
-This function first translates the geometry by the given offsets, then scales it. This is equivalent to ST_Scale(ST_Translate(geom, delta_x, delta_y), scale_x, scale_y).
-
-#### Example
-
-```sql
--- Translate by (1, 2) then scale by (2, 3)
-SELECT ST_AsText(ST_TransScale(ST_Point(1, 1), 1, 2, 2, 3));
-----
-POINT (4 9)
-```
-
-----
-
-### ST_Translate
-
-
-#### Signatures
-
-```sql
-GEOMETRY ST_Translate (geom GEOMETRY, delta_x DOUBLE, delta_y DOUBLE)
-GEOMETRY ST_Translate (geom GEOMETRY, delta_x DOUBLE, delta_y DOUBLE, delta_z DOUBLE)
-```
-
-#### Description
-
-Translate a geometry by offsets along X, Y, and optionally Z axes
-
-Moves all coordinates of the geometry by adding the specified offsets.
-
-#### Example
-
-```sql
--- Translate a point by (2, 3)
-SELECT ST_AsText(ST_Translate(ST_Point(1, 1), 2, 3));
-----
-POINT (3 4)
-
--- Translate a linestring
-SELECT ST_AsText(ST_Translate(
-    ST_GeomFromText('LINESTRING(0 0, 1 1)'),
-    5, -2
-));
-----
-LINESTRING (5 -2, 6 -1)
-```
-
-----
-
 ### ST_Union
 
 
@@ -2630,6 +2421,23 @@ BOOLEAN ST_Within (geom1 GEOMETRY, geom2 GEOMETRY)
 #### Description
 
 Returns true if the first geometry is within the second
+
+----
+
+### ST_WithinProperly
+
+
+#### Signature
+
+```sql
+BOOLEAN ST_WithinProperly (geom1 GEOMETRY, geom2 GEOMETRY)
+```
+
+#### Description
+
+Returns true if the first geometry \"properly\" is contained by the second geometry
+
+This function functions the same as `ST_ContainsProperly`, but the arguments are swapped.
 
 ----
 
@@ -3067,7 +2875,7 @@ SELECT * FROM ST_GeneratePoints({min_x: 0, min_y:0, max_x:10, max_y:10}::BOX_2D,
 #### Signature
 
 ```sql
-ST_Read (col0 VARCHAR, keep_wkb BOOLEAN, max_batch_size INTEGER, sequential_layer_scan BOOLEAN, layer VARCHAR, sibling_files VARCHAR[], spatial_filter WKB_BLOB, spatial_filter_box BOX_2D, allowed_drivers VARCHAR[], open_options VARCHAR[])
+ST_Read (col0 VARCHAR, keep_wkb BOOLEAN, max_batch_size INTEGER, sequential_layer_scan BOOLEAN, layer VARCHAR, spatial_filter WKB_BLOB, spatial_filter_box BOX_2D, sibling_files VARCHAR[], allowed_drivers VARCHAR[], open_options VARCHAR[])
 ```
 
 #### Description

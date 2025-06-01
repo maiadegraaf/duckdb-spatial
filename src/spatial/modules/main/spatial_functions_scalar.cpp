@@ -248,25 +248,47 @@ struct ST_Affine {
 			});
 
 			func.SetDescription(R"(
-			Applies an affine transformation to a geometry.
+				Applies an affine transformation to a geometry.
 
-			For the 2D variant, the transformation matrix is defined as follows:
-			```
-			| a b xoff |
-			| d e yoff |
-			| 0 0 1    |
-			```
+				For the 2D variant, the transformation matrix is defined as follows:
+				```
+				| a b xoff |
+				| d e yoff |
+				| 0 0 1    |
+				```
 
-			For the 3D variant, the transformation matrix is defined as follows:
-			```
-			| a b c xoff |
-			| d e f yoff |
-			| g h i zoff |
-			| 0 0 0 1    |
-			```
+				For the 3D variant, the transformation matrix is defined as follows:
+				```
+				| a b c xoff |
+				| d e f yoff |
+				| g h i zoff |
+				| 0 0 0 1    |
+				```
 
-			The transformation is applied to all vertices of the geometry.
+				The transformation is applied to all vertices of the geometry.
 			)");
+
+			func.SetExample(R"(
+				-- Translate a point by (2, 3)
+				SELECT ST_AsText(ST_Affine(ST_Point(1, 1),
+				                           1, 0,   -- a, b
+				                           0, 1,   -- d, e
+				                           2, 3)); -- xoff, yoff
+				----
+				POINT (3 4)
+
+				-- Scale a geometry by factor 2 in X and Y
+				SELECT ST_AsText(ST_Affine(ST_Point(1, 1),
+				                           2, 0, 0,   -- a, b, c
+				                           0, 2, 0,   -- d, e, f
+				                           0, 0, 1,   -- g, h, i
+				                           0, 0, 0)); -- xoff, yoff, zoff
+				----
+				POINT (2 2)
+			)");
+
+			func.SetTag("ext", "spatial");
+			func.SetTag("category", "property");
 		});
 
 		// Add helper macros
