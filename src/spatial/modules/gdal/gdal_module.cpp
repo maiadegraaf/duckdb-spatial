@@ -873,23 +873,15 @@ struct ST_Read : ArrowTableFunction {
 		ArenaAllocator arena;
 		GeometryAllocator alloc;
 
-		static constexpr auto MAX_WKB_STACK_DEPTH = 128;
-		uint32_t wkb_stack[MAX_WKB_STACK_DEPTH] = {};
-		sgl::ops::wkb_reader wkb_reader = {};
+		sgl::wkb_reader wkb_reader;
 
 		explicit LocalState(unique_ptr<ArrowArrayWrapper> current_chunk, ClientContext &context)
 		    : ArrowScanLocalState(std::move(current_chunk), context), arena(BufferAllocator::Get(context)),
-		      alloc(arena) {
+		      alloc(arena), wkb_reader(alloc) {
 
 			// Setup WKB reader
-			wkb_reader.copy_vertices = false;
-			wkb_reader.alloc = &alloc;
-			wkb_reader.allow_mixed_zm = true;
-			wkb_reader.nan_as_empty = false;
-
-			// Setup stack buffer
-			wkb_reader.stack_buf = wkb_stack;
-			wkb_reader.stack_cap = MAX_WKB_STACK_DEPTH;
+			wkb_reader.set_allow_mixed_zm(true);
+			wkb_reader.set_nan_as_empty(true);
 		}
 
 		void ConvertWKB(Vector &source, Vector &target, idx_t count) {
@@ -898,19 +890,20 @@ struct ST_Read : ArrowTableFunction {
 			arena.Reset();
 
 			UnaryExecutor::Execute<string_t, string_t>(source, target, count, [&](const string_t &wkb) {
-				wkb_reader.buf = wkb.GetDataUnsafe();
-				wkb_reader.end = wkb_reader.buf + wkb.GetSize();
+				const auto wkb_ptr = wkb.GetDataUnsafe();
+				const auto wkb_len = wkb.GetSize();
 
-				sgl::geometry geom(sgl::geometry_type::INVALID);
+				sgl::geometry geom;
+				;
 
-				if (!sgl::ops::wkb_reader_try_parse(&wkb_reader, &geom)) {
-					const auto error = sgl::ops::wkb_reader_get_error_message(&wkb_reader);
+				if (!wkb_reader.try_parse(geom, wkb_ptr, wkb_len)) {
+					const auto error = wkb_reader.get_error_message();
 					throw InvalidInputException("Could not parse WKB input: %s", error);
 				}
 
 				// Enforce that we have a cohesive ZM layout
-				if (wkb_reader.has_mixed_zm) {
-					sgl::ops::force_zm(alloc, &geom, wkb_reader.has_any_z, wkb_reader.has_any_m, 0, 0);
+				if (wkb_reader.parsed_mixed_zm()) {
+					sgl::ops::force_zm(alloc, geom, wkb_reader.parsed_any_z(), wkb_reader.parsed_any_m(), 0, 0);
 				}
 
 				// Serialize the geometry into a blob

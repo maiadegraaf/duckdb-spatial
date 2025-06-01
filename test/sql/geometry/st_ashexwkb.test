@@ -40,7 +40,7 @@ POLYGON ZM ((0 0 1 1, 0 1 1 2, 1 1 1 3, 1 0 1 4, 0 0 1 5))
 statement error
 SELECT ST_GeomFromHEXWKB('010800000000000000');
 ----
-Invalid Input Error: Could not parse HEX WKB string: WKB type 'CIRCULARSTRING' is not supported! (type id: 8)
+Invalid Input Error: Could not parse HEX WKB string: WKB type 'CIRCULARSTRING' is not supported! (type id: 8, SRID: 0)
 
 # Test rountrips properly
 statement ok

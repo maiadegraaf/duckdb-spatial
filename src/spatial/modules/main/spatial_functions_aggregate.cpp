@@ -49,8 +49,8 @@ struct ExtentAggFunction {
 		sgl::geometry geom;
 		Serde::Deserialize(geom, aggregate.input.allocator, input.GetDataUnsafe(), input.GetSize());
 
-		auto bbox = sgl::box_xy::smallest();
-		if (sgl::ops::try_get_extent_xy(&geom, &bbox)) {
+		auto bbox = sgl::extent_xy::smallest();
+		if (sgl::ops::get_total_extent_xy(geom, bbox)) {
 
 			if (!state.is_set) {
 				state.is_set = true;
@@ -97,7 +97,7 @@ struct ExtentAggFunction {
 			buf[9] = state.ymin;
 
 			sgl::geometry ring(sgl::geometry_type::LINESTRING, false, false);
-			ring.set_vertex_data(reinterpret_cast<const char *>(buf), 5);
+			ring.set_vertex_array(buf, 5);
 
 			sgl::geometry bbox(sgl::geometry_type::POLYGON, false, false);
 			bbox.append_part(&ring);
