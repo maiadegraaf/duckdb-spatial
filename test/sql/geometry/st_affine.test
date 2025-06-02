@@ -1,0 +1,7 @@
+require spatial
+
+# Move a point by (2, 3) 
+query I
+SELECT ST_Affine(ST_Point(1, 1), 1, 0, 0, 0, 1, 0, 0, 0, 1, 2, 3, 0);
+----
+POINT (3 4)

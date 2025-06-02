@@ -151,19 +151,19 @@ struct ST_Affine {
 			matrix.v[1] = UnifiedVectorFormat::GetData<double>(matrix_elems[1])[matrix_idx[1]]; // b
 			matrix.v[2] = UnifiedVectorFormat::GetData<double>(matrix_elems[2])[matrix_idx[2]]; // c
 
-			matrix.v[3] = UnifiedVectorFormat::GetData<double>(matrix_elems[10])[matrix_idx[10]]; // xoff
+			matrix.v[3] = UnifiedVectorFormat::GetData<double>(matrix_elems[9])[matrix_idx[9]]; // xoff
 
 			matrix.v[4] = UnifiedVectorFormat::GetData<double>(matrix_elems[3])[matrix_idx[3]]; // d
 			matrix.v[5] = UnifiedVectorFormat::GetData<double>(matrix_elems[4])[matrix_idx[4]]; // e
 			matrix.v[6] = UnifiedVectorFormat::GetData<double>(matrix_elems[5])[matrix_idx[5]]; // f
 
-			matrix.v[7] = UnifiedVectorFormat::GetData<double>(matrix_elems[11])[matrix_idx[11]]; // yoff
+			matrix.v[7] = UnifiedVectorFormat::GetData<double>(matrix_elems[10])[matrix_idx[10]]; // yoff
 
 			matrix.v[8] = UnifiedVectorFormat::GetData<double>(matrix_elems[6])[matrix_idx[6]];  // g
 			matrix.v[9] = UnifiedVectorFormat::GetData<double>(matrix_elems[7])[matrix_idx[7]];  // h
 			matrix.v[10] = UnifiedVectorFormat::GetData<double>(matrix_elems[8])[matrix_idx[8]]; // i
 
-			matrix.v[11] = UnifiedVectorFormat::GetData<double>(matrix_elems[9])[matrix_idx[9]]; // zoff
+			matrix.v[11] = UnifiedVectorFormat::GetData<double>(matrix_elems[11])[matrix_idx[11]]; // zoff
 
 			// Deserialize the geometry
 			auto geom_blob = UnifiedVectorFormat::GetData<string_t>(geom_format)[geom_idx];
