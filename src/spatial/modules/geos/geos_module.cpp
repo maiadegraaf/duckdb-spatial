@@ -1460,9 +1460,9 @@ struct ST_Node {
 	)";
 	static constexpr auto EXAMPLE = R"(
 		-- Create a noded multilinestring from two intersecting lines
-		SELECT ST_AsText(ST_Node(
+		SELECT ST_Node(
 			ST_GeomFromText('MULTILINESTRING((0 0, 2 2), (0 2, 2 0))')
-		));
+		);
 		----
 		MULTILINESTRING ((0 0, 1 1), (1 1, 2 2), (0 2, 1 1), (1 1, 2 0))
 	)";
@@ -1620,9 +1620,9 @@ struct ST_Polygonize {
 			func.SetDescription("Returns a polygonized representation of the input geometries");
 			func.SetExample(R"(
 				-- Create a polygon from a closed linestring ring
-				SELECT ST_AsText(ST_Polygonize([
+				SELECT ST_Polygonize([
 					ST_GeomFromText('LINESTRING(0 0, 0 10, 10 10, 10 0, 0 0)')
-				]));
+				]);
 				---
 				GEOMETRYCOLLECTION (POLYGON ((0 0, 0 10, 10 10, 10 0, 0 0)))
 			)");

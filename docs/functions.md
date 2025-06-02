@@ -203,19 +203,19 @@ The transformation is applied to all vertices of the geometry.
 
 ```sql
 -- Translate a point by (2, 3)
-SELECT ST_AsText(ST_Affine(ST_Point(1, 1),
-                           1, 0,   -- a, b
-                           0, 1,   -- d, e
-                           2, 3)); -- xoff, yoff
+SELECT ST_Affine(ST_Point(1, 1),
+                 1, 0,   -- a, b
+                 0, 1,   -- d, e
+                 2, 3);  -- xoff, yoff
 ----
 POINT (3 4)
 
 -- Scale a geometry by factor 2 in X and Y
-SELECT ST_AsText(ST_Affine(ST_Point(1, 1),
-                           2, 0, 0,   -- a, b, c
-                           0, 2, 0,   -- d, e, f
-                           0, 0, 1,   -- g, h, i
-                           0, 0, 0)); -- xoff, yoff, zoff
+SELECT ST_Affine(ST_Point(1, 1),
+                 2, 0, 0,   -- a, b, c
+                 0, 2, 0,   -- d, e, f
+                 0, 0, 1,   -- g, h, i
+                 0, 0, 0);  -- xoff, yoff, zoff
 ----
 POINT (2 2)
 ```
@@ -385,7 +385,7 @@ Returns the geometry as a WKT string
 #### Example
 
 ```sql
-SELECT ST_AsText(ST_MakeEnvelope(0,0,1,1));
+SELECT ST_MakeEnvelope(0,0,1,1);
 ----
 POLYGON ((0 0, 0 1, 1 1, 1 0, 0 0))
 ```
@@ -1885,9 +1885,9 @@ Returns a "noded" MultiLinestring, produced by combining a collection of input l
 
 ```sql
 -- Create a noded multilinestring from two intersecting lines
-SELECT ST_AsText(ST_Node(
+SELECT ST_Node(
     ST_GeomFromText('MULTILINESTRING((0 0, 2 2), (0 2, 2 0))')
-));
+);
 ----
 MULTILINESTRING ((0 0, 1 1), (1 1, 2 2), (0 2, 1 1), (1 1, 2 0))
 ```
@@ -2177,9 +2177,9 @@ Returns a polygonized representation of the input geometries
 
 ```sql
 -- Create a polygon from a closed linestring ring
-SELECT ST_AsText(ST_Polygonize([
+SELECT ST_Polygonize([
     ST_GeomFromText('LINESTRING(0 0, 0 10, 10 10, 10 0, 0 0)')
-]));
+]);
 ---
 GEOMETRYCOLLECTION (POLYGON ((0 0, 0 10, 10 10, 10 0, 0 0)))
 ```
@@ -2374,13 +2374,12 @@ DuckDB spatial vendors its own static copy of the PROJ database of coordinate sy
 -- but the output will be [easting, northing] because that is what's defined by
 -- WebMercator.
 
-SELECT ST_AsText(
+SELECT
     ST_Transform(
         st_point(52.373123, 4.892360),
         'EPSG:4326',
         'EPSG:3857'
-    )
-);
+    );
 ----
 POINT (544615.0239773799 6867874.103539125)
 
@@ -2390,15 +2389,14 @@ POINT (544615.0239773799 6867874.103539125)
 -- a [northing, easting] axis order instead, even though the source coordinate
 -- reference system definition (WGS84) says otherwise.
 
-SELECT ST_AsText(
+SELECT 
     ST_Transform(
         -- note the axis order is reversed here
         st_point(4.892360, 52.373123),
         'EPSG:4326',
         'EPSG:3857',
         always_xy := true
-    )
-);
+    );
 ----
 POINT (544615.0239773799 6867874.103539125)
 
