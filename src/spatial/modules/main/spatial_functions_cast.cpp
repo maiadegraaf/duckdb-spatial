@@ -786,7 +786,7 @@ struct PolygonCasts {
 				throw ConversionException("Cannot cast non-polygon GEOMETRY to POLYGON_3D");
 			}
 
-			const auto poly_size = poly.get_vertex_count();
+			const auto poly_size = poly.get_part_count();
 			const auto poly_entry = list_entry_t(total_rings, poly_size);
 
 			ListVector::Reserve(result, total_rings + poly_size);
