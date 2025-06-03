@@ -526,6 +526,41 @@ struct LinestringCasts {
 	}
 
 	//------------------------------------------------------------------------------------------------------------------
+	// LINESTRING_3D -> LINESTRING_2D
+	//------------------------------------------------------------------------------------------------------------------
+	static bool ToLine2DCast(Vector &source, Vector &result, idx_t count, CastParameters &parameters) {
+		auto &coord_src = ListVector::GetEntry(source);
+		auto &coord_src_children = StructVector::GetEntries(coord_src);
+		const auto x_src = FlatVector::GetData<double>(*coord_src_children[0]);
+		const auto y_src = FlatVector::GetData<double>(*coord_src_children[1]);
+
+		idx_t total_coords = 0;
+
+		UnaryExecutor::Execute<list_entry_t, list_entry_t>(source, result, count, [&](const list_entry_t &line) {
+			const auto line_size = line.length;
+
+			const auto entry = list_entry_t(total_coords, line_size);
+			total_coords += line_size;
+			ListVector::Reserve(result, total_coords);
+
+			// Re-fetch the coord vector children, as the ListVector::Reserve() call may have invalidated the pointers
+			auto &coord_dst = ListVector::GetEntry(result);
+			auto &coord_dst_children = StructVector::GetEntries(coord_dst);
+
+			const auto x_dst = FlatVector::GetData<double>(*coord_dst_children[0]);
+			const auto y_dst = FlatVector::GetData<double>(*coord_dst_children[1]);
+
+			for (idx_t i = 0; i < line.length; i++) {
+				x_dst[entry.offset + i] = x_src[line.offset + i];
+				y_dst[entry.offset + i] = y_src[line.offset + i];
+			}
+			return entry;
+		});
+		ListVector::SetListSize(result, total_coords);
+		return true;
+	}
+
+	//------------------------------------------------------------------------------------------------------------------
 	// Register
 	//------------------------------------------------------------------------------------------------------------------
 	static void Register(DatabaseInstance &db) {
@@ -547,6 +582,8 @@ struct LinestringCasts {
 		// GEOMETRY -> LINESTRING_3D
 		ExtensionUtil::RegisterCastFunction(db, GeoTypes::GEOMETRY(), GeoTypes::LINESTRING_3D(),
 		                                    BoundCastInfo(FromGeometryCast3D, nullptr, LocalState::InitCast), 1);
+		// LINESTRING_3D -> LINESTRING_2D
+		ExtensionUtil::RegisterCastFunction(db, GeoTypes::LINESTRING_3D(), GeoTypes::LINESTRING_2D(), ToLine2DCast, 1);
 	}
 };
 
