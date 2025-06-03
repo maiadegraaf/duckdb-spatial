@@ -9,6 +9,7 @@
 #include "spatial/util/math.hpp"
 
 // DuckDB
+#include "duckdb/common/constants.hpp"
 #include "duckdb/common/types/blob.hpp"
 #include "duckdb/common/vector_operations/generic_executor.hpp"
 #include "duckdb/execution/expression_executor.hpp"
@@ -2158,6 +2159,145 @@ struct ST_Dimension {
 // ST_Distance
 //======================================================================================================================
 
+struct ST_Azimuth {
+
+	//------------------------------------------------------------------------------------------------------------------
+	// GEOMETRY
+	//------------------------------------------------------------------------------------------------------------------
+	static void ExecuteGeometry(DataChunk &args, ExpressionState &state, Vector &result) {
+		auto &lstate = LocalState::ResetAndGet(state);
+
+		BinaryExecutor::ExecuteWithNulls<string_t, string_t, double>(
+		    args.data[0], args.data[1], result, args.size(),
+		    [&](const string_t &left, const string_t &right, ValidityMask &mask, idx_t idx) {
+			    sgl::geometry left_geom;
+			    sgl::geometry right_geom;
+
+			    lstate.Deserialize(left, left_geom);
+			    lstate.Deserialize(right, right_geom);
+
+			    if (left_geom.get_type() != sgl::geometry_type::POINT ||
+			        right_geom.get_type() != sgl::geometry_type::POINT) {
+				    throw InvalidInputException("ST_Azimuth only accepts POINT geometries");
+			    }
+
+			    if (left_geom.is_empty() || right_geom.is_empty()) {
+				    mask.SetInvalid(idx);
+				    return 0.0;
+			    }
+
+			    const auto left_xy = left_geom.get_vertex_xy(0);
+			    const auto right_xy = right_geom.get_vertex_xy(0);
+
+			    // If the points are the same, return NULL
+			    if (left_xy.x == right_xy.x && left_xy.y == right_xy.y) {
+				    mask.SetInvalid(idx);
+				    return 0.0;
+			    }
+
+			    return CalcAngle(left_xy.x, left_xy.y, right_xy.x, right_xy.y);
+		    });
+	}
+
+	//------------------------------------------------------------------------------------------------------------------
+	// POINT_2D
+	//------------------------------------------------------------------------------------------------------------------
+	static void ExecutePoint(DataChunk &args, ExpressionState &state, Vector &result) {
+		D_ASSERT(args.data.size() == 2);
+		auto &left = args.data[0];
+		auto &right = args.data[1];
+		auto count = args.size();
+
+		// Note: GenericExecutor::ExecuteBinary is preferable, but it cannot return NULL.
+		// So, let's flatten the vectors for simplicity.
+		left.Flatten(count);
+		right.Flatten(count);
+
+		auto &left_entries = StructVector::GetEntries(left);
+		auto &right_entries = StructVector::GetEntries(right);
+
+		auto left_x = FlatVector::GetData<double>(*left_entries[0]);
+		auto left_y = FlatVector::GetData<double>(*left_entries[1]);
+		auto right_x = FlatVector::GetData<double>(*right_entries[0]);
+		auto right_y = FlatVector::GetData<double>(*right_entries[1]);
+
+		auto &result_mask = FlatVector::Validity(result);
+
+		auto out_data = FlatVector::GetData<double>(result);
+		for (idx_t i = 0; i < count; i++) {
+			// If the points are the same, return NULL
+			if (left_x[i] == right_x[i] && left_y[i] == right_y[i]) {
+				result_mask.SetInvalid(i);
+				continue;
+			}
+			out_data[i] = CalcAngle(left_x[i], left_y[i], right_x[i], right_y[i]);
+		}
+
+		if (count == 1) {
+			result.SetVectorType(VectorType::CONSTANT_VECTOR);
+		}
+	}
+
+	static double CalcAngle(double x1, double y1, double x2, double y2) {
+		// atan2 returns angle from positive X axis, counter-clockwise while
+		// we want angle from positive Y axis, clockwise.
+		double azimuth = PI / 2.0 - std::atan2(y2 - y1, x2 - x1);
+
+		// ensure angle is positive
+		if (azimuth < 0) {
+			azimuth += 2.0 * PI;
+		}
+
+		return azimuth;
+	}
+
+	//------------------------------------------------------------------------------------------------------------------
+	// Documentation
+	//------------------------------------------------------------------------------------------------------------------
+	static constexpr auto DESCRIPTION = R"(
+		Returns the azimuth (a clockwise angle measured from north) of two points in radian.
+	)";
+
+	static constexpr auto EXAMPLE = R"(
+		SELECT degrees(ST_Azimuth(ST_Point(0, 0), ST_Point(0, 1)));
+		----
+		90.0
+	)";
+
+	//------------------------------------------------------------------------------------------------------------------
+	// Register
+	//------------------------------------------------------------------------------------------------------------------
+	static void Register(DatabaseInstance &db) {
+		FunctionBuilder::RegisterScalar(db, "ST_Azimuth", [](ScalarFunctionBuilder &func) {
+			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("origin", GeoTypes::GEOMETRY());
+				variant.AddParameter("target", GeoTypes::GEOMETRY());
+				variant.SetReturnType(LogicalType::DOUBLE);
+
+				variant.SetInit(LocalState::Init);
+				variant.SetFunction(ExecuteGeometry);
+			});
+
+			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("origin", GeoTypes::POINT_2D());
+				variant.AddParameter("target", GeoTypes::POINT_2D());
+				variant.SetReturnType(LogicalType::DOUBLE);
+				variant.SetFunction(ExecutePoint);
+			});
+
+			func.SetDescription(DESCRIPTION);
+			func.SetExample(EXAMPLE);
+
+			func.SetTag("ext", "spatial");
+			func.SetTag("category", "property");
+		});
+	}
+};
+
+//======================================================================================================================
+// ST_Distance
+//======================================================================================================================
+
 struct ST_Distance {
 
 	//------------------------------------------------------------------------------------------------------------------
@@ -2434,7 +2574,8 @@ struct ST_DistanceWithin {
 		double distance;
 		bool is_constant = false;
 
-		explicit BindData(double distance) : distance(distance), is_constant(true) {}
+		explicit BindData(double distance) : distance(distance), is_constant(true) {
+		}
 
 		unique_ptr<FunctionData> Copy() const override {
 			return make_uniq<BindData>(distance);
@@ -2448,7 +2589,7 @@ struct ST_DistanceWithin {
 
 	// We try to constant-fold the distance parameter here, because it's a very common have a constant distance
 	static unique_ptr<FunctionData> Bind(ClientContext &context, ScalarFunction &bound_function,
-											   vector<unique_ptr<Expression>> &arguments) {
+	                                     vector<unique_ptr<Expression>> &arguments) {
 
 		if (arguments.back()->IsFoldable()) {
 			const auto dist_expr = ExpressionExecutor::EvaluateScalar(context, *arguments.back());
@@ -2476,22 +2617,21 @@ struct ST_DistanceWithin {
 			auto &dst_vec = args.data[2];
 
 			TernaryExecutor::Execute<string_t, string_t, double, bool>(
-				lhs_vec, rhs_vec, dst_vec, result, count,
-				[&](const string_t &lhs_blob, const string_t &rhs_blob, double distance) {
+			    lhs_vec, rhs_vec, dst_vec, result, count,
+			    [&](const string_t &lhs_blob, const string_t &rhs_blob, double distance) {
+				    sgl::prepared_geometry lhs_geom;
+				    sgl::prepared_geometry rhs_geom;
 
-					sgl::prepared_geometry lhs_geom;
-					sgl::prepared_geometry rhs_geom;
+				    lstate.Deserialize(lhs_blob, lhs_geom);
+				    lstate.Deserialize(rhs_blob, rhs_geom);
 
-					lstate.Deserialize(lhs_blob, lhs_geom);
-					lstate.Deserialize(rhs_blob, rhs_geom);
-
-					// Calculate the distance
-					double dist = 0.0;
-					if (sgl::ops::get_euclidean_distance(lhs_geom, rhs_geom, dist)) {
-						return dist <= distance;
-					}
-					return false; // TODO: Null
-				});
+				    // Calculate the distance
+				    double dist = 0.0;
+				    if (sgl::ops::get_euclidean_distance(lhs_geom, rhs_geom, dist)) {
+					    return dist <= distance;
+				    }
+				    return false; // TODO: Null
+			    });
 		} else {
 			// No distance argument, so we use the bind data
 			const auto &func_expr = state.expr.Cast<BoundFunctionExpression>();
@@ -2500,9 +2640,9 @@ struct ST_DistanceWithin {
 			const auto distance = bind_data.distance;
 
 			const auto lhs_is_const =
-				lhs_vec.GetVectorType() == VectorType::CONSTANT_VECTOR && !ConstantVector::IsNull(lhs_vec);
+			    lhs_vec.GetVectorType() == VectorType::CONSTANT_VECTOR && !ConstantVector::IsNull(lhs_vec);
 			const auto rhs_is_const =
-				rhs_vec.GetVectorType() == VectorType::CONSTANT_VECTOR && !ConstantVector::IsNull(rhs_vec);
+			    rhs_vec.GetVectorType() == VectorType::CONSTANT_VECTOR && !ConstantVector::IsNull(rhs_vec);
 
 			if (lhs_is_const && rhs_is_const) {
 				result.SetVectorType(VectorType::CONSTANT_VECTOR);
@@ -2522,8 +2662,7 @@ struct ST_DistanceWithin {
 				} else {
 					ConstantVector::GetData<bool>(result)[0] = false; // TODO: Null
 				}
-			}
-			else if (lhs_is_const != rhs_is_const) {
+			} else if (lhs_is_const != rhs_is_const) {
 				auto &const_vec = lhs_is_const ? lhs_vec : rhs_vec;
 				auto &probe_vec = lhs_is_const ? rhs_vec : lhs_vec;
 
@@ -2531,37 +2670,33 @@ struct ST_DistanceWithin {
 				sgl::prepared_geometry const_geom;
 				lstate.Deserialize(const_blob, const_geom);
 
-				UnaryExecutor::Execute<string_t, bool>(
-					probe_vec, result, count,
-					[&](const string_t &probe_blob) {
-						sgl::geometry probe_geom;
-						lstate.Deserialize(probe_blob, probe_geom);
+				UnaryExecutor::Execute<string_t, bool>(probe_vec, result, count, [&](const string_t &probe_blob) {
+					sgl::geometry probe_geom;
+					lstate.Deserialize(probe_blob, probe_geom);
 
-						// Calculate the distance
-						double dist = 0.0;
-						if (sgl::ops::get_euclidean_distance(const_geom, probe_geom, dist)) {
-							return dist <= distance;
-						}
-						return false; // TODO: Null
-					});
+					// Calculate the distance
+					double dist = 0.0;
+					if (sgl::ops::get_euclidean_distance(const_geom, probe_geom, dist)) {
+						return dist <= distance;
+					}
+					return false; // TODO: Null
+				});
 			} else {
 				BinaryExecutor::Execute<string_t, string_t, bool>(
-					lhs_vec, rhs_vec, result, count,
-					[&](const string_t &lhs_blob, const string_t &rhs_blob) {
+				    lhs_vec, rhs_vec, result, count, [&](const string_t &lhs_blob, const string_t &rhs_blob) {
+					    sgl::prepared_geometry lhs_geom;
+					    sgl::prepared_geometry rhs_geom;
 
-						sgl::prepared_geometry lhs_geom;
-						sgl::prepared_geometry rhs_geom;
+					    lstate.Deserialize(lhs_blob, lhs_geom);
+					    lstate.Deserialize(rhs_blob, rhs_geom);
 
-						lstate.Deserialize(lhs_blob, lhs_geom);
-						lstate.Deserialize(rhs_blob, rhs_geom);
-
-						// Calculate the distance
-						double dist = 0.0;
-						if (sgl::ops::get_euclidean_distance(lhs_geom, rhs_geom, dist)) {
-							return dist <= distance;
-						}
-						return false; // TODO: Null
-					});
+					    // Calculate the distance
+					    double dist = 0.0;
+					    if (sgl::ops::get_euclidean_distance(lhs_geom, rhs_geom, dist)) {
+						    return dist <= distance;
+					    }
+					    return false; // TODO: Null
+				    });
 			}
 		}
 	}
@@ -2591,7 +2726,6 @@ struct ST_DistanceWithin {
 		});
 	}
 };
-
 
 //======================================================================================================================
 // ST_Dump
@@ -8366,6 +8500,7 @@ void RegisterSpatialScalarFunctions(DatabaseInstance &db) {
 	ST_AsWKB::Register(db);
 	ST_AsHEXWKB::Register(db);
 	ST_AsSVG::Register(db);
+	ST_Azimuth::Register(db);
 	ST_Centroid::Register(db);
 	ST_Collect::Register(db);
 	ST_CollectionExtract::Register(db);

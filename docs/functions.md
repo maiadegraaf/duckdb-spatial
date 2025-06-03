@@ -12,6 +12,7 @@
 | [`ST_AsSVG`](#st_assvg) | Convert the geometry into a SVG fragment or path |
 | [`ST_AsText`](#st_astext) | Returns the geometry as a WKT string |
 | [`ST_AsWKB`](#st_aswkb) | Returns the geometry as a WKB (Well-Known-Binary) blob |
+| [`ST_Azimuth`](#st_azimuth) | Returns the azimuth in radian |
 | [`ST_Boundary`](#st_boundary) | Returns the "boundary" of a geometry |
 | [`ST_Buffer`](#st_buffer) | Returns a buffer around the input geometry at the target distance |
 | [`ST_BuildArea`](#st_buildarea) | Creates a polygonal geometry by attemtping to "fill in" the input geometry. |
@@ -343,6 +344,30 @@ Returns the geometry as a WKB (Well-Known-Binary) blob
 SELECT ST_AsWKB('POLYGON((0 0, 0 1, 1 1, 1 0, 0 0))'::GEOMETRY)::BLOB;
 ----
 \x01\x03\x00\x00\x00\x01\x00\x00\x00\x05...
+```
+
+----
+
+### ST_Azimuth
+
+
+#### Signature
+
+```sql
+double ST_Azimuth (origin GEOMETRY, target GEOMETRY)
+double ST_Azimuth (origin POINT_2D, target POINT_2D)
+```
+
+#### Description
+
+Returns the azimuth (a clockwise angle measured from north) of two points in radian
+
+#### Example
+
+```sql
+SELECT degrees(ST_Azimuth(ST_Point(0, 0), ST_Point(0, 1)));
+----
+90.0
 ```
 
 ----
