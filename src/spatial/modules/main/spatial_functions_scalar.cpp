@@ -9,6 +9,7 @@
 #include "spatial/util/math.hpp"
 
 // DuckDB
+#include "duckdb/common/constants.hpp"
 #include "duckdb/common/types/blob.hpp"
 #include "duckdb/common/vector_operations/generic_executor.hpp"
 #include "duckdb/execution/expression_executor.hpp"
@@ -2224,11 +2225,11 @@ struct ST_Azimuth {
 
 		auto out_data = FlatVector::GetData<double>(result);
 		for (idx_t i = 0; i < count; i++) {
-				// If the points are the same, return NULL
+			// If the points are the same, return NULL
 			if (left_x[i] == right_x[i] && left_y[i] == right_y[i]) {
 				result_mask.SetInvalid(i);
 				continue;
-				}
+			}
 			out_data[i] = CalcAngle(left_x[i], left_y[i], right_x[i], right_y[i]);
 		}
 
@@ -2240,11 +2241,11 @@ struct ST_Azimuth {
 	static double CalcAngle(double x1, double y1, double x2, double y2) {
 		// atan2 returns angle from positive X axis, counter-clockwise while
 		// we want angle from positive Y axis, clockwise.
-		double azimuth = M_PI / 2.0 - std::atan2(y2 - y1, x2 - x1);
+		double azimuth = PI / 2.0 - std::atan2(y2 - y1, x2 - x1);
 
 		// ensure angle is positive
 		if (azimuth < 0) {
-			azimuth += 2.0 * M_PI;
+			azimuth += 2.0 * PI;
 		}
 
 		return azimuth;
@@ -2573,7 +2574,8 @@ struct ST_DistanceWithin {
 		double distance;
 		bool is_constant = false;
 
-		explicit BindData(double distance) : distance(distance), is_constant(true) {}
+		explicit BindData(double distance) : distance(distance), is_constant(true) {
+		}
 
 		unique_ptr<FunctionData> Copy() const override {
 			return make_uniq<BindData>(distance);
@@ -2587,7 +2589,7 @@ struct ST_DistanceWithin {
 
 	// We try to constant-fold the distance parameter here, because it's a very common have a constant distance
 	static unique_ptr<FunctionData> Bind(ClientContext &context, ScalarFunction &bound_function,
-											   vector<unique_ptr<Expression>> &arguments) {
+	                                     vector<unique_ptr<Expression>> &arguments) {
 
 		if (arguments.back()->IsFoldable()) {
 			const auto dist_expr = ExpressionExecutor::EvaluateScalar(context, *arguments.back());
@@ -2615,22 +2617,21 @@ struct ST_DistanceWithin {
 			auto &dst_vec = args.data[2];
 
 			TernaryExecutor::Execute<string_t, string_t, double, bool>(
-				lhs_vec, rhs_vec, dst_vec, result, count,
-				[&](const string_t &lhs_blob, const string_t &rhs_blob, double distance) {
+			    lhs_vec, rhs_vec, dst_vec, result, count,
+			    [&](const string_t &lhs_blob, const string_t &rhs_blob, double distance) {
+				    sgl::prepared_geometry lhs_geom;
+				    sgl::prepared_geometry rhs_geom;
 
-					sgl::prepared_geometry lhs_geom;
-					sgl::prepared_geometry rhs_geom;
+				    lstate.Deserialize(lhs_blob, lhs_geom);
+				    lstate.Deserialize(rhs_blob, rhs_geom);
 
-					lstate.Deserialize(lhs_blob, lhs_geom);
-					lstate.Deserialize(rhs_blob, rhs_geom);
-
-					// Calculate the distance
-					double dist = 0.0;
-					if (sgl::ops::get_euclidean_distance(lhs_geom, rhs_geom, dist)) {
-						return dist <= distance;
-					}
-					return false; // TODO: Null
-				});
+				    // Calculate the distance
+				    double dist = 0.0;
+				    if (sgl::ops::get_euclidean_distance(lhs_geom, rhs_geom, dist)) {
+					    return dist <= distance;
+				    }
+				    return false; // TODO: Null
+			    });
 		} else {
 			// No distance argument, so we use the bind data
 			const auto &func_expr = state.expr.Cast<BoundFunctionExpression>();
@@ -2639,9 +2640,9 @@ struct ST_DistanceWithin {
 			const auto distance = bind_data.distance;
 
 			const auto lhs_is_const =
-				lhs_vec.GetVectorType() == VectorType::CONSTANT_VECTOR && !ConstantVector::IsNull(lhs_vec);
+			    lhs_vec.GetVectorType() == VectorType::CONSTANT_VECTOR && !ConstantVector::IsNull(lhs_vec);
 			const auto rhs_is_const =
-				rhs_vec.GetVectorType() == VectorType::CONSTANT_VECTOR && !ConstantVector::IsNull(rhs_vec);
+			    rhs_vec.GetVectorType() == VectorType::CONSTANT_VECTOR && !ConstantVector::IsNull(rhs_vec);
 
 			if (lhs_is_const && rhs_is_const) {
 				result.SetVectorType(VectorType::CONSTANT_VECTOR);
@@ -2661,8 +2662,7 @@ struct ST_DistanceWithin {
 				} else {
 					ConstantVector::GetData<bool>(result)[0] = false; // TODO: Null
 				}
-			}
-			else if (lhs_is_const != rhs_is_const) {
+			} else if (lhs_is_const != rhs_is_const) {
 				auto &const_vec = lhs_is_const ? lhs_vec : rhs_vec;
 				auto &probe_vec = lhs_is_const ? rhs_vec : lhs_vec;
 
@@ -2670,37 +2670,33 @@ struct ST_DistanceWithin {
 				sgl::prepared_geometry const_geom;
 				lstate.Deserialize(const_blob, const_geom);
 
-				UnaryExecutor::Execute<string_t, bool>(
-					probe_vec, result, count,
-					[&](const string_t &probe_blob) {
-						sgl::geometry probe_geom;
-						lstate.Deserialize(probe_blob, probe_geom);
+				UnaryExecutor::Execute<string_t, bool>(probe_vec, result, count, [&](const string_t &probe_blob) {
+					sgl::geometry probe_geom;
+					lstate.Deserialize(probe_blob, probe_geom);
 
-						// Calculate the distance
-						double dist = 0.0;
-						if (sgl::ops::get_euclidean_distance(const_geom, probe_geom, dist)) {
-							return dist <= distance;
-						}
-						return false; // TODO: Null
-					});
+					// Calculate the distance
+					double dist = 0.0;
+					if (sgl::ops::get_euclidean_distance(const_geom, probe_geom, dist)) {
+						return dist <= distance;
+					}
+					return false; // TODO: Null
+				});
 			} else {
 				BinaryExecutor::Execute<string_t, string_t, bool>(
-					lhs_vec, rhs_vec, result, count,
-					[&](const string_t &lhs_blob, const string_t &rhs_blob) {
+				    lhs_vec, rhs_vec, result, count, [&](const string_t &lhs_blob, const string_t &rhs_blob) {
+					    sgl::prepared_geometry lhs_geom;
+					    sgl::prepared_geometry rhs_geom;
 
-						sgl::prepared_geometry lhs_geom;
-						sgl::prepared_geometry rhs_geom;
+					    lstate.Deserialize(lhs_blob, lhs_geom);
+					    lstate.Deserialize(rhs_blob, rhs_geom);
 
-						lstate.Deserialize(lhs_blob, lhs_geom);
-						lstate.Deserialize(rhs_blob, rhs_geom);
-
-						// Calculate the distance
-						double dist = 0.0;
-						if (sgl::ops::get_euclidean_distance(lhs_geom, rhs_geom, dist)) {
-							return dist <= distance;
-						}
-						return false; // TODO: Null
-					});
+					    // Calculate the distance
+					    double dist = 0.0;
+					    if (sgl::ops::get_euclidean_distance(lhs_geom, rhs_geom, dist)) {
+						    return dist <= distance;
+					    }
+					    return false; // TODO: Null
+				    });
 			}
 		}
 	}
@@ -2730,7 +2726,6 @@ struct ST_DistanceWithin {
 		});
 	}
 };
-
 
 //======================================================================================================================
 // ST_Dump
