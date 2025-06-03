@@ -5,6 +5,8 @@
 
 | Function | Summary |
 | --- | --- |
+| [`DuckDB_PROJ_Compiled_Version`](#duckdb_proj_compiled_version) | Returns a text description of the PROJ library version that that this instance of DuckDB was compiled against. |
+| [`DuckDB_Proj_Version`](#duckdb_proj_version) | Returns a text description of the PROJ library version that is being used by this instance of DuckDB. |
 | [`ST_Affine`](#st_affine) | Applies an affine transformation to a geometry. |
 | [`ST_Area`](#st_area) | Compute the area of a geometry. |
 | [`ST_Area_Spheroid`](#st_area_spheroid) | Returns the area of a geometry in meters, using an ellipsoidal model of the earth |
@@ -13,7 +15,7 @@
 | [`ST_AsSVG`](#st_assvg) | Convert the geometry into a SVG fragment or path |
 | [`ST_AsText`](#st_astext) | Returns the geometry as a WKT string |
 | [`ST_AsWKB`](#st_aswkb) | Returns the geometry as a WKB (Well-Known-Binary) blob |
-| [`ST_Azimuth`](#st_azimuth) | Returns the azimuth in radian |
+| [`ST_Azimuth`](#st_azimuth) | Returns the azimuth (a clockwise angle measured from north) of two points in radian. |
 | [`ST_Boundary`](#st_boundary) | Returns the "boundary" of a geometry |
 | [`ST_Buffer`](#st_buffer) | Returns a buffer around the input geometry at the target distance |
 | [`ST_BuildArea`](#st_buildarea) | Creates a polygonal geometry by attemtping to "fill in" the input geometry. |
@@ -31,11 +33,13 @@
 | [`ST_Covers`](#st_covers) | Returns true if the geom1 "covers" geom2 |
 | [`ST_Crosses`](#st_crosses) | Returns true if geom1 "crosses" geom2 |
 | [`ST_DWithin`](#st_dwithin) | Returns if two geometries are within a target distance of each-other |
+| [`ST_DWithin_GEOS`](#st_dwithin_geos) | Returns if two geometries are within a target distance of each-other |
 | [`ST_DWithin_Spheroid`](#st_dwithin_spheroid) | Returns if two POINT_2D's are within a target distance in meters, using an ellipsoidal model of the earths surface |
 | [`ST_Difference`](#st_difference) | Returns the "difference" between two geometries |
 | [`ST_Dimension`](#st_dimension) | Returns the "topological dimension" of a geometry. |
 | [`ST_Disjoint`](#st_disjoint) | Returns true if the geometries are disjoint |
 | [`ST_Distance`](#st_distance) | Returns the planar distance between two geometries |
+| [`ST_Distance_GEOS`](#st_distance_geos) | Returns the planar distance between two geometries |
 | [`ST_Distance_Sphere`](#st_distance_sphere) | Returns the haversine (great circle) distance between two geometries. |
 | [`ST_Distance_Spheroid`](#st_distance_spheroid) | Returns the distance between two geometries in meters using an ellipsoidal model of the earths surface |
 | [`ST_Dump`](#st_dump) | Dumps a geometry into a list of sub-geometries and their "path" in the original geometry. |
@@ -129,7 +133,6 @@
 | [`ST_ZMFlag`](#st_zmflag) | Returns a flag indicating the presence of Z and M values in the input geometry. |
 | [`ST_ZMax`](#st_zmax) | Returns the maximum Z coordinate of a geometry |
 | [`ST_ZMin`](#st_zmin) | Returns the minimum Z coordinate of a geometry |
-| [`DuckDB_PROJ_Version`](#duckdb_proj_version) | Returns the current (runtime) version of the PROJ library. |
 
 **[Aggregate Functions](#aggregate-functions)**
 
@@ -163,12 +166,66 @@
 | [`ST_GeneratePoints`](#st_generatepoints) | Generates a set of random points within the specified bounding box. |
 | [`ST_Read`](#st_read) | Read and import a variety of geospatial file formats using the GDAL library. |
 | [`ST_ReadOSM`](#st_readosm) | The `ST_ReadOsm()` table function enables reading compressed OpenStreetMap data directly from a `.osm.pbf file.` |
-| [`ST_ReadSHP`](#st_readshp) |  |
+| [`ST_ReadSHP`](#st_readshp) | Read a Shapefile without relying on the GDAL library |
 | [`ST_Read_Meta`](#st_read_meta) | Read the metadata from a variety of geospatial file formats using the GDAL library. |
 
 ----
 
 ## Scalar Functions
+
+### DuckDB_PROJ_Compiled_Version
+
+
+#### Signature
+
+```sql
+VARCHAR DuckDB_PROJ_Compiled_Version ()
+```
+
+#### Description
+
+Returns a text description of the PROJ library version that that this instance of DuckDB was compiled against.
+
+#### Example
+
+```sql
+SELECT duckdb_proj_compiled_version();
+┌────────────────────────────────┐
+│ duckdb_proj_compiled_version() │
+│            varchar             │
+├────────────────────────────────┤
+│ Rel. 9.1.1, December 1st, 2022 │
+└────────────────────────────────┘
+```
+
+----
+
+### DuckDB_Proj_Version
+
+
+#### Signature
+
+```sql
+VARCHAR DuckDB_Proj_Version ()
+```
+
+#### Description
+
+Returns a text description of the PROJ library version that is being used by this instance of DuckDB.
+
+#### Example
+
+```sql
+SELECT duckdb_proj_version();
+┌───────────────────────┐
+│ duckdb_proj_version() │
+│        varchar        │
+├───────────────────────┤
+│ 9.1.1                 │
+└───────────────────────┘
+```
+
+----
 
 ### ST_Affine
 
@@ -420,16 +477,16 @@ SELECT ST_AsWKB('POLYGON((0 0, 0 1, 1 1, 1 0, 0 0))'::GEOMETRY)::BLOB;
 ### ST_Azimuth
 
 
-#### Signature
+#### Signatures
 
 ```sql
-double ST_Azimuth (origin GEOMETRY, target GEOMETRY)
-double ST_Azimuth (origin POINT_2D, target POINT_2D)
+DOUBLE ST_Azimuth (origin GEOMETRY, target GEOMETRY)
+DOUBLE ST_Azimuth (origin POINT_2D, target POINT_2D)
 ```
 
 #### Description
 
-Returns the azimuth (a clockwise angle measured from north) of two points in radian
+Returns the azimuth (a clockwise angle measured from north) of two points in radian.
 
 #### Example
 
@@ -796,6 +853,21 @@ Returns if two geometries are within a target distance of each-other
 
 ----
 
+### ST_DWithin_GEOS
+
+
+#### Signature
+
+```sql
+BOOLEAN ST_DWithin_GEOS (geom1 GEOMETRY, geom2 GEOMETRY, distance DOUBLE)
+```
+
+#### Description
+
+Returns if two geometries are within a target distance of each-other
+
+----
+
 ### ST_DWithin_Spheroid
 
 
@@ -881,6 +953,34 @@ DOUBLE ST_Distance (point1 POINT_2D, point2 POINT_2D)
 DOUBLE ST_Distance (point POINT_2D, linestring LINESTRING_2D)
 DOUBLE ST_Distance (linestring LINESTRING_2D, point POINT_2D)
 DOUBLE ST_Distance (geom1 GEOMETRY, geom2 GEOMETRY)
+```
+
+#### Description
+
+Returns the planar distance between two geometries
+
+#### Example
+
+```sql
+SELECT ST_Distance('POINT (0 0)'::GEOMETRY, 'POINT (3 4)'::GEOMETRY);
+----
+5.0
+
+-- Z coordinates are ignored
+SELECT ST_Distance('POINT Z (0 0 0)'::GEOMETRY, 'POINT Z (3 4 5)'::GEOMETRY);
+----
+5.0
+```
+
+----
+
+### ST_Distance_GEOS
+
+
+#### Signature
+
+```sql
+DOUBLE ST_Distance_GEOS (geom1 GEOMETRY, geom2 GEOMETRY)
 ```
 
 #### Description
@@ -2766,49 +2866,6 @@ SELECT ST_ZMin(ST_Point(1, 2, 3))
 
 ----
 
-### DuckDB_PROJ_Version
-
-
-#### Signature
-
-```sql
-VARCHAR DuckDB_PROJ_Version ()
-```
-
-#### Description
-
-Returns runtime version of the supporting PROJ library.
-
-#### Example
-
-```sql
-SELECT DuckDB_PROJ_Version()
-```
-
-----
-
-
-### DuckDB_PROJ_Compiled_Version
-
-
-#### Signature
-
-```sql
-VARCHAR DuckDB_PROJ_Compiled_Version ()
-```
-
-#### Description
-
-Returns compile-time version of the supporting PROJ library.
-
-#### Example
-
-```sql
-SELECT DuckDB_PROJ_Compiled_Version()
-```
-
-----
-
 ## Aggregate Functions
 
 ### ST_CoverageInvalidEdges_Agg
@@ -3228,6 +3285,10 @@ LIMIT 5;
 ```sql
 ST_ReadSHP (col0 VARCHAR, encoding VARCHAR)
 ```
+
+#### Description
+
+Read a Shapefile without relying on the GDAL library
 
 ----
 
