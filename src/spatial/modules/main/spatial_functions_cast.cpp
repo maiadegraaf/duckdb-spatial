@@ -838,6 +838,59 @@ struct PolygonCasts {
 	}
 
 	//------------------------------------------------------------------------------------------------------------------
+	// POLYGON_3D -> POLYGON_2D
+	//------------------------------------------------------------------------------------------------------------------
+	static bool ToPolygon2DCast(Vector &source, Vector &result, idx_t count, CastParameters &parameters) {
+		auto &ring_dst = ListVector::GetEntry(result);
+
+		auto &ring_src = ListVector::GetEntry(source);
+		const auto ring_entries_src = ListVector::GetData(ring_src);
+		const auto &coord_src = ListVector::GetEntry(ring_src);
+		const auto &coord_src_children = StructVector::GetEntries(coord_src);
+		const auto x_src = FlatVector::GetData<double>(*coord_src_children[0]);
+		const auto y_src = FlatVector::GetData<double>(*coord_src_children[1]);
+
+		idx_t total_rings = 0;
+		idx_t total_coords = 0;
+
+		UnaryExecutor::Execute<list_entry_t, list_entry_t>(source, result, count, [&](const list_entry_t &poly) {
+			const auto poly_size = poly.length;
+			const auto poly_entry = list_entry_t(total_rings, poly_size);
+
+			for (idx_t i = 0; i < poly.length; i++) {
+				const auto ring_entry_src = ring_entries_src[poly.offset + i];
+				const auto ring_size = ring_entry_src.length;
+				const auto ring_entry_dst = list_entry_t(total_coords, ring_size);
+
+				ListVector::Reserve(ring_dst, total_coords + ring_size);
+
+				const auto ring_entries_dst = ListVector::GetData(ring_dst);
+				auto &coord_dst = ListVector::GetEntry(ring_dst);
+				auto &coord_dst_children = StructVector::GetEntries(coord_dst);
+				const auto x_dst = FlatVector::GetData<double>(*coord_dst_children[0]);
+				const auto y_dst = FlatVector::GetData<double>(*coord_dst_children[1]);
+
+				ring_entries_dst[total_rings + i] = ring_entry_dst;
+
+				for (idx_t j = 0; j < ring_size; j++) {
+					x_dst[ring_entry_dst.offset + j] = x_src[ring_entry_src.offset + j];
+					y_dst[ring_entry_dst.offset + j] = y_src[ring_entry_src.offset + j];
+				}
+				total_coords += ring_size;
+			}
+
+			total_rings += poly_size;
+
+			return poly_entry;
+		});
+
+		ListVector::SetListSize(result, total_rings);
+		ListVector::SetListSize(ring_dst, total_coords);
+
+		return true;
+	}
+
+	//------------------------------------------------------------------------------------------------------------------
 	// Register
 	//------------------------------------------------------------------------------------------------------------------
 	static void Register(DatabaseInstance &db) {
@@ -859,6 +912,8 @@ struct PolygonCasts {
 		// GEOMETRY -> POLYGON_3D
 		ExtensionUtil::RegisterCastFunction(db, GeoTypes::GEOMETRY(), GeoTypes::POLYGON_3D(),
 		                                    BoundCastInfo(FromGeometryCast3D, nullptr, LocalState::InitCast), 1);
+		// POLYGON_3D -> POLYGON_2D
+		ExtensionUtil::RegisterCastFunction(db, GeoTypes::POLYGON_3D(), GeoTypes::POLYGON_2D(), ToPolygon2DCast, 1);
 	}
 };
 
