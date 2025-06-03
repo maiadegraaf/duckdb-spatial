@@ -2207,20 +2207,30 @@ struct ST_Azimuth {
 		auto &right = args.data[1];
 		auto count = args.size();
 
-		using POINT_TYPE = StructTypeBinary<double, double>;
-		using AZIMUTH_TYPE = PrimitiveType<double>;
+		// Note: GenericExecutor::ExecuteBinary is preferable, but it cannot return NULL.
+		// So, let's flatten the vectors for simplicity.
+		left.Flatten(count);
+		right.Flatten(count);
 
-		GenericExecutor::ExecuteBinary<POINT_TYPE, POINT_TYPE, AZIMUTH_TYPE>(
-		    left, right, result, count, [&](POINT_TYPE left, POINT_TYPE right) {
+		auto &left_entries = StructVector::GetEntries(left);
+		auto &right_entries = StructVector::GetEntries(right);
+
+		auto left_x = FlatVector::GetData<double>(*left_entries[0]);
+		auto left_y = FlatVector::GetData<double>(*left_entries[1]);
+		auto right_x = FlatVector::GetData<double>(*right_entries[0]);
+		auto right_y = FlatVector::GetData<double>(*right_entries[1]);
+
+		auto &result_mask = FlatVector::Validity(result);
+
+		auto out_data = FlatVector::GetData<double>(result);
+		for (idx_t i = 0; i < count; i++) {
 				// If the points are the same, return NULL
-				if (left.a_val == right.a_val && left.b_val == right.b_val) {
-					// TODO
-					// result_mask.SetInvalid(i);
-					return 0.0;
+			if (left_x[i] == right_x[i] && left_y[i] == right_y[i]) {
+				result_mask.SetInvalid(i);
+				continue;
 				}
-
-			    return CalcAngle(left.a_val, left.b_val, right.a_val, right.b_val);
-			});
+			out_data[i] = CalcAngle(left_x[i], left_y[i], right_x[i], right_y[i]);
+		}
 
 		if (count == 1) {
 			result.SetVectorType(VectorType::CONSTANT_VECTOR);
