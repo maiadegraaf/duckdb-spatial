@@ -5,6 +5,7 @@
 
 | Function | Summary |
 | --- | --- |
+| [`ST_Affine`](#st_affine) | Applies an affine transformation to a geometry. |
 | [`ST_Area`](#st_area) | Compute the area of a geometry. |
 | [`ST_Area_Spheroid`](#st_area_spheroid) | Returns the area of a geometry in meters, using an ellipsoidal model of the earth |
 | [`ST_AsGeoJSON`](#st_asgeojson) | Returns the geometry as a GeoJSON fragment |
@@ -117,6 +118,7 @@
 | [`ST_Union`](#st_union) | Returns the union of two geometries |
 | [`ST_VoronoiDiagram`](#st_voronoidiagram) | Returns the Voronoi diagram of the supplied MultiPoint geometry |
 | [`ST_Within`](#st_within) | Returns true if the first geometry is within the second |
+| [`ST_WithinProperly`](#st_withinproperly) | Returns true if the first geometry \"properly\" is contained by the second geometry |
 | [`ST_X`](#st_x) | Returns the X coordinate of a point geometry |
 | [`ST_XMax`](#st_xmax) | Returns the maximum X coordinate of a geometry |
 | [`ST_XMin`](#st_xmin) | Returns the minimum X coordinate of a geometry |
@@ -141,6 +143,18 @@
 | [`ST_Intersection_Agg`](#st_intersection_agg) | Computes the intersection of a set of geometries |
 | [`ST_Union_Agg`](#st_union_agg) | Computes the union of a set of input geometries |
 
+**[Macro Functions](#Macro-functions)**
+
+| Function | Summary |
+| --- | --- |
+| [`ST_Rotate`](#st_rotate) | Alias of ST_RotateZ |
+| [`ST_RotateX`](#st_rotatex) | Rotates a geometry around the X axis. This is a shorthand macro for calling ST_Affine. |
+| [`ST_RotateY`](#st_rotatey) | Rotates a geometry around the Y axis. This is a shorthand macro for calling ST_Affine. |
+| [`ST_RotateZ`](#st_rotatez) | Rotates a geometry around the Z axis. This is a shorthand macro for calling ST_Affine. |
+| [`ST_Scale`](#st_scale) |  |
+| [`ST_TransScale`](#st_transscale) | Translates and then scales a geometry in X and Y direction. This is a shorthand macro for calling ST_Affine. |
+| [`ST_Translate`](#st_translate) |  |
+
 **[Table Functions](#table-functions)**
 
 | Function | Summary |
@@ -149,11 +163,66 @@
 | [`ST_GeneratePoints`](#st_generatepoints) | Generates a set of random points within the specified bounding box. |
 | [`ST_Read`](#st_read) | Read and import a variety of geospatial file formats using the GDAL library. |
 | [`ST_ReadOSM`](#st_readosm) | The `ST_ReadOsm()` table function enables reading compressed OpenStreetMap data directly from a `.osm.pbf file.` |
+| [`ST_ReadSHP`](#st_readshp) |  |
 | [`ST_Read_Meta`](#st_read_meta) | Read the metadata from a variety of geospatial file formats using the GDAL library. |
 
 ----
 
 ## Scalar Functions
+
+### ST_Affine
+
+
+#### Signatures
+
+```sql
+GEOMETRY ST_Affine (geom GEOMETRY, a DOUBLE, b DOUBLE, c DOUBLE, d DOUBLE, e DOUBLE, f DOUBLE, g DOUBLE, h DOUBLE, i DOUBLE, xoff DOUBLE, yoff DOUBLE, zoff DOUBLE)
+GEOMETRY ST_Affine (geom GEOMETRY, a DOUBLE, b DOUBLE, d DOUBLE, e DOUBLE, xoff DOUBLE, yoff DOUBLE)
+```
+
+#### Description
+
+Applies an affine transformation to a geometry.
+
+For the 2D variant, the transformation matrix is defined as follows:
+```
+| a b xoff |
+| d e yoff |
+| 0 0 1    |
+```
+
+For the 3D variant, the transformation matrix is defined as follows:
+```
+| a b c xoff |
+| d e f yoff |
+| g h i zoff |
+| 0 0 0 1    |
+```
+
+The transformation is applied to all vertices of the geometry.
+
+#### Example
+
+```sql
+-- Translate a point by (2, 3)
+SELECT ST_Affine(ST_Point(1, 1),
+                 1, 0,   -- a, b
+                 0, 1,   -- d, e
+                 2, 3);  -- xoff, yoff
+----
+POINT (3 4)
+
+-- Scale a geometry by factor 2 in X and Y
+SELECT ST_Affine(ST_Point(1, 1),
+                 2, 0, 0,   -- a, b, c
+                 0, 2, 0,   -- d, e, f
+                 0, 0, 1,   -- g, h, i
+                 0, 0, 0);  -- xoff, yoff, zoff
+----
+POINT (2 2)
+```
+
+----
 
 ### ST_Area
 
@@ -318,7 +387,7 @@ Returns the geometry as a WKT string
 #### Example
 
 ```sql
-SELECT ST_AsText(ST_MakeEnvelope(0,0,1,1));
+SELECT ST_MakeEnvelope(0,0,1,1);
 ----
 POLYGON ((0 0, 0 1, 1 1, 1 0, 0 0))
 ```
@@ -441,12 +510,12 @@ Unlike ST_Polygonize, this function does not fill in holes.
 #### Signatures
 
 ```sql
+GEOMETRY ST_Centroid (geom GEOMETRY)
 POINT_2D ST_Centroid (point POINT_2D)
 POINT_2D ST_Centroid (linestring LINESTRING_2D)
 POINT_2D ST_Centroid (polygon POLYGON_2D)
 POINT_2D ST_Centroid (box BOX_2D)
 POINT_2D ST_Centroid (box BOX_2DF)
-GEOMETRY ST_Centroid (geom GEOMETRY)
 ```
 
 #### Description
@@ -1713,6 +1782,17 @@ Returns the maximum inscribed circle of the input geometry, optionally with a to
 By default, the tolerance is computed as `max(width, height) / 1000`.
 The return value is a struct with the center of the circle, the nearest point to the center on the boundary of the geometry, and the radius of the circle.
 
+#### Example
+
+```sql
+-- Find the maximum inscribed circle of a square
+SELECT ST_MaximumInscribedCircle(
+    ST_GeomFromText('POLYGON((0 0, 10 0, 10 10, 0 10, 0 0))')
+);
+----
+{'center': POINT (5 5), 'nearest': POINT (5 0), 'radius': 5.0}
+```
+
 ----
 
 ### ST_MinimumRotatedRectangle
@@ -1826,6 +1906,17 @@ GEOMETRY ST_Node (geom GEOMETRY)
 #### Description
 
 Returns a "noded" MultiLinestring, produced by combining a collection of input linestrings and adding additional vertices where they intersect.
+
+#### Example
+
+```sql
+-- Create a noded multilinestring from two intersecting lines
+SELECT ST_Node(
+    ST_GeomFromText('MULTILINESTRING((0 0, 2 2), (0 2, 2 0))')
+);
+----
+MULTILINESTRING ((0 0, 1 1), (1 1, 2 2), (0 2, 1 1), (1 1, 2 0))
+```
 
 ----
 
@@ -2108,6 +2199,17 @@ GEOMETRY ST_Polygonize (geometries GEOMETRY[])
 
 Returns a polygonized representation of the input geometries
 
+#### Example
+
+```sql
+-- Create a polygon from a closed linestring ring
+SELECT ST_Polygonize([
+    ST_GeomFromText('LINESTRING(0 0, 0 10, 10 10, 10 0, 0 0)')
+]);
+---
+GEOMETRYCOLLECTION (POLYGON ((0 0, 0 10, 10 10, 10 0, 0 0)))
+```
+
 ----
 
 ### ST_QuadKey
@@ -2298,13 +2400,12 @@ DuckDB spatial vendors its own static copy of the PROJ database of coordinate sy
 -- but the output will be [easting, northing] because that is what's defined by
 -- WebMercator.
 
-SELECT ST_AsText(
+SELECT
     ST_Transform(
         st_point(52.373123, 4.892360),
         'EPSG:4326',
         'EPSG:3857'
-    )
-);
+    );
 ----
 POINT (544615.0239773799 6867874.103539125)
 
@@ -2314,15 +2415,14 @@ POINT (544615.0239773799 6867874.103539125)
 -- a [northing, easting] axis order instead, even though the source coordinate
 -- reference system definition (WGS84) says otherwise.
 
-SELECT ST_AsText(
+SELECT 
     ST_Transform(
         -- note the axis order is reversed here
         st_point(4.892360, 52.373123),
         'EPSG:4326',
         'EPSG:3857',
         always_xy := true
-    )
-);
+    );
 ----
 POINT (544615.0239773799 6867874.103539125)
 
@@ -2391,6 +2491,23 @@ BOOLEAN ST_Within (geom1 GEOMETRY, geom2 GEOMETRY)
 #### Description
 
 Returns true if the first geometry is within the second
+
+----
+
+### ST_WithinProperly
+
+
+#### Signature
+
+```sql
+BOOLEAN ST_WithinProperly (geom1 GEOMETRY, geom2 GEOMETRY)
+```
+
+#### Description
+
+Returns true if the first geometry \"properly\" is contained by the second geometry
+
+This function functions the same as `ST_ContainsProperly`, but the arguments are swapped.
 
 ----
 
@@ -2817,6 +2934,143 @@ Computes the union of a set of input geometries
 
 ----
 
+## Macro Functions
+
+### ST_Rotate
+
+
+#### Signature
+
+```sql
+GEOMETRY ST_Rotate (geom GEOMETRY, radians double)
+```
+
+#### Description
+
+Alias of ST_RotateZ
+
+----
+
+### ST_RotateX
+
+
+#### Signature
+
+```sql
+GEOMETRY ST_RotateX (geom GEOMETRY, radians double)
+```
+
+#### Description
+
+Rotates a geometry around the X axis. This is a shorthand macro for calling ST_Affine.
+
+#### Example
+
+```sql
+-- Rotate a 3D point 90 degrees (π/2 radians) around the X-axis
+SELECT ST_RotateX(ST_GeomFromText('POINT Z(0 1 0)'), pi()/2);
+----
+POINT Z (0 0 1)
+```
+
+----
+
+### ST_RotateY
+
+
+#### Signature
+
+```sql
+GEOMETRY ST_RotateY (geom GEOMETRY, radians double)
+```
+
+#### Description
+
+Rotates a geometry around the Y axis. This is a shorthand macro for calling ST_Affine.
+
+#### Example
+
+```sql
+-- Rotate a 3D point 90 degrees (π/2 radians) around the Y-axis
+SELECT ST_RotateY(ST_GeomFromText('POINT Z(1 0 0)'), pi()/2);
+----
+POINT Z (0 0 -1)
+```
+
+----
+
+### ST_RotateZ
+
+
+#### Signature
+
+```sql
+GEOMETRY ST_RotateZ (geom GEOMETRY, radians double)
+```
+
+#### Description
+
+Rotates a geometry around the Z axis. This is a shorthand macro for calling ST_Affine.
+
+#### Example
+
+```sql
+-- Rotate a point 90 degrees (π/2 radians) around the Z-axis
+SELECT ST_RotateZ(ST_Point(1, 0), pi()/2);
+----
+POINT (0 1)
+```
+
+----
+
+### ST_Scale
+
+
+#### Signatures
+
+```sql
+GEOMETRY ST_Scale (geom GEOMETRY, xs double, ys double, zs double)
+GEOMETRY ST_Scale (geom GEOMETRY, xs double, ys double)
+```
+
+----
+
+### ST_TransScale
+
+
+#### Signature
+
+```sql
+GEOMETRY ST_TransScale (geom GEOMETRY, dx double, dy double, xs double, ys double)
+```
+
+#### Description
+
+Translates and then scales a geometry in X and Y direction. This is a shorthand macro for calling ST_Affine.
+
+#### Example
+
+```sql
+-- Translate by (1, 2) then scale by (2, 3)
+SELECT ST_TransScale(ST_Point(1, 1), 1, 2, 2, 3);
+----
+POINT (4 9)
+```
+
+----
+
+### ST_Translate
+
+
+#### Signatures
+
+```sql
+GEOMETRY ST_Translate (geom GEOMETRY, dx double, dy double, dz double)
+GEOMETRY ST_Translate (geom GEOMETRY, dx double, dy double)
+```
+
+----
+
 ## Table Functions
 
 ### ST_Drivers
@@ -2963,6 +3217,16 @@ LIMIT 5;
 │ node                 │ 123566 │ {highway=traffic_s…  │         │ 54.617268200000005 │  8.9718171 │           │                        │
 │ node                 │ 125801 │ {TMC:cid_58:tabcd_…  │         │ 53.070685000000005 │  8.7819939 │           │                        │
 └──────────────────────┴────────┴──────────────────────┴─────────┴────────────────────┴────────────┴───────────┴────────────────────────┘
+```
+
+----
+
+### ST_ReadSHP
+
+#### Signature
+
+```sql
+ST_ReadSHP (col0 VARCHAR, encoding VARCHAR)
 ```
 
 ----

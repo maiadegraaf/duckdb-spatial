@@ -351,13 +351,12 @@ struct ST_Transform {
 	-- but the output will be [easting, northing] because that is what's defined by
 	-- WebMercator.
 
-	SELECT ST_AsText(
+	SELECT
 	    ST_Transform(
 	        st_point(52.373123, 4.892360),
 	        'EPSG:4326',
 	        'EPSG:3857'
-	    )
-	);
+		);
 	----
 	POINT (544615.0239773799 6867874.103539125)
 
@@ -367,15 +366,14 @@ struct ST_Transform {
 	-- a [northing, easting] axis order instead, even though the source coordinate
 	-- reference system definition (WGS84) says otherwise.
 
-	SELECT ST_AsText(
+	SELECT 
 	    ST_Transform(
 	        -- note the axis order is reversed here
 	        st_point(4.892360, 52.373123),
 	        'EPSG:4326',
 	        'EPSG:3857',
 	        always_xy := true
-	    )
-	);
+		);
 	----
 	POINT (544615.0239773799 6867874.103539125)
 
