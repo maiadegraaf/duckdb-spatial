@@ -2,6 +2,7 @@
 #include "spatial/geometry/geometry_serialization.hpp"
 #include "spatial/geometry/sgl.hpp"
 #include "spatial/spatial_types.hpp"
+#include "spatial/util/function_builder.hpp"
 
 #include "duckdb/common/multi_file/multi_file_reader.hpp"
 #include "duckdb/function/replacement_scan.hpp"
@@ -895,6 +896,11 @@ struct ST_ReadSHP {
 		read_func.cardinality = GetCardinality;
 		read_func.projection_pushdown = true;
 		ExtensionUtil::RegisterFunction(db, read_func);
+
+		InsertionOrderPreservingMap<string> tags;
+		tags.insert("ext", "spatial");
+		FunctionBuilder::AddTableFunctionDocs(db, "ST_ReadSHP", "Read a Shapefile without relying on the GDAL library",
+		                                      "", tags);
 
 		// Replacement scan
 		auto &config = DBConfig::GetConfig(db);

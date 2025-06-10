@@ -2589,8 +2589,17 @@ struct ST_Distance {
 	// Documentation
 	//------------------------------------------------------------------------------------------------------------------
 	// TODO: add example/description
-	static constexpr auto DESCRIPTION = "";
-	static constexpr auto EXAMPLE = "";
+	static constexpr auto DESCRIPTION = "Returns the planar distance between two geometries";
+	static constexpr auto EXAMPLE = R"(
+		SELECT ST_Distance('POINT (0 0)'::GEOMETRY, 'POINT (3 4)'::GEOMETRY);
+		----
+		5.0
+
+		-- Z coordinates are ignored
+		SELECT ST_Distance('POINT Z (0 0 0)'::GEOMETRY, 'POINT Z (3 4 5)'::GEOMETRY);
+		----
+		5.0
+	)";
 
 	//------------------------------------------------------------------------------------------------------------------
 	// Register
