@@ -9,6 +9,7 @@
 #if SPATIAL_USE_GEOS
 #include "spatial/modules/geos/geos_module.hpp"
 #endif
+#include "spatial/modules/mvt/mvt_module.hpp"
 #include "operators/spatial_operator_extension.hpp"
 #include "spatial/modules/main/spatial_functions.hpp"
 #include "spatial/modules/osm/osm_module.hpp"
@@ -40,6 +41,7 @@ static void LoadInternal(DatabaseInstance &instance) {
 #endif
 	RegisterOSMModule(instance);
 	RegisterShapefileModule(instance);
+	RegisterMapboxVectorTileModule(instance);
 
 	RTreeModule::RegisterIndex(instance);
 	RTreeModule::RegisterIndexPragmas(instance);
