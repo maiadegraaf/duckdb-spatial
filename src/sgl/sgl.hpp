@@ -52,6 +52,10 @@ namespace math {
 	// Avoid including <algorithm> in the header to keep dependencies minimal
 	template <class T> const T& max (const T& a, const T& b) { return (a < b) ? b : a; }
 	template <class T> const T& min (const T& a, const T& b) { return !(b < a) ? a : b; }
+
+	template <class T> T clamp(const T& value, const T& min_value, const T& max_value) {
+		return (value < min_value) ? min_value : (value > max_value ? max_value : value);
+	}
 }
 } // namespace sgl
 //======================================================================================================================
@@ -82,6 +86,14 @@ struct vertex_xy {
 	}
 	vertex_xy operator/(const double scalar) const {
 		return {x / scalar, y / scalar};
+	}
+
+	double dot(const vertex_xy &other) const {
+		return x * other.x + y * other.y;
+	}
+
+	double norm_sq() const {
+		return x * x + y * y;
 	}
 };
 
@@ -140,6 +152,24 @@ struct extent_xy {
 		const auto dx = math::max(min.x - other.x, other.x - max.x);
 		const auto dy = math::max(min.y - other.y, other.y - max.y);
 		return std::sqrt(dx * dx + dy * dy);
+	}
+
+
+	double distance_to_sq(const extent_xy &other) const {
+		const auto dx = math::max(0.0, math::max(min.x - other.max.x, other.min.x - max.x));
+		const auto dy = math::max(0.0, math::max(min.y - other.max.y, other.min.y - max.y));
+		return dx * dx + dy * dy;
+	}
+
+	double distance_to(const extent_xy &other) const {
+		return std::sqrt(distance_to_sq(other));
+	}
+
+	double get_area() const {
+		if (min.x >= max.x || min.y >= max.y) {
+			return 0.0;
+		}
+		return (max.x - min.x) * (max.y - min.y);
 	}
 };
 
@@ -551,16 +581,26 @@ public:
 	// Get the distance to the nearest vertex in the prepared geometry
 	bool try_get_distance(const vertex_xy &vertex, double &distance) const;
 
+	// Get the distance between the nearest segments of this prepared geometry and another prepared geometry
+	bool try_get_distance(const prepared_geometry &other, double &distance) const;
+
 	// Construct from existing geometry
 	static void make(allocator &allocator, const geometry &geom, prepared_geometry &result);
 
-private:
+	bool try_get_extent(extent_xy &extent) const {
+		if (index.items_count == 0) {
+			return false;
+		}
+		extent = index.level_array[0].entry_array[0];
+		return true;
+	}
 
+public:
 	bool try_get_distance_recursive(uint32_t depth, uint32_t entry, const vertex_xy &vertex, double &distance) const;
 
 	struct prepared_index {
 		static constexpr uint32_t NODE_SIZE = 32;
-		static constexpr uint32_t MAX_DEPTH = 8; // 32^8 > max(uint32_t)
+		static constexpr uint32_t MAX_DEPTH = 8; // 16^8 >= max(uint32_t)
 
 		struct level {
 			extent_xy*	entry_array;

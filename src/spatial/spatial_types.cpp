@@ -50,7 +50,8 @@ LogicalType GeoTypes::LINESTRING_2D() {
 }
 
 LogicalType GeoTypes::LINESTRING_3D() {
-	auto type = LogicalType::LIST(LogicalType::STRUCT({{"x", LogicalType::DOUBLE}, {"y", LogicalType::DOUBLE}, {"z", LogicalType::DOUBLE}}));
+	auto type = LogicalType::LIST(
+	    LogicalType::STRUCT({{"x", LogicalType::DOUBLE}, {"y", LogicalType::DOUBLE}, {"z", LogicalType::DOUBLE}}));
 	type.SetAlias("LINESTRING_3D");
 	return type;
 }
@@ -63,8 +64,8 @@ LogicalType GeoTypes::POLYGON_2D() {
 }
 
 LogicalType GeoTypes::POLYGON_3D() {
-	auto type = LogicalType::LIST(
-	    LogicalType::LIST(LogicalType::STRUCT({{"x", LogicalType::DOUBLE}, {"y", LogicalType::DOUBLE}, {"z", LogicalType::DOUBLE}})));
+	auto type = LogicalType::LIST(LogicalType::LIST(
+	    LogicalType::STRUCT({{"x", LogicalType::DOUBLE}, {"y", LogicalType::DOUBLE}, {"z", LogicalType::DOUBLE}})));
 	type.SetAlias("POLYGON_3D");
 	return type;
 }

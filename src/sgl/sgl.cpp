@@ -5,6 +5,7 @@
 #include <cstring>
 #include <cmath>
 #include <new>
+#include <queue>
 #include <string> // TODO: Remove this, it is only used for error messages in WKT reader
 
 //======================================================================================================================
@@ -1581,6 +1582,18 @@ bool distance_lines_lines(const geometry &lhs, const geometry &rhs, distance_res
 		return false;
 	}
 
+	if (lhs.is_prepared() && rhs.is_prepared()) {
+		// Both linestrings are prepared, so we can use the prepared distance
+		auto &lhs_prep = static_cast<const prepared_geometry &>(lhs);
+		auto &rhs_prep = static_cast<const prepared_geometry &>(rhs);
+		double dist = 0;
+		if (lhs_prep.try_get_distance(rhs_prep, dist)) {
+			result.set(dist);
+			return true;
+		}
+		return false;
+	}
+
 	const auto lhs_vertex_array = lhs.get_vertex_array();
 	const auto lhs_vertex_count = lhs.get_vertex_count();
 	const auto lhs_vertex_width = lhs.get_vertex_width();
@@ -1672,9 +1685,9 @@ bool distance_lines_polyg(const geometry &lhs, const geometry &rhs, distance_res
 
 	// Get the distance to each ring
 	for (auto ring = shell->get_next(); ring != shell; ring = ring->get_next()) {
-		const auto dist = distance_lines_lines(lhs, *ring, result);
-		// TODO: Early out
-		result.set(dist);
+		if (!distance_lines_lines(lhs, *ring, result)) {
+			return false;
+		}
 	}
 
 	for (auto ring = shell->get_next(); ring != shell; ring = ring->get_next()) {
@@ -2522,6 +2535,260 @@ bool prepared_geometry::try_get_distance(const vertex_xy &vertex, double &distan
 	}
 	return false; // No distance found
 }
+
+static double point_segment_dist_sq(const vertex_xy &p, const vertex_xy &a, const vertex_xy &b) {
+	const auto ab = b - a;
+	const auto ap = p - a;
+
+	const auto ab_len_sq = ab.norm_sq();
+
+	if (ab_len_sq == 0.0) {
+		// Segment is a point
+		return ap.norm_sq();
+	}
+
+	const auto t = math::clamp(ap.dot(ab) / ab_len_sq, 0.0, 1.0);
+	const auto proj = a + ab * t; // Closest point on the segment to the point p
+	const auto diff = p - proj;
+	return diff.norm_sq();
+}
+
+static bool point_on_segment(const vertex_xy &p, const vertex_xy &q, const vertex_xy &r) {
+	return q.x >= std::min(p.x, r.x) && q.x <= std::max(p.x, r.x)
+		&& q.y >= std::min(p.y, r.y) && q.y <= std::max(p.y, r.y);
+}
+
+static bool segment_intersects(const vertex_xy &a1, const vertex_xy &a2, const vertex_xy &b1, const vertex_xy &b2) {
+	// Check if two segments intersect using the orientation method
+
+	const auto o1 = orient2d_fast(a1, a2, b1);
+	const auto o2 = orient2d_fast(a1, a2, b2);
+	const auto o3 = orient2d_fast(b1, b2, a1);
+	const auto o4 = orient2d_fast(b1, b2, a2);
+
+	if (o1 != o2 && o3 != o4) {
+		return true; // Segments intersect
+	}
+
+	if (o1 == 0 && point_on_segment(a1, b1, b2)) {
+		return true; // a1 is collinear with b1 and b2
+	}
+	if (o2 == 0 && point_on_segment(a2, b1, b2)) {
+		return true; // a2 is collinear with b1 and b2
+	}
+	if (o3 == 0 && point_on_segment(b1, a1, a2)) {
+		return true; // b1 is collinear with a1 and a2
+	}
+	if (o4 == 0 && point_on_segment(b2, a1, a2)) {
+		return true; // b2 is collinear with a1 and a2
+	}
+
+	return false; // Segments do not intersect
+}
+
+static double segment_segment_dist_sq(const vertex_xy &a1, const vertex_xy &a2, const vertex_xy &b1, const vertex_xy &b2) {
+
+	// Calculate the squared distance between two segments
+	if (segment_intersects(a1, a2, b1, b2)) {
+		return 0.0; // Segments intersect, distance is zero
+	}
+
+	return math::min(
+		math::min(
+			point_segment_dist_sq(a1, b1, b2),
+			point_segment_dist_sq(a2, b1, b2)
+		), math::min(
+			point_segment_dist_sq(b1, a1, a2),
+			point_segment_dist_sq(b2, a1, a2)
+		));
+}
+
+static bool try_get_prepared_distance_lines(const prepared_geometry &lhs, const prepared_geometry &rhs, double &distance) {
+
+	SGL_ASSERT(lhs.is_prepared() && rhs.is_prepared());
+
+	if (lhs.is_empty() || rhs.is_empty()) {
+		return false; // No distance to compute
+	}
+
+	struct entry {
+		double distance;
+		uint32_t lhs_level;
+		uint32_t lhs_entry;
+		uint32_t rhs_level;
+		uint32_t rhs_entry;
+
+		entry (double dist, uint32_t lhs_lvl, uint32_t lhs_ent, uint32_t rhs_lvl, uint32_t rhs_ent)
+			: distance(dist), lhs_level(lhs_lvl), lhs_entry(lhs_ent), rhs_level(rhs_lvl), rhs_entry(rhs_ent) {}
+
+		bool operator<(const entry &other) const {
+			return distance > other.distance; // We want a min-heap, so we reverse the comparison
+		}
+	};
+
+	std::priority_queue<entry> pq;
+	pq.emplace(0, 0, 0, 0, 0); // Start with the root node
+
+	// We use the squared distance to avoid computing square roots, which is more expensive
+	double min_dist = std::numeric_limits<double>::infinity();
+	bool found_any = false;
+
+	const auto lhs_vertex_array = lhs.get_vertex_array();
+	const auto lhs_vertex_width = lhs.get_vertex_width();
+
+	const auto rhs_vertex_array = rhs.get_vertex_array();
+	const auto rhs_vertex_width = rhs.get_vertex_width();
+
+	constexpr auto NODE_SIZE = prepared_geometry::prepared_index::NODE_SIZE;
+
+	while (!pq.empty() && min_dist > 0) {
+		const auto pair = pq.top();
+		pq.pop();
+
+		if (pair.distance >= min_dist && found_any) {
+			// All other pairs in the queue will have a distance greater than or equal to min_dist
+			break;
+		}
+
+		const auto lhs_is_leaf = pair.lhs_level == lhs.index.level_count - 1;
+		const auto rhs_is_leaf = pair.rhs_level == rhs.index.level_count - 1;
+
+		if (lhs_is_leaf && rhs_is_leaf) {
+
+			const auto lhs_beg_idx = pair.lhs_entry * NODE_SIZE;
+			const auto lhs_end_idx = math::min(lhs_beg_idx + NODE_SIZE, lhs.index.items_count);
+
+			const auto rhs_beg_idx = pair.rhs_entry * NODE_SIZE;
+			const auto rhs_end_idx = math::min(rhs_beg_idx + NODE_SIZE, rhs.index.items_count);
+
+			if (lhs_beg_idx >= lhs_end_idx || rhs_beg_idx >= rhs_end_idx) {
+				continue; // No segments to check
+			}
+
+			const auto rhs_box = rhs.index.level_array[pair.rhs_level].entry_array[pair.rhs_entry];
+
+			vertex_xy lhs_prev;
+			vertex_xy rhs_prev;
+			vertex_xy lhs_next;
+			vertex_xy rhs_next;
+
+			memcpy(&lhs_prev, lhs_vertex_array + lhs_beg_idx * lhs_vertex_width, sizeof(vertex_xy));
+			for (uint32_t i = lhs_beg_idx + 1; i < lhs_end_idx; i++) {
+				memcpy(&lhs_next, lhs_vertex_array + i * lhs_vertex_width, sizeof(vertex_xy));
+
+				// Quick check. If the distance between the segment and the box (all the segments)
+				// is greater than min_dist, we can skip the exact distance check
+				extent_xy lhs_seg = { lhs_prev, lhs_next };
+				if (lhs_seg.distance_to_sq(rhs_box) > min_dist) {
+					lhs_prev = lhs_next;
+					continue;
+				}
+
+				memcpy(&rhs_prev, rhs_vertex_array + rhs_beg_idx * rhs_vertex_width, sizeof(vertex_xy));
+				for (uint32_t j = rhs_beg_idx + 1; j < rhs_end_idx; j++) {
+					memcpy(&rhs_next, rhs_vertex_array + j * rhs_vertex_width, sizeof(vertex_xy));
+
+					extent_xy rhs_seg =  {rhs_prev, rhs_next };
+
+					// Quick check. If the distance between the segment bounds are greater than min_dist,
+					// we can skip the exact distance check
+					if (lhs_seg.distance_to_sq(rhs_seg) > min_dist) {
+						rhs_prev = rhs_next;
+						continue;
+					}
+
+
+					const auto dist = segment_segment_dist_sq(lhs_prev, lhs_next, rhs_prev, rhs_next);
+					if (dist <= min_dist) {
+						min_dist = dist;
+						found_any = true;
+					}
+
+					rhs_prev = rhs_next;
+				}
+
+				lhs_prev = lhs_next;
+			}
+		} else if (lhs_is_leaf && !rhs_is_leaf) {
+			const auto rhs_beg_idx = pair.rhs_entry * NODE_SIZE;
+			const auto rhs_end_idx = math::min(rhs_beg_idx + NODE_SIZE, rhs.index.level_array[pair.rhs_level + 1].entry_count);
+
+			const auto lhs_box = lhs.index.level_array[pair.lhs_level].entry_array[pair.lhs_entry];
+
+			for (auto i = rhs_beg_idx; i < rhs_end_idx; i++) {
+
+				const auto &rhs_box = rhs.index.level_array[pair.rhs_level + 1].entry_array[i];
+				const auto dist = lhs_box.distance_to_sq(rhs_box);
+
+				if (dist < min_dist) {
+					pq.emplace(dist, pair.lhs_level, pair.lhs_entry, pair.rhs_level + 1, i);
+				}
+			}
+		} else if (!lhs_is_leaf && rhs_is_leaf) {
+			const auto lhs_beg_idx = pair.lhs_entry * NODE_SIZE;
+			const auto lhs_end_idx = math::min(lhs_beg_idx + NODE_SIZE, lhs.index.level_array[pair.lhs_level + 1].entry_count);
+
+			const auto &rhs_box = rhs.index.level_array[pair.rhs_level].entry_array[pair.rhs_entry];
+
+			for (auto i = lhs_beg_idx; i < lhs_end_idx; i++) {
+				const auto &lhs_box = lhs.index.level_array[pair.lhs_level + 1].entry_array[i];
+				const auto dist = rhs_box.distance_to_sq(lhs_box);
+
+				if (dist < min_dist) {
+					pq.emplace(dist, pair.lhs_level + 1, i, pair.rhs_level, pair.rhs_entry);
+				}
+			}
+		} else {
+			SGL_ASSERT(!lhs_is_leaf && !rhs_is_leaf);
+
+			const auto lhs_box = lhs.index.level_array[pair.lhs_level].entry_array[pair.lhs_entry];
+			const auto rhs_box = rhs.index.level_array[pair.rhs_level].entry_array[pair.rhs_entry];
+
+			// Decide which box to expand based on the area
+			const auto lhs_area = lhs_box.get_area();
+			const auto rhs_area = rhs_box.get_area();
+
+			if (lhs_area > rhs_area) {
+
+				const auto lhs_beg_idx = pair.lhs_entry * NODE_SIZE;
+				const auto lhs_end_idx = math::min(lhs_beg_idx + NODE_SIZE, lhs.index.level_array[pair.lhs_level + 1].entry_count);
+
+				for (auto i = lhs_beg_idx; i < lhs_end_idx; i++) {
+					const auto &lhs_child_box = lhs.index.level_array[pair.lhs_level + 1].entry_array[i];
+					const auto dist = lhs_child_box.distance_to_sq(rhs_box);
+
+					if (dist < min_dist) {
+						pq.emplace(dist, pair.lhs_level + 1, i, pair.rhs_level, pair.rhs_entry);
+					}
+				}
+			} else {
+
+				const auto rhs_beg_idx = pair.rhs_entry * NODE_SIZE;
+				const auto rhs_end_idx = math::min(rhs_beg_idx + NODE_SIZE, rhs.index.level_array[pair.rhs_level + 1].entry_count);
+
+				for (auto i = rhs_beg_idx; i < rhs_end_idx; i++) {
+					const auto &rhs_child_box = rhs.index.level_array[pair.rhs_level + 1].entry_array[i];
+					const auto dist = rhs_child_box.distance_to_sq(lhs_box);
+
+					if (dist < min_dist) {
+						pq.emplace(dist, pair.lhs_level, pair.lhs_entry, pair.rhs_level + 1, i);
+					}
+				}
+			}
+		}
+	}
+
+	if (found_any) {
+		distance = std::sqrt(min_dist);
+		return true; // We found a distance
+	}
+	return false; // No distance found
+}
+
+bool prepared_geometry::try_get_distance(const prepared_geometry &other, double &distance) const {
+	return try_get_prepared_distance_lines(*this, other, distance);
+}
+
 
 } // namespace sgl
 //======================================================================================================================

@@ -2529,8 +2529,8 @@ struct ST_Distance {
 			const auto &lhs_blob = ConstantVector::GetData<string_t>(lhs_vec)[0];
 			const auto &rhs_blob = ConstantVector::GetData<string_t>(rhs_vec)[0];
 
-			sgl::geometry lhs_geom;
-			sgl::geometry rhs_geom;
+			sgl::prepared_geometry lhs_geom;
+			sgl::prepared_geometry rhs_geom;
 
 			lstate.Deserialize(lhs_blob, lhs_geom);
 			lstate.Deserialize(rhs_blob, rhs_geom);
@@ -2553,7 +2553,7 @@ struct ST_Distance {
 			lstate.Deserialize(const_blob, const_geom);
 
 			UnaryExecutor::Execute<string_t, double>(probe_vec, result, count, [&](const string_t &probe_blob) {
-				sgl::geometry probe_geom;
+				sgl::prepared_geometry probe_geom;
 				lstate.Deserialize(probe_blob, probe_geom);
 
 				// Calculate the distance
@@ -2567,8 +2567,8 @@ struct ST_Distance {
 			// Both are non-const
 			BinaryExecutor::Execute<string_t, string_t, double>(
 			    args.data[0], args.data[1], result, count, [&](const string_t &blob1, const string_t &blob2) {
-				    sgl::geometry geom1;
-				    sgl::geometry geom2;
+				    sgl::prepared_geometry geom1;
+				    sgl::prepared_geometry geom2;
 
 				    lstate.Deserialize(blob1, geom1);
 				    lstate.Deserialize(blob2, geom2);
@@ -2756,7 +2756,7 @@ struct ST_DistanceWithin {
 				lstate.Deserialize(const_blob, const_geom);
 
 				UnaryExecutor::Execute<string_t, bool>(probe_vec, result, count, [&](const string_t &probe_blob) {
-					sgl::geometry probe_geom;
+					sgl::prepared_geometry probe_geom;
 					lstate.Deserialize(probe_blob, probe_geom);
 
 					// Calculate the distance
