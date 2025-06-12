@@ -3240,6 +3240,91 @@ struct ST_Extent_Approx {
 };
 
 //======================================================================================================================
+// &&
+//======================================================================================================================
+
+struct Op_Intersect {
+
+	//------------------------------------------------------------------------------------------------------------------
+	// Execute
+	//------------------------------------------------------------------------------------------------------------------
+	static void Execute(DataChunk &args, ExpressionState &state, Vector &result) {
+
+		const auto count = args.size();
+		auto &box = args.data[0];
+		auto &geom = args.data[1];
+
+		auto result_data = FlatVector::GetData<bool>(result);
+
+		const auto &bbox_vec = StructVector::GetEntries(box);
+		const auto box_min_x_data = FlatVector::GetData<double>(*bbox_vec[0]);
+		const auto box_min_y_data = FlatVector::GetData<double>(*bbox_vec[1]);
+		const auto box_max_x_data = FlatVector::GetData<double>(*bbox_vec[2]);
+		const auto box_max_y_data = FlatVector::GetData<double>(*bbox_vec[3]);
+
+		UnifiedVectorFormat input_geom_vdata;
+		geom.ToUnifiedFormat(count, input_geom_vdata);
+		const auto input_geom = UnifiedVectorFormat::GetData<geometry_t>(input_geom_vdata);
+
+		for (idx_t i = 0; i < count; i++) {
+			const auto row_idx = input_geom_vdata.sel->get_index(i);
+			if (input_geom_vdata.validity.RowIsValid(row_idx)) {
+				auto &geom = input_geom[row_idx];
+
+				// Try to get the cached bounding box from the blob
+				Box2D<float> geom_bbox;
+				if (geom.TryGetCachedBounds(geom_bbox)) {
+					result_data[i] = (box_min_x_data[i] <= geom_bbox.max.x && geom_bbox.min.x <= box_max_x_data[i]) &&
+					                 (box_min_y_data[i] <= geom_bbox.max.y && geom_bbox.min.y <= box_max_y_data[i]);
+				} else {
+					// No bounding box, return null
+					FlatVector::SetNull(result, i, true);
+				}
+			} else {
+				// Null input, return null
+				FlatVector::SetNull(result, i, true);
+			}
+		}
+
+		if (box.GetVectorType() == VectorType::CONSTANT_VECTOR) {
+			result.SetVectorType(VectorType::CONSTANT_VECTOR);
+		}
+	}
+
+	//------------------------------------------------------------------------------------------------------------------
+	// Register
+	//------------------------------------------------------------------------------------------------------------------
+	static void Register(DatabaseInstance &db) {
+		FunctionBuilder::RegisterScalar(db, "&&", [](ScalarFunctionBuilder &func) {
+			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("box", GeoTypes::BOX_2D());
+				variant.AddParameter("geom", GeoTypes::GEOMETRY());
+				variant.SetReturnType(LogicalType::BOOLEAN);
+
+				variant.SetFunction(Execute);
+			});
+
+			func.SetDescription(R"(
+				Returns true if the bounding boxes intersects.
+			)");
+
+			func.SetExample(R"(
+				SELECT ST_MakeBox2D('POINT (0 0)'::GEOMETRY, 'POINT (2 2)'::GEOMETRY) && ST_POINT(1, 1);
+				----
+				true
+				
+				SELECT ST_MakeBox2D('POINT (0 0)'::GEOMETRY, 'POINT (2 2)'::GEOMETRY) && ST_POINT(5, 5);
+				----
+				false
+			)");
+
+			func.SetTag("ext", "spatial");
+			func.SetTag("category", "property");
+		});
+	}
+};
+
+//======================================================================================================================
 // ST_ExteriorRing
 //======================================================================================================================
 
@@ -8708,6 +8793,7 @@ void RegisterSpatialScalarFunctions(DatabaseInstance &db) {
 	ST_EndPoint::Register(db);
 	ST_Extent::Register(db);
 	ST_Extent_Approx::Register(db);
+	Op_Intersect::Register(db);
 	ST_ExteriorRing::Register(db);
 	ST_FlipCoordinates::Register(db);
 	ST_Force2D::Register(db);
