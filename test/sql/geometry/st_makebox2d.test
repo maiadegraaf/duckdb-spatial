@@ -1,0 +1,49 @@
+require spatial
+
+# Test ST_MakeBox2D with two points
+query I
+SELECT ST_MakeBox2D(ST_Point(0,0), ST_Point(2,2))
+----
+BOX(0 0, 2 2)
+
+# Test ST_MakeBox2D with reversed coordinates
+query I
+SELECT ST_MakeBox2D(ST_Point(2,2), ST_Point(0,0))
+----
+BOX(0 0, 2 2)
+
+# Test ST_MakeBox2D with negative coordinates
+query I
+SELECT ST_MakeBox2D(ST_Point(-1,-1), ST_Point(1,1))
+----
+BOX(-1 -1, 1 1)
+
+# Test ST_MakeBox2D with same point (degenerate box)
+query I
+SELECT ST_MakeBox2D(ST_Point(1,1), ST_Point(1,1))
+----
+BOX(1 1, 1 1)
+
+# Test ST_MakeBox2D with NULL inputs
+query I
+SELECT ST_MakeBox2D(NULL, ST_Point(1,1))
+----
+NULL
+
+# Test ST_MakeBox2D with non-POINT geometries (should error)
+statement error
+SELECT ST_MakeBox2D(ST_GeomFromText('LINESTRING(0 0, 1 1)'), ST_Point(2,2))
+----
+Invalid Input Error: ST_MakeBox2D only accepts POINT geometries
+
+# Test ST_MakeBox2D with 3D points (should work, ignoring Z)
+query I
+SELECT ST_MakeBox2D(ST_GeomFromText('POINT Z (0 0 10)'), ST_GeomFromText('POINT Z (2 2 20)'))
+----
+BOX(0 0, 2 2)
+
+# Test with empty points
+query I
+SELECT ST_MakeBox2D(ST_GeomFromText('POINT EMPTY'), ST_Point(1,1))
+----
+NULL

@@ -6517,6 +6517,105 @@ struct ST_MakePolygon {
 };
 
 //======================================================================================================================
+// ST_MakeBox2D
+//======================================================================================================================
+
+struct ST_MakeBox2D {
+	//------------------------------------------------------------------------------------------------------------------
+	// Execute (GEOMETRY, GEOMETRY)
+	//------------------------------------------------------------------------------------------------------------------
+	static void ExecuteBinary(DataChunk &args, ExpressionState &state, Vector &result) {
+		auto &lstate = LocalState::ResetAndGet(state);
+
+		const auto &bbox_vec = StructVector::GetEntries(result);
+		const auto min_x_data = FlatVector::GetData<double>(*bbox_vec[0]);
+		const auto min_y_data = FlatVector::GetData<double>(*bbox_vec[1]);
+		const auto max_x_data = FlatVector::GetData<double>(*bbox_vec[2]);
+		const auto max_y_data = FlatVector::GetData<double>(*bbox_vec[3]);
+
+		UnifiedVectorFormat input_vdata1;
+		UnifiedVectorFormat input_vdata2;
+		args.data[0].ToUnifiedFormat(args.size(), input_vdata1);
+		args.data[1].ToUnifiedFormat(args.size(), input_vdata2);
+		const auto input_data1 = UnifiedVectorFormat::GetData<string_t>(input_vdata1);
+		const auto input_data2 = UnifiedVectorFormat::GetData<string_t>(input_vdata2);
+
+		const auto count = args.size();
+
+		for (idx_t out_idx = 0; out_idx < count; out_idx++) {
+			const auto row_idx1 = input_vdata1.sel->get_index(out_idx);
+			const auto row_idx2 = input_vdata2.sel->get_index(out_idx);
+			if (!input_vdata1.validity.RowIsValid(row_idx1) || !input_vdata2.validity.RowIsValid(row_idx2)) {
+				FlatVector::SetNull(result, out_idx, true);
+				continue;
+			}
+
+			const auto &blob1 = input_data1[row_idx1];
+			const auto &blob2 = input_data2[row_idx2];
+			sgl::geometry geom1;
+			sgl::geometry geom2;
+			lstate.Deserialize(blob1, geom1);
+			lstate.Deserialize(blob2, geom2);
+
+			if (geom1.get_type() != sgl::geometry_type::POINT || geom2.get_type() != sgl::geometry_type::POINT) {
+				throw InvalidInputException("ST_MakeBox2D only accepts POINT geometries");
+			}
+
+			if (geom1.is_empty() || geom2.is_empty()) {
+				FlatVector::SetNull(result, out_idx, true);
+				continue;
+			}
+
+			const auto v1 = geom1.get_vertex_xy(0);
+			const auto v2 = geom2.get_vertex_xy(0);
+
+			min_x_data[out_idx] = std::min(v1.x, v2.x);
+			min_y_data[out_idx] = std::min(v1.y, v2.y);
+			max_x_data[out_idx] = std::max(v1.x, v2.x);
+			max_y_data[out_idx] = std::max(v1.y, v2.y);
+		}
+
+		if (args.AllConstant()) {
+			result.SetVectorType(VectorType::CONSTANT_VECTOR);
+		}
+	}
+
+	//------------------------------------------------------------------------------------------------------------------
+	// Documentation
+	//------------------------------------------------------------------------------------------------------------------
+	static constexpr auto DESCRIPTION_BINARY = R"(
+		Create a BOX2D from two POINT geometries
+	)";
+	static constexpr auto EXAMPLE_BINARY = R"(
+		SELECT ST_MakeBox2D(ST_Point(0, 0), ST_Point(1, 1));
+		----
+		BOX(0 0, 1 1)
+	)";
+
+	//------------------------------------------------------------------------------------------------------------------
+	// Register
+	//------------------------------------------------------------------------------------------------------------------
+	static void Register(DatabaseInstance &db) {
+		FunctionBuilder::RegisterScalar(db, "ST_MakeBox2D", [](ScalarFunctionBuilder &func) {
+			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("point1", GeoTypes::GEOMETRY());
+				variant.AddParameter("point2", GeoTypes::GEOMETRY());
+				variant.SetReturnType(GeoTypes::BOX_2D());
+
+				variant.SetInit(LocalState::Init);
+				variant.SetFunction(ExecuteBinary);
+
+				variant.SetDescription(DESCRIPTION_BINARY);
+				variant.SetExample(EXAMPLE_BINARY);
+			});
+
+			func.SetTag("ext", "spatial");
+			func.SetTag("category", "construction");
+		});
+	}
+};
+
+//======================================================================================================================
 // ST_Multi
 //======================================================================================================================
 
@@ -8636,6 +8735,7 @@ void RegisterSpatialScalarFunctions(DatabaseInstance &db) {
 	ST_MakeEnvelope::Register(db);
 	ST_MakeLine::Register(db);
 	ST_MakePolygon::Register(db);
+	ST_MakeBox2D::Register(db);
 	ST_Multi::Register(db);
 	ST_NGeometries::Register(db);
 	ST_NInteriorRings::Register(db);
