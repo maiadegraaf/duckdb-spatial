@@ -3243,7 +3243,7 @@ struct ST_Extent_Approx {
 // &&
 //======================================================================================================================
 
-struct Op_Intersect {
+struct Op_IntersectApprox {
 
 	//------------------------------------------------------------------------------------------------------------------
 	// Execute
@@ -8793,7 +8793,7 @@ void RegisterSpatialScalarFunctions(DatabaseInstance &db) {
 	ST_EndPoint::Register(db);
 	ST_Extent::Register(db);
 	ST_Extent_Approx::Register(db);
-	Op_Intersect::Register(db);
+	Op_IntersectApprox::Register(db);
 	ST_ExteriorRing::Register(db);
 	ST_FlipCoordinates::Register(db);
 	ST_Force2D::Register(db);
