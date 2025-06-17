@@ -3093,7 +3093,7 @@ struct ST_Extent {
 			const auto wkb_buf = blob.GetDataUnsafe();
 			const auto wkb_len = blob.GetSize();
 
-			sgl::extent_xy bbox = {};
+			sgl::extent_xy bbox = sgl::extent_xy::smallest();
 			size_t vertex_count = 0;
 			if (!reader.try_parse_stats(bbox, vertex_count, wkb_buf, wkb_len)) {
 				const auto error = reader.get_error_message();
@@ -5635,7 +5635,7 @@ struct ST_Hilbert {
 			    lstate.Deserialize(blob, geom);
 
 			    // TODO: Dont deserialize, just get the bounds from blob instead.
-			    sgl::extent_xy geom_bounds = {};
+			    sgl::extent_xy geom_bounds = sgl::extent_xy::smallest();
 
 			    if (sgl::ops::get_total_extent_xy(geom, geom_bounds) == 0) {
 				    throw InvalidInputException("ST_Hilbert(geom, bounds) does not support empty geometries");
@@ -5794,7 +5794,7 @@ struct ST_IntersectsExtent {
 			    sgl::geometry lhs_geom;
 			    lstate.Deserialize(lhs_blob, lhs_geom);
 
-			    sgl::extent_xy lhs_ext = {};
+			    sgl::extent_xy lhs_ext = sgl::extent_xy::smallest();
 			    if (sgl::ops::get_total_extent_xy(lhs_geom, lhs_ext) == 0) {
 				    return false;
 			    }
@@ -5802,7 +5802,7 @@ struct ST_IntersectsExtent {
 			    sgl::geometry rhs_geom;
 			    lstate.Deserialize(rhs_blob, rhs_geom);
 
-			    sgl::extent_xy rhs_ext = {};
+			    sgl::extent_xy rhs_ext = sgl::extent_xy::smallest();
 			    if (sgl::ops::get_total_extent_xy(rhs_geom, rhs_ext) == 0) {
 				    return false;
 			    }
