@@ -3330,7 +3330,7 @@ bool wkb_reader::read_point(geometry *geom) {
 
 	const auto data = static_cast<char *>(alloc.alloc(sizeof(double) * dims));
 	memcpy(data, coords, sizeof(double) * dims);
-	geom->set_vertex_array(ptr, dims);
+	geom->set_vertex_array(data, 1);
 	return true;
 }
 
