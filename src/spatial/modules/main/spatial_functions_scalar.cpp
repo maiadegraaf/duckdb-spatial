@@ -6385,7 +6385,7 @@ struct ST_NInteriorRings {
 	// Documentation
 	//------------------------------------------------------------------------------------------------------------------
 	static constexpr auto DESCRIPTION = R"(
-		Returns the number if interior rings of a polygon
+		Returns the number of interior rings of a polygon
 	)";
 
 	// TODO: add example
