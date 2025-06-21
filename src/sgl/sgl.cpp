@@ -2369,7 +2369,9 @@ point_in_polygon_result prepared_geometry::contains(const vertex_xy &vert) const
 
 			// Now, we are at a leaf, so we need to check the segments
 			const auto beg_idx = entry * NODE_SIZE;
-			const auto end_idx = math::min(beg_idx + NODE_SIZE, index.items_count);
+			// We +1 to the node size here to get the end index, because the last segment spans across
+			// the end of the node. And our indexes are always sequential.
+			const auto end_idx = math::min(beg_idx + NODE_SIZE + 1, index.items_count);
 
 			// Loop over the segments
 			vertex_xy prev;
@@ -2436,7 +2438,9 @@ bool prepared_geometry::try_get_distance_recursive(uint32_t level, uint32_t entr
 		const auto vertex_width = get_vertex_width();
 
 		const auto beg_idx = entry * NODE_SIZE;
-		const auto end_idx = math::min(beg_idx + NODE_SIZE, index.items_count);
+		// We +1 to the node size here to get the end index, because the last segment spans across
+		// the end of the node. And our indexes are always sequential.
+		const auto end_idx = math::min(beg_idx + NODE_SIZE + 1, index.items_count);
 
 		if (beg_idx >= end_idx) {
 			return false; // No segments to check
