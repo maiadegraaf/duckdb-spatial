@@ -551,7 +551,7 @@ void ops::visit_point_geometries(const geometry &geom, void *state,
 
 void ops::visit_linestring_geometries(const geometry &geom, void *state,
                                       void (*callback)(void *state, const geometry &part)) {
-	visit_points(geom, [state, callback](const geometry &part) {
+	visit_lines(geom, [state, callback](const geometry &part) {
 		SGL_ASSERT(part.get_type() == geometry_type::LINESTRING);
 		callback(state, part);
 	});
