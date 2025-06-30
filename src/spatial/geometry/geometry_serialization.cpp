@@ -102,7 +102,9 @@ static void SerializeVertices(BinaryWriter &cursor, const sgl::geometry *geom, c
 
 	if (!has_bbox) {
 		// Fast path, issue on memcpy to the cursor
-		memcpy(dst, verts, count * vsize);
+		if (count * vsize != 0) {
+			memcpy(dst, verts, count * vsize);
+		}
 		return;
 	}
 
