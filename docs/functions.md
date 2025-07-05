@@ -89,12 +89,12 @@
 | [`ST_MinimumRotatedRectangle`](#st_minimumrotatedrectangle) | Returns the minimum rotated rectangle that bounds the input geometry, finding the surrounding box that has the lowest area by using a rotated rectangle, rather than taking the lowest and highest coordinate values as per ST_Envelope(). |
 | [`ST_Multi`](#st_multi) | Turns a single geometry into a multi geometry. |
 | [`ST_NGeometries`](#st_ngeometries) | Returns the number of component geometries in a collection geometry. |
-| [`ST_NInteriorRings`](#st_ninteriorrings) | Returns the number if interior rings of a polygon |
+| [`ST_NInteriorRings`](#st_ninteriorrings) | Returns the number of interior rings of a polygon |
 | [`ST_NPoints`](#st_npoints) | Returns the number of vertices within a geometry |
 | [`ST_Node`](#st_node) | Returns a "noded" MultiLinestring, produced by combining a collection of input linestrings and adding additional vertices where they intersect. |
 | [`ST_Normalize`](#st_normalize) | Returns the "normalized" representation of the geometry |
 | [`ST_NumGeometries`](#st_numgeometries) | Returns the number of component geometries in a collection geometry. |
-| [`ST_NumInteriorRings`](#st_numinteriorrings) | Returns the number if interior rings of a polygon |
+| [`ST_NumInteriorRings`](#st_numinteriorrings) | Returns the number of interior rings of a polygon |
 | [`ST_NumPoints`](#st_numpoints) | Returns the number of vertices within a geometry |
 | [`ST_Overlaps`](#st_overlaps) | Returns true if the geometries overlap |
 | [`ST_Perimeter`](#st_perimeter) | Returns the length of the perimeter of the geometry |
@@ -1973,7 +1973,7 @@ INTEGER ST_NInteriorRings (polygon POLYGON_2D)
 
 #### Description
 
-Returns the number if interior rings of a polygon
+Returns the number of interior rings of a polygon
 
 ----
 
@@ -2065,7 +2065,7 @@ INTEGER ST_NumInteriorRings (polygon POLYGON_2D)
 
 #### Description
 
-Returns the number if interior rings of a polygon
+Returns the number of interior rings of a polygon
 
 ----
 
@@ -3285,10 +3285,10 @@ The following formats are currently recognized by their file extension:
 
 ```sql
 -- Read a Shapefile
-ELECT * FROM ST_Read('some/file/path/filename.shp');
+SELECT * FROM ST_Read('some/file/path/filename.shp');
 
-- Read a GeoJSON file
-REATE TABLE my_geojson_table AS SELECT * FROM ST_Read('some/file/path/filename.json');
+-- Read a GeoJSON file
+CREATE TABLE my_geojson_table AS SELECT * FROM ST_Read('some/file/path/filename.json');
 ```
 
 ----

@@ -1069,7 +1069,7 @@ struct ST_Read : ArrowTableFunction {
 	)";
 
 	static constexpr auto EXAMPLE = R"(
-		 -- Read a Shapefile
+		-- Read a Shapefile
 		SELECT * FROM ST_Read('some/file/path/filename.shp');
 
 		-- Read a GeoJSON file
