@@ -1,99 +1,99 @@
-require spatial
-
-# Test && operator (bbox intersects) with BOX_2D and GEOMETRY
-
-# Basic intersection test - point inside box
-query I
-SELECT ST_MakeBox2D(ST_Point(0,0), ST_Point(2,2)) && ST_Point(1,1)
-----
-true
-
-# Point outside box
-query I
-SELECT ST_MakeBox2D(ST_Point(0,0), ST_Point(2,2)) && ST_Point(3,3)
-----
-false
-
-# Point on box boundary
-query I
-SELECT ST_MakeBox2D(ST_Point(0,0), ST_Point(2,2)) && ST_Point(2,2)
-----
-true
-
-# Linestring intersecting box
-query I
-SELECT ST_MakeBox2D(ST_Point(0,0), ST_Point(2,2)) && ST_GeomFromText('LINESTRING(1 1, 3 3)')
-----
-true
-
-# Linestring completely outside box
-query I
-SELECT ST_MakeBox2D(ST_Point(0,0), ST_Point(2,2)) && ST_GeomFromText('LINESTRING(3 3, 4 4)')
-----
-false
-
-# Polygon intersecting box
-query I
-SELECT ST_MakeBox2D(ST_Point(0,0), ST_Point(2,2)) && ST_GeomFromText('POLYGON((1 1, 3 1, 3 3, 1 3, 1 1))')
-----
-true
-
-# Polygon completely outside box
-query I
-SELECT ST_MakeBox2D(ST_Point(0,0), ST_Point(2,2)) && ST_GeomFromText('POLYGON((3 3, 4 3, 4 4, 3 4, 3 3))')
-----
-false
-
-# Box completely containing polygon
-query I
-SELECT ST_MakeBox2D(ST_Point(-10,-10), ST_Point(10,10)) && ST_GeomFromText('POLYGON((0 0, 1 0, 1 1, 0 1, 0 0))')
-----
-true
-
-# Test with negative coordinates
-query I
-SELECT ST_MakeBox2D(ST_Point(-2,-2), ST_Point(0,0)) && ST_Point(-1,-1)
-----
-true
-
-# Test with NULL inputs
-query I
-SELECT ST_MakeBox2D(ST_Point(0,0), ST_Point(2,2)) && NULL
-----
-NULL
-
-# Test with GeometryCollection
-query I
-SELECT ST_MakeBox2D(ST_Point(0,0), ST_Point(2,2)) && ST_GeomFromText('GEOMETRYCOLLECTION(POINT(1 1), POINT(3 3))')
-----
-true
-
-# Test with MultiPoint
-query I
-SELECT ST_MakeBox2D(ST_Point(0,0), ST_Point(2,2)) && ST_GeomFromText('MULTIPOINT((1 1), (3 3))')
-----
-true
-
-# Test with MultiLineString
-query I
-SELECT ST_MakeBox2D(ST_Point(0,0), ST_Point(2,2)) && ST_GeomFromText('MULTILINESTRING((1 1, 1.5 1.5), (3 3, 4 4))')
-----
-true
-
-# Test with MultiPolygon
-query I
-SELECT ST_MakeBox2D(ST_Point(0,0), ST_Point(2,2)) && ST_GeomFromText('MULTIPOLYGON(((0.5 0.5, 1 0.5, 1 1, 0.5 1, 0.5 0.5)), ((3 3, 4 3, 4 4, 3 4, 3 3)))')
-----
-true
-
-# Test with empty geometry
-query I
-SELECT ST_MakeBox2D(ST_Point(0,0), ST_Point(2,2)) && ST_GeomFromText('POINT EMPTY')
-----
-NULL
-
-query I
-SELECT ST_MakeBox2D(ST_Point(0,0), ST_Point(2,2)) && ST_GeomFromText('LINESTRING EMPTY')
-----
-NULL
-
+# require spatial
+#
+# # Test && operator (bbox intersects) with BOX_2D and GEOMETRY
+#
+# # Basic intersection test - point inside box
+# query I
+# SELECT ST_MakeBox2D(ST_Point(0,0), ST_Point(2,2)) && ST_Point(1,1)
+# ----
+# true
+#
+# # Point outside box
+# query I
+# SELECT ST_MakeBox2D(ST_Point(0,0), ST_Point(2,2)) && ST_Point(3,3)
+# ----
+# false
+#
+# # Point on box boundary
+# query I
+# SELECT ST_MakeBox2D(ST_Point(0,0), ST_Point(2,2)) && ST_Point(2,2)
+# ----
+# true
+#
+# # Linestring intersecting box
+# query I
+# SELECT ST_MakeBox2D(ST_Point(0,0), ST_Point(2,2)) && ST_GeomFromText('LINESTRING(1 1, 3 3)')
+# ----
+# true
+#
+# # Linestring completely outside box
+# query I
+# SELECT ST_MakeBox2D(ST_Point(0,0), ST_Point(2,2)) && ST_GeomFromText('LINESTRING(3 3, 4 4)')
+# ----
+# false
+#
+# # Polygon intersecting box
+# query I
+# SELECT ST_MakeBox2D(ST_Point(0,0), ST_Point(2,2)) && ST_GeomFromText('POLYGON((1 1, 3 1, 3 3, 1 3, 1 1))')
+# ----
+# true
+#
+# # Polygon completely outside box
+# query I
+# SELECT ST_MakeBox2D(ST_Point(0,0), ST_Point(2,2)) && ST_GeomFromText('POLYGON((3 3, 4 3, 4 4, 3 4, 3 3))')
+# ----
+# false
+#
+# # Box completely containing polygon
+# query I
+# SELECT ST_MakeBox2D(ST_Point(-10,-10), ST_Point(10,10)) && ST_GeomFromText('POLYGON((0 0, 1 0, 1 1, 0 1, 0 0))')
+# ----
+# true
+#
+# # Test with negative coordinates
+# query I
+# SELECT ST_MakeBox2D(ST_Point(-2,-2), ST_Point(0,0)) && ST_Point(-1,-1)
+# ----
+# true
+#
+# # Test with NULL inputs
+# query I
+# SELECT ST_MakeBox2D(ST_Point(0,0), ST_Point(2,2)) && NULL
+# ----
+# NULL
+#
+# # Test with GeometryCollection
+# query I
+# SELECT ST_MakeBox2D(ST_Point(0,0), ST_Point(2,2)) && ST_GeomFromText('GEOMETRYCOLLECTION(POINT(1 1), POINT(3 3))')
+# ----
+# true
+#
+# # Test with MultiPoint
+# query I
+# SELECT ST_MakeBox2D(ST_Point(0,0), ST_Point(2,2)) && ST_GeomFromText('MULTIPOINT((1 1), (3 3))')
+# ----
+# true
+#
+# # Test with MultiLineString
+# query I
+# SELECT ST_MakeBox2D(ST_Point(0,0), ST_Point(2,2)) && ST_GeomFromText('MULTILINESTRING((1 1, 1.5 1.5), (3 3, 4 4))')
+# ----
+# true
+#
+# # Test with MultiPolygon
+# query I
+# SELECT ST_MakeBox2D(ST_Point(0,0), ST_Point(2,2)) && ST_GeomFromText('MULTIPOLYGON(((0.5 0.5, 1 0.5, 1 1, 0.5 1, 0.5 0.5)), ((3 3, 4 3, 4 4, 3 4, 3 3)))')
+# ----
+# true
+#
+# # Test with empty geometry
+# query I
+# SELECT ST_MakeBox2D(ST_Point(0,0), ST_Point(2,2)) && ST_GeomFromText('POINT EMPTY')
+# ----
+# NULL
+#
+# query I
+# SELECT ST_MakeBox2D(ST_Point(0,0), ST_Point(2,2)) && ST_GeomFromText('LINESTRING EMPTY')
+# ----
+# NULL
+#
