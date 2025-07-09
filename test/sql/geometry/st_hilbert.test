@@ -1,0 +1,12 @@
+require spatial
+
+# TODO: use more proper test cases for ST_Hilbert
+
+query III
+SELECT
+    ST_Hilbert(0.25, 0.25, box),
+    ST_Hilbert(0.50, 0.50, box),
+    ST_Hilbert(0.75, 0.75, box)
+FROM (VALUES ({min_x : 0, min_y : 0, max_x: 1, max_y : 1}::BOX_2D)) AS t(box)
+----
+178956970	715827882	2326440618

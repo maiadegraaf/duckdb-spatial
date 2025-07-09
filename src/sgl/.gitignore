@@ -1,0 +1,6 @@
+.idea
+*.profdata
+*.profraw
+sgl_test
+*.dSYM
+.DS_Store

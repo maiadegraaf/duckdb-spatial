@@ -76,7 +76,7 @@ PhysicalOperator &LogicalSpatialJoin::CreatePlan(ClientContext &context, Physica
 	auto &right = generator.CreatePlan(*children[1]);
 
 	return generator.Make<PhysicalSpatialJoin>(*this, left, right, std::move(spatial_predicate), join_type,
-	                                           estimated_cardinality);
+	                                           estimated_cardinality, has_const_distance, const_distance);
 }
 
 void LogicalSpatialJoin::Serialize(Serializer &writer) const {
@@ -89,6 +89,10 @@ void LogicalSpatialJoin::Serialize(Serializer &writer) const {
 	writer.WritePropertyWithDefault<vector<idx_t>>(403, "right_projection_map", right_projection_map);
 	writer.WritePropertyWithDefault<unique_ptr<Expression>>(404, "spatial_predicate", spatial_predicate);
 	writer.WritePropertyWithDefault<vector<unique_ptr<Expression>>>(405, "extra_conditions", extra_conditions);
+	writer.WritePropertyWithDefault<bool>(406, "has_const_distance", has_const_distance);
+	if (has_const_distance) {
+		writer.WritePropertyWithDefault<double>(407, "const_distance", const_distance);
+	}
 }
 
 unique_ptr<LogicalExtensionOperator> LogicalSpatialJoin::Deserialize(Deserializer &reader) {
@@ -98,6 +102,11 @@ unique_ptr<LogicalExtensionOperator> LogicalSpatialJoin::Deserialize(Deserialize
 	auto right_projection_map = reader.ReadPropertyWithDefault<vector<idx_t>>(403, "right_projection_map");
 	auto spatial_predicate = reader.ReadPropertyWithDefault<unique_ptr<Expression>>(404, "spatial_predicate");
 	auto extra_conditions = reader.ReadPropertyWithDefault<vector<unique_ptr<Expression>>>(405, "extra_conditions");
+	auto has_const_distance = reader.ReadPropertyWithExplicitDefault<bool>(406, "has_const_distance", false);
+	double const_distance = 0.0;
+	if (has_const_distance) {
+		const_distance = reader.ReadPropertyWithDefault<double>(407, "const_distance");
+	}
 
 	auto result = make_uniq<LogicalSpatialJoin>(join_type);
 	result->mark_index = mark_index;
@@ -105,6 +114,10 @@ unique_ptr<LogicalExtensionOperator> LogicalSpatialJoin::Deserialize(Deserialize
 	result->right_projection_map = std::move(right_projection_map);
 	result->spatial_predicate = std::move(spatial_predicate);
 	result->extra_conditions = std::move(extra_conditions);
+	result->has_const_distance = has_const_distance;
+	if (has_const_distance) {
+		result->const_distance = const_distance;
+	}
 
 	return std::move(result);
 }

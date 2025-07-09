@@ -55,8 +55,8 @@ PJ_CONTEXT *ProjModule::GetThreadProjContext() {
 	// We set the default context proj.db path to the one in the binary here
 	// Otherwise GDAL will try to load the proj.db from the system
 	// Any PJ_CONTEXT we create after this will inherit these settings
-	auto path = StringUtil::Format("file:/proj.db?immutable=1&ptr=%llu&sz=%lu&max=%lu",
-		static_cast<void *>(proj_db), proj_db_len, proj_db_len);
+	auto path = StringUtil::Format("file:/proj.db?immutable=1&ptr=%llu&sz=%lu&max=%lu", static_cast<void *>(proj_db),
+	                               proj_db_len, proj_db_len);
 
 	proj_context_set_sqlite3_vfs_name(ctx, "memvfs");
 	const auto ok = proj_context_set_database_path(ctx, path.c_str(), nullptr, nullptr);
@@ -77,42 +77,44 @@ PJ_CONTEXT *ProjModule::GetThreadProjContext() {
 void ProjModule::RegisterVFS(DatabaseInstance &db) {
 
 	// Initialization lock around global proj state
-	static mutex lock;
+	// Make sure this is only loaded once per process
+	// So that multiple duckdb connections that `LOAD spatial` don't overwrite the default sqlite vfs again
 
-	lock_guard<mutex> g(lock);
+	static std::once_flag loaded;
+	std::call_once(loaded, [&]() {
+		// we use the sqlite "memvfs" to store the proj.db database in the extension binary itself
+		// this way we don't have to worry about the user having the proj.db database installed
+		// on their system. We therefore have to tell proj to use memvfs as the sqlite3 vfs and
+		// point it to the segment of the binary that contains the proj.db database
 
-	// we use the sqlite "memvfs" to store the proj.db database in the extension binary itself
-	// this way we don't have to worry about the user having the proj.db database installed
-	// on their system. We therefore have to tell proj to use memvfs as the sqlite3 vfs and
-	// point it to the segment of the binary that contains the proj.db database
+		sqlite3_initialize();
+		sqlite3_memvfs_init(nullptr, nullptr, nullptr);
+		const auto vfs = sqlite3_vfs_find("memvfs");
+		if (!vfs) {
+			throw InternalException("Could not find sqlite memvfs extension");
+		}
+		sqlite3_vfs_register(vfs, 0);
 
-	sqlite3_initialize();
-	sqlite3_memvfs_init(nullptr, nullptr, nullptr);
-	const auto vfs = sqlite3_vfs_find("memvfs");
-	if (!vfs) {
-		throw InternalException("Could not find sqlite memvfs extension");
-	}
-	sqlite3_vfs_register(vfs, 1);
+		// We set the default context proj.db path to the one in the binary here
+		// Otherwise GDAL will try to load the proj.db from the system
+		// Any PJ_CONTEXT we create after this will inherit these settings (on this thread?)
+		auto path = StringUtil::Format("file:/proj.db?immutable=1&ptr=%llu&sz=%lu&max=%lu",
+		                               static_cast<void *>(proj_db), proj_db_len, proj_db_len);
 
-	// We set the default context proj.db path to the one in the binary here
-	// Otherwise GDAL will try to load the proj.db from the system
-	// Any PJ_CONTEXT we create after this will inherit these settings (on this thread?)
-	auto path = StringUtil::Format("file:/proj.db?immutable=1&ptr=%llu&sz=%lu&max=%lu",
-		static_cast<void *>(proj_db), proj_db_len, proj_db_len);
+		proj_context_set_sqlite3_vfs_name(nullptr, "memvfs");
 
-	proj_context_set_sqlite3_vfs_name(nullptr, "memvfs");
+		// Try to open the database
+		sqlite3 *sdb = nullptr;
+		const auto sok = sqlite3_open_v2(path.c_str(), &sdb, SQLITE_OPEN_READONLY, "memvfs");
+		if (sok != SQLITE_OK) {
+			throw InternalException("Could not open sqlite3 memvfs database");
+		}
 
-	// Try to open the database
-	sqlite3* sdb = nullptr;
-	const auto sok = sqlite3_open_v2(path.c_str(), &sdb, SQLITE_OPEN_READONLY, "memvfs");
-	if (sok != SQLITE_OK) {
-		throw InternalException("Could not open sqlite3 memvfs database");
-	}
-
-	const auto ok = proj_context_set_database_path(nullptr, path.c_str(), nullptr, nullptr);
-	if (!ok) {
-		throw InternalException("Could not set proj.db path");
-	}
+		const auto ok = proj_context_set_database_path(nullptr, path.c_str(), nullptr, nullptr);
+		if (!ok) {
+			throw InternalException("Could not set proj.db path");
+		}
+	});
 }
 
 //######################################################################################################################
@@ -326,12 +328,12 @@ struct ST_Transform {
 			    sgl::geometry geom;
 			    lstate.Deserialize(blob, geom);
 
-			    sgl::ops::replace_vertices(&alloc, &geom, crs, [](void *arg, sgl::vertex_xyzm *vertex) {
+			    sgl::ops::transform_vertices(alloc, geom, crs, [](void *arg, sgl::vertex_xyzm &vertex) {
 				    const auto crs_ptr = static_cast<PJ *>(arg);
 				    const auto transformed =
-				        proj_trans(crs_ptr, PJ_FWD, proj_coord(vertex->x, vertex->y, vertex->zm, 0)).xy;
-				    vertex->x = transformed.x;
-				    vertex->y = transformed.y;
+				        proj_trans(crs_ptr, PJ_FWD, proj_coord(vertex.x, vertex.y, vertex.z, 0)).xy;
+				    vertex.x = transformed.x;
+				    vertex.y = transformed.y;
 			    });
 
 			    return lstate.Serialize(result, geom);
@@ -358,13 +360,12 @@ struct ST_Transform {
 	-- but the output will be [easting, northing] because that is what's defined by
 	-- WebMercator.
 
-	SELECT ST_AsText(
+	SELECT
 	    ST_Transform(
 	        st_point(52.373123, 4.892360),
 	        'EPSG:4326',
 	        'EPSG:3857'
-	    )
-	);
+		);
 	----
 	POINT (544615.0239773799 6867874.103539125)
 
@@ -374,15 +375,14 @@ struct ST_Transform {
 	-- a [northing, easting] axis order instead, even though the source coordinate
 	-- reference system definition (WGS84) says otherwise.
 
-	SELECT ST_AsText(
+	SELECT 
 	    ST_Transform(
 	        -- note the axis order is reversed here
 	        st_point(4.892360, 52.373123),
 	        'EPSG:4326',
 	        'EPSG:3857',
 	        always_xy := true
-	    )
-	);
+		);
 	----
 	POINT (544615.0239773799 6867874.103539125)
 
@@ -618,15 +618,15 @@ struct ST_Area_Spheroid {
 			lstate.accum = 0;
 
 			// Visit all polygons
-			sgl::ops::visit_by_dimension(&geom, 2, &lstate, [](void *arg, const sgl::geometry *part) {
-				if (part->get_type() != sgl::geometry_type::POLYGON) {
+			sgl::ops::visit_polygon_geometries(geom, &lstate, [](void *arg, const sgl::geometry &part) {
+				if (part.get_type() != sgl::geometry_type::POLYGON) {
 					return;
 				}
 
 				auto &sstate = *static_cast<GeodesicLocalState *>(arg);
 
 				// Calculate the area of the polygon
-				const auto tail = part->get_last_part();
+				const auto tail = part.get_last_part();
 				auto ring = tail;
 				if (!ring) {
 					return;
@@ -637,7 +637,7 @@ struct ST_Area_Spheroid {
 				do {
 					ring = ring->get_next();
 
-					const auto vertex_count = ring->get_count();
+					const auto vertex_count = ring->get_vertex_count();
 					if (vertex_count < 4) {
 						continue;
 					}
@@ -780,15 +780,15 @@ struct ST_Perimeter_Spheroid {
 			lstate.accum = 0;
 
 			// Visit all polygons
-			sgl::ops::visit_by_dimension(&geom, 2, &lstate, [](void *arg, const sgl::geometry *part) {
-				if (part->get_type() != sgl::geometry_type::POLYGON) {
+			sgl::ops::visit_polygon_geometries(geom, &lstate, [](void *arg, const sgl::geometry &part) {
+				if (part.get_type() != sgl::geometry_type::POLYGON) {
 					return;
 				}
 
 				auto &sstate = *static_cast<GeodesicLocalState *>(arg);
 
 				// Calculate the perimeter of the polygon
-				const auto tail = part->get_last_part();
+				const auto tail = part.get_last_part();
 				auto ring = tail;
 				if (!ring) {
 					return;
@@ -796,7 +796,7 @@ struct ST_Perimeter_Spheroid {
 				do {
 					ring = ring->get_next();
 
-					const auto vertex_count = ring->get_count();
+					const auto vertex_count = ring->get_vertex_count();
 					if (vertex_count < 4) {
 						continue;
 					}
@@ -924,15 +924,15 @@ struct ST_Length_Spheroid {
 			// Reset the state
 			lstate.accum = 0;
 
-			// Visit all polygons
-			sgl::ops::visit_by_dimension(&geom, 1, &lstate, [](void *arg, const sgl::geometry *part) {
-				if (part->get_type() != sgl::geometry_type::LINESTRING) {
+			// Visit all linestrings
+			sgl::ops::visit_linestring_geometries(geom, &lstate, [](void *arg, const sgl::geometry &part) {
+				if (part.get_type() != sgl::geometry_type::LINESTRING) {
 					return;
 				}
 
 				auto &sstate = *static_cast<GeodesicLocalState *>(arg);
 
-				const auto vertex_count = part->get_count();
+				const auto vertex_count = part.get_vertex_count();
 				if (vertex_count < 2) {
 					return;
 				}
@@ -940,7 +940,7 @@ struct ST_Length_Spheroid {
 				geod_polygon_clear(&sstate.poly);
 
 				for (uint32_t i = 0; i < vertex_count; i++) {
-					const auto vertex = part->get_vertex_xy(i);
+					const auto vertex = part.get_vertex_xy(i);
 					geod_polygon_addpoint(&sstate.geod, &sstate.poly, vertex.x, vertex.y);
 				}
 
@@ -1150,7 +1150,6 @@ struct DuckDB_Proj_Version {
 		});
 	}
 };
-
 
 struct DuckDB_Proj_Compiled_Version {
 

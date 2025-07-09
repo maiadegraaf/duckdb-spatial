@@ -1,4 +1,5 @@
 #include "duckdb/catalog/catalog_entry/duck_table_entry.hpp"
+#include "duckdb/function/table/table_scan.hpp"
 #include "duckdb/optimizer/column_binding_replacer.hpp"
 #include "duckdb/optimizer/column_lifetime_analyzer.hpp"
 #include "duckdb/optimizer/matcher/expression_matcher.hpp"
@@ -62,10 +63,24 @@ public:
 	                                            idx_t filter_idx, bool &rewrite_possible) {
 		if (expr->type == ExpressionType::BOUND_COLUMN_REF) {
 			auto &bound_colref = expr->Cast<BoundColumnRefExpression>();
-			if (bound_colref.binding.column_index != filter_idx) {
+
+			auto &indexed_columns = index.GetColumnIds();
+			if (indexed_columns.size() != 1) {
+				// Only single column indexes are supported right now
 				rewrite_possible = false;
 				return;
 			}
+
+			const auto &duck_table = get.GetTable()->Cast<DuckTableEntry>();
+			const auto &column_list = duck_table.GetColumns();
+
+			auto &col = column_list.GetColumn(LogicalIndex(indexed_columns[0]));
+			if (filter_idx != col.Physical().index) {
+				// RTree does not match the filter column
+				rewrite_possible = false;
+				return;
+			}
+
 			// this column matches the index column - turn it into a BoundReference
 			expr = make_uniq<BoundReferenceExpression>(bound_colref.return_type, 0ULL);
 			return;

@@ -6,6 +6,7 @@ if(SPATIAL_USE_GEOS)
 endif()
 add_subdirectory(osm)
 add_subdirectory(shapefile)
+add_subdirectory(mvt)
 
 set(EXTENSION_SOURCES
     ${EXTENSION_SOURCES}

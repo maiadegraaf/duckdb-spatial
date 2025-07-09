@@ -1,0 +1,394 @@
+# name: test/sql/mvt/st_tileenvelope.test
+# group [mvt]
+
+require spatial
+
+statement ok
+PRAGMA enable_verification
+
+query I
+SELECT ST_NumPoints( ST_ExteriorRing( ST_TileEnvelope(2, 3, 1) ) );
+----
+5
+
+query I
+SELECT ST_X( ST_PointN( ST_ExteriorRing( ST_TileEnvelope(2, 3, 1) ), 1) );
+----
+10018754.17139462
+
+
+query I
+SELECT ST_Y( ST_PointN( ST_ExteriorRing( ST_TileEnvelope(2, 3, 1) ), 1) );
+----
+0.0
+
+#
+# Checks for input validity
+#
+
+statement error
+SELECT ST_TileEnvelope(-1, 0, 0);
+----
+Invalid Input Error: ST_TileEnvelope: tile_zoom must be in the range [0,30]
+
+
+statement error
+SELECT ST_TileEnvelope(31, 0, 0);
+----
+Invalid Input Error: ST_TileEnvelope: tile_zoom must be in the range [0,30]
+
+statement error
+SELECT ST_TileEnvelope(2, 4, 0);
+----
+Invalid Input Error: ST_TileEnvelope: tile_x is out of range for specified tile_zoom
+
+statement error
+SELECT ST_TileEnvelope(2, -1, 0);
+----
+Invalid Input Error: ST_TileEnvelope: tile_x is out of range for specified tile_zoom
+
+
+statement error
+SELECT ST_TileEnvelope(3, 0, 8);
+----
+Invalid Input Error: ST_TileEnvelope: tile_y is out of range for specified tile_zoom
+
+
+statement error
+SELECT ST_TileEnvelope(3, 0, -1);
+----
+Invalid Input Error: ST_TileEnvelope: tile_y is out of range for specified tile_zoom
+
+#
+# Accuracy checks
+#
+
+query I
+SELECT ST_NumPoints( ST_ExteriorRing( ST_TileEnvelope(0, 0, 0) ) );
+----
+5
+
+query I
+SELECT ST_X( ST_PointN( ST_ExteriorRing( ST_TileEnvelope(0, 0, 0) ), 1) );
+----
+-20037508.342789244
+
+
+query I
+SELECT ST_Y( ST_PointN( ST_ExteriorRing( ST_TileEnvelope(0, 0, 0) ), 1) );
+----
+-20037508.342789244
+
+
+query I
+SELECT ST_X( ST_PointN( ST_ExteriorRing( ST_TileEnvelope(0, 0, 0) ), 2) );
+----
+-20037508.342789244
+
+
+query I
+SELECT ST_Y( ST_PointN( ST_ExteriorRing( ST_TileEnvelope(0, 0, 0) ), 2) );
+----
+20037508.342789244
+
+
+query I
+SELECT ST_X( ST_PointN( ST_ExteriorRing( ST_TileEnvelope(0, 0, 0) ), 3) );
+----
+20037508.342789244
+
+
+query I
+SELECT ST_Y( ST_PointN( ST_ExteriorRing( ST_TileEnvelope(0, 0, 0) ), 3) );
+----
+20037508.342789244
+
+
+query I
+SELECT ST_X( ST_PointN( ST_ExteriorRing( ST_TileEnvelope(0, 0, 0) ), 4) );
+----
+20037508.342789244
+
+
+query I
+SELECT ST_Y( ST_PointN( ST_ExteriorRing( ST_TileEnvelope(0, 0, 0) ), 4) );
+----
+-20037508.342789244
+
+
+query I
+SELECT ST_X( ST_PointN( ST_ExteriorRing( ST_TileEnvelope(0, 0, 0) ), 5) );
+----
+-20037508.342789244
+
+
+query I
+SELECT ST_Y( ST_PointN( ST_ExteriorRing( ST_TileEnvelope(0, 0, 0) ), 5) );
+----
+-20037508.342789244
+
+
+query I
+SELECT ST_NumPoints( ST_ExteriorRing( ST_TileEnvelope(30, 0, 0) ) );
+----
+5
+
+
+query I
+SELECT ST_X( ST_PointN( ST_ExteriorRing( ST_TileEnvelope(30, 0, 0) ), 1) );
+----
+-20037508.342789244
+
+
+query I
+SELECT ST_Y( ST_PointN( ST_ExteriorRing( ST_TileEnvelope(30, 0, 0) ), 1) );
+----
+20037508.305466477
+
+
+query I
+SELECT ST_X( ST_PointN( ST_ExteriorRing( ST_TileEnvelope(30, 0, 0) ), 2) );
+----
+-20037508.342789244
+
+
+query I
+SELECT ST_Y( ST_PointN( ST_ExteriorRing( ST_TileEnvelope(30, 0, 0) ), 2) );
+----
+20037508.342789244
+
+
+query I
+SELECT ST_X( ST_PointN( ST_ExteriorRing( ST_TileEnvelope(30, 0, 0) ), 3) );
+----
+-20037508.305466477
+
+
+query I
+SELECT ST_Y( ST_PointN( ST_ExteriorRing( ST_TileEnvelope(30, 0, 0) ), 3) );
+----
+20037508.342789244
+
+
+query I
+SELECT ST_X( ST_PointN( ST_ExteriorRing( ST_TileEnvelope(30, 0, 0) ), 4) );
+----
+-20037508.305466477
+
+
+query I
+SELECT ST_Y( ST_PointN( ST_ExteriorRing( ST_TileEnvelope(30, 0, 0) ), 4) );
+----
+20037508.305466477
+
+
+query I
+SELECT ST_X( ST_PointN( ST_ExteriorRing( ST_TileEnvelope(30, 0, 0) ), 5) );
+----
+-20037508.342789244
+
+
+query I
+SELECT ST_Y( ST_PointN( ST_ExteriorRing( ST_TileEnvelope(30, 0, 0) ), 5) );
+----
+20037508.305466477
+
+
+query I
+SELECT ST_NumPoints( ST_ExteriorRing( ST_TileEnvelope(30, 0, 1073741823) ) );
+----
+5
+
+
+query I
+SELECT ST_X( ST_PointN( ST_ExteriorRing( ST_TileEnvelope(30, 0, 1073741823) ), 1) );
+----
+-20037508.342789244
+
+
+query I
+SELECT ST_Y( ST_PointN( ST_ExteriorRing( ST_TileEnvelope(30, 0, 1073741823) ), 1) );
+----
+-20037508.342789244
+
+
+query I
+SELECT ST_X( ST_PointN( ST_ExteriorRing( ST_TileEnvelope(30, 0, 1073741823) ), 2) );
+----
+-20037508.342789244
+
+
+query I
+SELECT ST_Y( ST_PointN( ST_ExteriorRing( ST_TileEnvelope(30, 0, 1073741823) ), 2) );
+----
+-20037508.305466477
+
+
+query I
+SELECT ST_X( ST_PointN( ST_ExteriorRing( ST_TileEnvelope(30, 0, 1073741823) ), 3) );
+----
+-20037508.305466477
+
+
+query I
+SELECT ST_Y( ST_PointN( ST_ExteriorRing( ST_TileEnvelope(30, 0, 1073741823) ), 3) );
+----
+-20037508.305466477
+
+
+query I
+SELECT ST_X( ST_PointN( ST_ExteriorRing( ST_TileEnvelope(30, 0, 1073741823) ), 4) );
+----
+-20037508.305466477
+
+
+query I
+SELECT ST_Y( ST_PointN( ST_ExteriorRing( ST_TileEnvelope(30, 0, 1073741823) ), 4) );
+----
+-20037508.342789244
+
+
+query I
+SELECT ST_X( ST_PointN( ST_ExteriorRing( ST_TileEnvelope(30, 0, 1073741823) ), 5) );
+----
+-20037508.342789244
+
+
+query I
+SELECT ST_Y( ST_PointN( ST_ExteriorRing( ST_TileEnvelope(30, 0, 1073741823) ), 5) );
+----
+-20037508.342789244
+
+
+query I
+SELECT ST_NumPoints( ST_ExteriorRing( ST_TileEnvelope(30, 1073741823, 0) ) );
+----
+5
+
+
+query I
+SELECT ST_X( ST_PointN( ST_ExteriorRing( ST_TileEnvelope(30, 1073741823, 0) ), 1) );
+----
+20037508.305466477
+
+
+query I
+SELECT ST_Y( ST_PointN( ST_ExteriorRing( ST_TileEnvelope(30, 1073741823, 0) ), 1) );
+----
+20037508.305466477
+
+
+query I
+SELECT ST_X( ST_PointN( ST_ExteriorRing( ST_TileEnvelope(30, 1073741823, 0) ), 2) );
+----
+20037508.305466477
+
+
+query I
+SELECT ST_Y( ST_PointN( ST_ExteriorRing( ST_TileEnvelope(30, 1073741823, 0) ), 2) );
+----
+20037508.342789244
+
+
+query I
+SELECT ST_X( ST_PointN( ST_ExteriorRing( ST_TileEnvelope(30, 1073741823, 0) ), 3) );
+----
+20037508.342789244
+
+
+query I
+SELECT ST_Y( ST_PointN( ST_ExteriorRing( ST_TileEnvelope(30, 1073741823, 0) ), 3) );
+----
+20037508.342789244
+
+
+query I
+SELECT ST_X( ST_PointN( ST_ExteriorRing( ST_TileEnvelope(30, 1073741823, 0) ), 4) );
+----
+20037508.342789244
+
+
+query I
+SELECT ST_Y( ST_PointN( ST_ExteriorRing( ST_TileEnvelope(30, 1073741823, 0) ), 4) );
+----
+20037508.305466477
+
+
+query I
+SELECT ST_X( ST_PointN( ST_ExteriorRing( ST_TileEnvelope(30, 1073741823, 0) ), 5) );
+----
+20037508.305466477
+
+
+query I
+SELECT ST_Y( ST_PointN( ST_ExteriorRing( ST_TileEnvelope(30, 1073741823, 0) ), 5) );
+----
+20037508.305466477
+
+
+query I
+SELECT ST_NumPoints( ST_ExteriorRing( ST_TileEnvelope(30, 1073741823, 1073741823) ) );
+----
+5
+
+
+query I
+SELECT ST_X( ST_PointN( ST_ExteriorRing( ST_TileEnvelope(30, 1073741823, 1073741823) ), 1) );
+----
+20037508.305466477
+
+
+query I
+SELECT ST_Y( ST_PointN( ST_ExteriorRing( ST_TileEnvelope(30, 1073741823, 1073741823) ), 1) );
+----
+-20037508.342789244
+
+
+query I
+SELECT ST_X( ST_PointN( ST_ExteriorRing( ST_TileEnvelope(30, 1073741823, 1073741823) ), 2) );
+----
+20037508.305466477
+
+
+query I
+SELECT ST_Y( ST_PointN( ST_ExteriorRing( ST_TileEnvelope(30, 1073741823, 1073741823) ), 2) );
+----
+-20037508.305466477
+
+
+query I
+SELECT ST_X( ST_PointN( ST_ExteriorRing( ST_TileEnvelope(30, 1073741823, 1073741823) ), 3) );
+----
+20037508.342789244
+
+
+query I
+SELECT ST_Y( ST_PointN( ST_ExteriorRing( ST_TileEnvelope(30, 1073741823, 1073741823) ), 3) );
+----
+-20037508.305466477
+
+
+query I
+SELECT ST_X( ST_PointN( ST_ExteriorRing( ST_TileEnvelope(30, 1073741823, 1073741823) ), 4) );
+----
+20037508.342789244
+
+
+query I
+SELECT ST_Y( ST_PointN( ST_ExteriorRing( ST_TileEnvelope(30, 1073741823, 1073741823) ), 4) );
+----
+-20037508.342789244
+
+
+query I
+SELECT ST_X( ST_PointN( ST_ExteriorRing( ST_TileEnvelope(30, 1073741823, 1073741823) ), 5) );
+----
+20037508.305466477
+
+
+query I
+SELECT ST_Y( ST_PointN( ST_ExteriorRing( ST_TileEnvelope(30, 1073741823, 1073741823) ), 5) );
+----
+-20037508.342789244
+
+

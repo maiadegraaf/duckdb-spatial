@@ -926,7 +926,7 @@ struct ST_Distance : SymmetricPreparedBinaryFunction<ST_Distance, double> {
 		return lhs.distance_to(rhs);
 	}
 	static void Register(DatabaseInstance &db) {
-		FunctionBuilder::RegisterScalar(db, "ST_Distance", [](ScalarFunctionBuilder &func) {
+		FunctionBuilder::RegisterScalar(db, "ST_Distance_GEOS", [](ScalarFunctionBuilder &func) {
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("geom1", GeoTypes::GEOMETRY());
 				variant.AddParameter("geom2", GeoTypes::GEOMETRY());
@@ -1016,7 +1016,7 @@ struct ST_DistanceWithin {
 	}
 
 	static void Register(DatabaseInstance &db) {
-		FunctionBuilder::RegisterScalar(db, "ST_DWithin", [](ScalarFunctionBuilder &func) {
+		FunctionBuilder::RegisterScalar(db, "ST_DWithin_GEOS", [](ScalarFunctionBuilder &func) {
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("geom1", GeoTypes::GEOMETRY());
 				variant.AddParameter("geom2", GeoTypes::GEOMETRY());
@@ -1399,6 +1399,15 @@ struct ST_MaximumInscribedCircle {
 				The return value is a struct with the center of the circle, the nearest point to the center on the boundary of the geometry, and the radius of the circle.
 			)");
 
+			func.SetExample(R"(
+				-- Find the maximum inscribed circle of a square
+				SELECT ST_MaximumInscribedCircle(
+					ST_GeomFromText('POLYGON((0 0, 10 0, 10 10, 0 10, 0 0))')
+				);
+				----
+				{'center': POINT (5 5), 'nearest': POINT (5 0), 'radius': 5.0}
+			)");
+
 			func.SetTag("ext", "spatial");
 			func.SetTag("category", "construction");
 		});
@@ -1449,6 +1458,14 @@ struct ST_Node {
 	static constexpr auto DESCRIPTION = R"(
 		Returns a "noded" MultiLinestring, produced by combining a collection of input linestrings and adding additional vertices where they intersect.
 	)";
+	static constexpr auto EXAMPLE = R"(
+		-- Create a noded multilinestring from two intersecting lines
+		SELECT ST_Node(
+			ST_GeomFromText('MULTILINESTRING((0 0, 2 2), (0 2, 2 0))')
+		);
+		----
+		MULTILINESTRING ((0 0, 1 1), (1 1, 2 2), (0 2, 1 1), (1 1, 2 0))
+	)";
 
 	static void Register(DatabaseInstance &db) {
 		FunctionBuilder::RegisterScalar(db, "ST_Node", [](ScalarFunctionBuilder &func) {
@@ -1461,6 +1478,7 @@ struct ST_Node {
 			});
 
 			func.SetDescription(DESCRIPTION);
+			func.SetExample(EXAMPLE);
 			func.SetTag("ext", "spatial");
 			func.SetTag("category", "construction");
 		});
@@ -1600,6 +1618,14 @@ struct ST_Polygonize {
 			});
 
 			func.SetDescription("Returns a polygonized representation of the input geometries");
+			func.SetExample(R"(
+				-- Create a polygon from a closed linestring ring
+				SELECT ST_Polygonize([
+					ST_GeomFromText('LINESTRING(0 0, 0 10, 10 10, 10 0, 0 0)')
+				]);
+				---
+				GEOMETRYCOLLECTION (POLYGON ((0 0, 0 10, 10 10, 10 0, 0 0)))
+			)");
 			func.SetTag("ext", "spatial");
 			func.SetTag("category", "construction");
 		});
@@ -2011,22 +2037,23 @@ struct GeosUnaryAggFunction {
 };
 
 //======================================================================================================================
-// ST_Union_Agg
+// ST_MemUnion_Agg
 //======================================================================================================================
 
-struct ST_Union_Agg : GeosUnaryAggFunction {
+struct ST_MemUnion_Agg : GeosUnaryAggFunction {
 	static GEOSGeometry *Merge(const GEOSContextHandle_t context, const GEOSGeometry *curr, const GEOSGeometry *next) {
 		return GEOSUnion_r(context, curr, next);
 	}
 
 	static void Register(DatabaseInstance &db) {
 		const auto agg =
-		    AggregateFunction::UnaryAggregateDestructor<GeosUnaryAggState, string_t, string_t, ST_Union_Agg>(
+		    AggregateFunction::UnaryAggregateDestructor<GeosUnaryAggState, string_t, string_t, ST_MemUnion_Agg>(
 		        GeoTypes::GEOMETRY(), GeoTypes::GEOMETRY());
 
-		FunctionBuilder::RegisterAggregate(db, "ST_Union_Agg", [&](AggregateFunctionBuilder &func) {
+		FunctionBuilder::RegisterAggregate(db, "ST_MemUnion_Agg", [&](AggregateFunctionBuilder &func) {
 			func.SetFunction(agg);
-			func.SetDescription("Computes the union of a set of input geometries");
+			func.SetDescription(R"(Computes the union of a set of input geometries.
+				"Slower, but might be more memory efficient than ST_UnionAgg as each geometry is merged into the union individually rather than all at once.)");
 
 			func.SetTag("ext", "spatial");
 			func.SetTag("category", "construction");
@@ -2051,6 +2078,198 @@ struct ST_Intersection_Agg : GeosUnaryAggFunction {
 		FunctionBuilder::RegisterAggregate(db, "ST_Intersection_Agg", [&](AggregateFunctionBuilder &func) {
 			func.SetFunction(agg);
 			func.SetDescription("Computes the intersection of a set of geometries");
+
+			func.SetTag("ext", "spatial");
+			func.SetTag("category", "construction");
+		});
+	}
+};
+
+//======================================================================================================================
+// ST_Union_Agg
+//======================================================================================================================
+struct ST_Union_Agg {
+
+	struct State {
+		GEOSContextHandle_t context = nullptr;
+		vector<GEOSGeometry *> geoms;
+	};
+
+	static idx_t StateSize(const AggregateFunction &) {
+		return sizeof(State);
+	}
+
+	static string_t Serialize(const GEOSContextHandle_t context, Vector &result, const GEOSGeometry *geom) {
+		D_ASSERT(geom);
+		const auto size = GeosSerde::GetRequiredSize(context, geom);
+		auto blob = StringVector::EmptyString(result, size);
+		const auto ptr = blob.GetDataWriteable();
+
+		// Serialize the geometry
+		GeosSerde::Serialize(context, geom, ptr, size);
+
+		blob.Finalize();
+		return blob;
+	}
+
+	// Deserialize a GEOS geometry
+	static GEOSGeometry *Deserialize(const GEOSContextHandle_t context, const string_t &blob) {
+		const auto ptr = blob.GetData();
+		const auto size = blob.GetSize();
+
+		return GeosSerde::Deserialize(context, ptr, size);
+	}
+
+	static void Initialize(const AggregateFunction &, data_ptr_t state_mem) {
+		const auto state_ptr = new (state_mem) State();
+		auto &state = *state_ptr;
+		state.context = GEOS_init_r();
+	}
+
+	static void Update(Vector inputs[], AggregateInputData &, idx_t, Vector &state_vec, idx_t count) {
+
+		auto &geom_vec = inputs[0];
+
+		UnifiedVectorFormat geom_format;
+		geom_vec.ToUnifiedFormat(count, geom_format);
+
+		UnifiedVectorFormat state_format;
+		state_vec.ToUnifiedFormat(count, state_format);
+
+		const auto state_ptr = UnifiedVectorFormat::GetData<State *>(state_format);
+		const auto geom_ptr = UnifiedVectorFormat::GetData<string_t>(geom_format);
+
+		for (idx_t raw_idx = 0; raw_idx < count; raw_idx++) {
+			const auto state_idx = state_format.sel->get_index(raw_idx);
+			const auto geom_idx = geom_format.sel->get_index(raw_idx);
+
+			if (!geom_format.validity.RowIsValid(geom_idx)) {
+				continue;
+			}
+
+			// Now, deserialize the geometry and append it to the list in each state
+			auto &state = *state_ptr[state_idx];
+			const auto geom = Deserialize(state.context, geom_ptr[geom_idx]);
+			state.geoms.push_back(geom);
+		}
+	}
+
+	static void Absorb(Vector &state_vec, Vector &combined, AggregateInputData &aggr_input_data, idx_t count) {
+		D_ASSERT(aggr_input_data.combine_type == AggregateCombineType::ALLOW_DESTRUCTIVE);
+
+		UnifiedVectorFormat state_format;
+		state_vec.ToUnifiedFormat(count, state_format);
+
+		const auto state_ptr = UnifiedVectorFormat::GetData<State *>(state_format);
+		const auto combined_ptr = FlatVector::GetData<State *>(combined);
+
+		for (idx_t raw_idx = 0; raw_idx < count; raw_idx++) {
+			const auto state_idx = state_format.sel->get_index(raw_idx);
+			auto &state = *state_ptr[state_idx];
+
+			// Steal the list from the state and append it to the combined state
+			auto &combined_state = *combined_ptr[raw_idx];
+			combined_state.geoms.insert(combined_state.geoms.end(), state.geoms.begin(), state.geoms.end());
+			state.geoms.clear();
+		}
+	}
+
+	static void Combine(Vector &state_vec, Vector &combined, AggregateInputData &aggr_input_data, idx_t count) {
+
+		//	Can we use destructive combining?
+		if (aggr_input_data.combine_type == AggregateCombineType::ALLOW_DESTRUCTIVE) {
+			Absorb(state_vec, combined, aggr_input_data, count);
+			return;
+		}
+
+		UnifiedVectorFormat state_format;
+		state_vec.ToUnifiedFormat(count, state_format);
+
+		const auto state_ptr = UnifiedVectorFormat::GetData<State *>(state_format);
+		const auto combined_ptr = FlatVector::GetData<State *>(combined);
+
+		for (idx_t raw_idx = 0; raw_idx < count; raw_idx++) {
+			const auto state_idx = state_format.sel->get_index(raw_idx);
+			const auto &state = *state_ptr[state_idx];
+
+			// We can't steal the list, we need to clone and append all elements
+			auto &combined_state = *combined_ptr[raw_idx];
+
+			for (auto &geom : state.geoms) {
+				combined_state.geoms.push_back(GEOSGeom_clone_r(combined_state.context, geom));
+			}
+		}
+	}
+
+	static void Finalize(Vector &state_vec, AggregateInputData &aggr_input_data, Vector &result, idx_t count,
+	                     idx_t offset) {
+
+		UnifiedVectorFormat state_format;
+		state_vec.ToUnifiedFormat(count, state_format);
+
+		const auto state_ptr = UnifiedVectorFormat::GetData<State *>(state_format);
+
+		for (idx_t raw_idx = 0; raw_idx < count; raw_idx++) {
+			auto &state = *state_ptr[state_format.sel->get_index(raw_idx)];
+			const auto out_idx = raw_idx + offset;
+
+			// Now create a geometry collection out of all geometries
+			const auto collection = GEOSGeom_createCollection_r(state.context, GEOS_GEOMETRYCOLLECTION,
+			                                                    state.geoms.data(), state.geoms.size());
+
+			// If we manage to construct the collection, it takes ownership of the geometries
+			// So we need to leak the list or risk a double free
+			state.geoms.clear();
+
+			try {
+				// Compute the coverage
+				const auto result_union = GEOSUnaryUnion_r(state.context, collection);
+
+				// Serialize the result
+				const auto result_ptr = FlatVector::GetData<string_t>(result);
+				result_ptr[out_idx] = Serialize(state.context, result, result_union);
+
+				// Destroy the unioned geometry
+				GEOSGeom_destroy_r(state.context, result_union);
+
+				// Destroy the collection
+				GEOSGeom_destroy_r(state.context, collection);
+
+			} catch (...) {
+				// Destroy the collection, and rethrow the exception
+				GEOSGeom_destroy_r(state.context, collection);
+				throw;
+			}
+		}
+	}
+
+	static void Destroy(Vector &state_vec, AggregateInputData &aggr, idx_t count) {
+		UnifiedVectorFormat state_format;
+		state_vec.ToUnifiedFormat(count, state_format);
+
+		const auto state_ptr = UnifiedVectorFormat::GetData<State *>(state_format);
+		for (idx_t raw_idx = 0; raw_idx < count; raw_idx++) {
+			const auto row_idx = state_format.sel->get_index(raw_idx);
+			if (state_format.validity.RowIsValid(row_idx)) {
+				auto &state = *state_ptr[row_idx];
+
+				state.geoms.clear();
+
+				if (state.context) {
+					GEOS_finish_r(state.context);
+					state.context = nullptr;
+				}
+			}
+		}
+	}
+
+	static void Register(DatabaseInstance &db) {
+		AggregateFunction agg({GeoTypes::GEOMETRY()}, GeoTypes::GEOMETRY(), StateSize, Initialize, Update, Combine,
+		                      Finalize, nullptr, nullptr, Destroy);
+
+		FunctionBuilder::RegisterAggregate(db, "ST_Union_Agg", [&](AggregateFunctionBuilder &func) {
+			func.SetFunction(agg);
+			func.SetDescription("Computes the union of a set of input geometries");
 
 			func.SetTag("ext", "spatial");
 			func.SetTag("category", "construction");
@@ -2544,8 +2763,9 @@ void RegisterGEOSModule(DatabaseInstance &db) {
 	ST_Within::Register(db);
 
 	// Aggregate Functions
-	ST_Union_Agg::Register(db);
+	ST_MemUnion_Agg::Register(db);
 	ST_Intersection_Agg::Register(db);
+	ST_Union_Agg::Register(db);
 
 	// Coverage Aggregate Functions
 	ST_CoverageInvalidEdges_Agg::Register(db);

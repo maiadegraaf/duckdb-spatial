@@ -28,6 +28,9 @@ public:
 	//! Join Keys statistics (optional)
 	vector<unique_ptr<BaseStatistics>> join_stats;
 
+	bool has_const_distance = false;
+	double const_distance = 0.0;
+
 public:
 	explicit LogicalSpatialJoin(JoinType join_type_p);
 

@@ -77,3 +77,69 @@ MULTIPOLYGON
 MULTIPOLYGON
 GEOMETRYCOLLECTION
 GEOMETRYCOLLECTION
+
+
+# Conversions from GEOMETRY to 2D/3D types
+
+# POINT_2D
+query II
+SELECT geom::POINT_2D,
+       (geom::POINT_2D)::GEOMETRY
+FROM (VALUES (ST_GeomFromText('POINT (1 2)'))) t(geom)
+----
+POINT (1 2)	POINT (1 2)
+
+# POINT_3D
+query III
+SELECT geom::POINT_3D,
+       (geom::POINT_3D)::GEOMETRY,
+       (geom::POINT_3D)::POINT_2D,
+FROM (
+    VALUES (ST_GeomFromText('POINT (1 2)')),     -- 2D to 3D
+           (ST_GeomFromText('POINT Z (1 2 3)'))  -- 3D to 3D
+) t(geom)
+----
+POINT Z (1 2 0)	POINT Z (1 2 0)	POINT (1 2)
+POINT Z (1 2 3)	POINT Z (1 2 3)	POINT (1 2)
+
+# LINESTRING_2D
+query II
+SELECT geom::LINESTRING_2D,
+       (geom::LINESTRING_2D)::GEOMETRY
+FROM (VALUES (ST_GeomFromText('LINESTRING (1 1, 2 2)'))) t(geom)
+----
+LINESTRING (1 1, 2 2)	LINESTRING (1 1, 2 2)
+
+# LINESTRING_3D
+query III
+SELECT geom::LINESTRING_3D,
+       (geom::LINESTRING_3D)::GEOMETRY,
+       (geom::LINESTRING_3D)::LINESTRING_2D
+FROM (
+    VALUES (ST_GeomFromText('LINESTRING (1 1, 2 2)')),       -- 2D to 3D
+           (ST_GeomFromText('LINESTRING Z (1 1 1, 2 2 2)'))  -- 3D to 3D
+) t(geom)
+----
+LINESTRING Z (1 1 0, 2 2 0)	LINESTRING Z (1 1 0, 2 2 0)	LINESTRING (1 1, 2 2)
+LINESTRING Z (1 1 1, 2 2 2)	LINESTRING Z (1 1 1, 2 2 2)	LINESTRING (1 1, 2 2)
+
+# POLYGON_2D
+query II
+SELECT geom::POLYGON_2D,
+       (geom::POLYGON_2D)::GEOMETRY
+FROM (VALUES (ST_GeomFromText('POLYGON((1 1, 2 2, 3 3, 1 1))'))) t(geom)
+----
+POLYGON ((1 1, 2 2, 3 3, 1 1))	POLYGON ((1 1, 2 2, 3 3, 1 1))
+
+# POLYGON_3D
+query III
+SELECT geom::POLYGON_3D,
+       (geom::POLYGON_3D)::GEOMETRY,
+       (geom::POLYGON_3D)::POLYGON_2D
+FROM (
+    VALUES (ST_GeomFromText('POLYGON((1 1, 2 2, 3 3, 1 1))')),           -- 2D to 3D
+           (ST_GeomFromText('POLYGON Z((1 1 1, 2 2 2, 3 3 3, 1 1 1))'))  -- 3D to 3D
+) t(geom)
+----
+POLYGON Z ((1 1 0, 2 2 0, 3 3 0, 1 1 0))	POLYGON Z ((1 1 0, 2 2 0, 3 3 0, 1 1 0))	POLYGON ((1 1, 2 2, 3 3, 1 1))
+POLYGON Z ((1 1 1, 2 2 2, 3 3 3, 1 1 1))	POLYGON Z ((1 1 1, 2 2 2, 3 3 3, 1 1 1))	POLYGON ((1 1, 2 2, 3 3, 1 1))
