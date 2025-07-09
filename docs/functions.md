@@ -5,6 +5,9 @@
 
 | Function | Summary |
 | --- | --- |
+| [`DuckDB_PROJ_Compiled_Version`](#duckdb_proj_compiled_version) | Returns a text description of the PROJ library version that that this instance of DuckDB was compiled against. |
+| [`DuckDB_Proj_Version`](#duckdb_proj_version) | Returns a text description of the PROJ library version that is being used by this instance of DuckDB. |
+| [`ST_Affine`](#st_affine) | Applies an affine transformation to a geometry. |
 | [`ST_Area`](#st_area) | Compute the area of a geometry. |
 | [`ST_Area_Spheroid`](#st_area_spheroid) | Returns the area of a geometry in meters, using an ellipsoidal model of the earth |
 | [`ST_AsGeoJSON`](#st_asgeojson) | Returns the geometry as a GeoJSON fragment |
@@ -12,6 +15,7 @@
 | [`ST_AsSVG`](#st_assvg) | Convert the geometry into a SVG fragment or path |
 | [`ST_AsText`](#st_astext) | Returns the geometry as a WKT string |
 | [`ST_AsWKB`](#st_aswkb) | Returns the geometry as a WKB (Well-Known-Binary) blob |
+| [`ST_Azimuth`](#st_azimuth) | Returns the azimuth (a clockwise angle measured from north) of two points in radian. |
 | [`ST_Boundary`](#st_boundary) | Returns the "boundary" of a geometry |
 | [`ST_Buffer`](#st_buffer) | Returns a buffer around the input geometry at the target distance |
 | [`ST_BuildArea`](#st_buildarea) | Creates a polygonal geometry by attemtping to "fill in" the input geometry. |
@@ -29,11 +33,13 @@
 | [`ST_Covers`](#st_covers) | Returns true if the geom1 "covers" geom2 |
 | [`ST_Crosses`](#st_crosses) | Returns true if geom1 "crosses" geom2 |
 | [`ST_DWithin`](#st_dwithin) | Returns if two geometries are within a target distance of each-other |
+| [`ST_DWithin_GEOS`](#st_dwithin_geos) | Returns if two geometries are within a target distance of each-other |
 | [`ST_DWithin_Spheroid`](#st_dwithin_spheroid) | Returns if two POINT_2D's are within a target distance in meters, using an ellipsoidal model of the earths surface |
 | [`ST_Difference`](#st_difference) | Returns the "difference" between two geometries |
 | [`ST_Dimension`](#st_dimension) | Returns the "topological dimension" of a geometry. |
 | [`ST_Disjoint`](#st_disjoint) | Returns true if the geometries are disjoint |
 | [`ST_Distance`](#st_distance) | Returns the planar distance between two geometries |
+| [`ST_Distance_GEOS`](#st_distance_geos) | Returns the planar distance between two geometries |
 | [`ST_Distance_Sphere`](#st_distance_sphere) | Returns the haversine (great circle) distance between two geometries. |
 | [`ST_Distance_Spheroid`](#st_distance_spheroid) | Returns the distance between two geometries in meters using an ellipsoidal model of the earths surface |
 | [`ST_Dump`](#st_dump) | Dumps a geometry into a list of sub-geometries and their "path" in the original geometry. |
@@ -75,6 +81,7 @@
 | [`ST_M`](#st_m) | Returns the M coordinate of a point geometry |
 | [`ST_MMax`](#st_mmax) | Returns the maximum M coordinate of a geometry |
 | [`ST_MMin`](#st_mmin) | Returns the minimum M coordinate of a geometry |
+| [`ST_MakeBox2D`](#st_makebox2d) | Create a BOX2D from two POINT geometries |
 | [`ST_MakeEnvelope`](#st_makeenvelope) | Create a rectangular polygon from min/max coordinates |
 | [`ST_MakeLine`](#st_makeline) | Create a LINESTRING from a list of POINT geometries |
 | [`ST_MakePolygon`](#st_makepolygon) | Create a POLYGON from a LINESTRING shell |
@@ -83,12 +90,12 @@
 | [`ST_MinimumRotatedRectangle`](#st_minimumrotatedrectangle) | Returns the minimum rotated rectangle that bounds the input geometry, finding the surrounding box that has the lowest area by using a rotated rectangle, rather than taking the lowest and highest coordinate values as per ST_Envelope(). |
 | [`ST_Multi`](#st_multi) | Turns a single geometry into a multi geometry. |
 | [`ST_NGeometries`](#st_ngeometries) | Returns the number of component geometries in a collection geometry. |
-| [`ST_NInteriorRings`](#st_ninteriorrings) | Returns the number if interior rings of a polygon |
+| [`ST_NInteriorRings`](#st_ninteriorrings) | Returns the number of interior rings of a polygon |
 | [`ST_NPoints`](#st_npoints) | Returns the number of vertices within a geometry |
 | [`ST_Node`](#st_node) | Returns a "noded" MultiLinestring, produced by combining a collection of input linestrings and adding additional vertices where they intersect. |
 | [`ST_Normalize`](#st_normalize) | Returns the "normalized" representation of the geometry |
 | [`ST_NumGeometries`](#st_numgeometries) | Returns the number of component geometries in a collection geometry. |
-| [`ST_NumInteriorRings`](#st_numinteriorrings) | Returns the number if interior rings of a polygon |
+| [`ST_NumInteriorRings`](#st_numinteriorrings) | Returns the number of interior rings of a polygon |
 | [`ST_NumPoints`](#st_numpoints) | Returns the number of vertices within a geometry |
 | [`ST_Overlaps`](#st_overlaps) | Returns true if the geometries overlap |
 | [`ST_Perimeter`](#st_perimeter) | Returns the length of the perimeter of the geometry |
@@ -111,11 +118,13 @@
 | [`ST_Simplify`](#st_simplify) | Returns a simplified version of the geometry |
 | [`ST_SimplifyPreserveTopology`](#st_simplifypreservetopology) | Returns a simplified version of the geometry that preserves topology |
 | [`ST_StartPoint`](#st_startpoint) | Returns the start point of a LINESTRING. |
+| [`ST_TileEnvelope`](#st_tileenvelope) | The `ST_TileEnvelope` scalar function generates tile envelope rectangular polygons from specified zoom level and tile indices. |
 | [`ST_Touches`](#st_touches) | Returns true if the geometries touch |
 | [`ST_Transform`](#st_transform) | Transforms a geometry between two coordinate systems |
 | [`ST_Union`](#st_union) | Returns the union of two geometries |
 | [`ST_VoronoiDiagram`](#st_voronoidiagram) | Returns the Voronoi diagram of the supplied MultiPoint geometry |
 | [`ST_Within`](#st_within) | Returns true if the first geometry is within the second |
+| [`ST_WithinProperly`](#st_withinproperly) | Returns true if the first geometry \"properly\" is contained by the second geometry |
 | [`ST_X`](#st_x) | Returns the X coordinate of a point geometry |
 | [`ST_XMax`](#st_xmax) | Returns the maximum X coordinate of a geometry |
 | [`ST_XMin`](#st_xmin) | Returns the minimum X coordinate of a geometry |
@@ -126,7 +135,6 @@
 | [`ST_ZMFlag`](#st_zmflag) | Returns a flag indicating the presence of Z and M values in the input geometry. |
 | [`ST_ZMax`](#st_zmax) | Returns the maximum Z coordinate of a geometry |
 | [`ST_ZMin`](#st_zmin) | Returns the minimum Z coordinate of a geometry |
-| [`DuckDB_PROJ_Version`](#duckdb_proj_version) | Returns the current (runtime) version of the PROJ library. |
 
 **[Aggregate Functions](#aggregate-functions)**
 
@@ -138,7 +146,20 @@
 | [`ST_Envelope_Agg`](#st_envelope_agg) | Alias for [ST_Extent_Agg](#st_extent_agg). |
 | [`ST_Extent_Agg`](#st_extent_agg) | Computes the minimal-bounding-box polygon containing the set of input geometries |
 | [`ST_Intersection_Agg`](#st_intersection_agg) | Computes the intersection of a set of geometries |
+| [`ST_MemUnion_Agg`](#st_memunion_agg) | Computes the union of a set of input geometries. |
 | [`ST_Union_Agg`](#st_union_agg) | Computes the union of a set of input geometries |
+
+**[Macro Functions](#Macro-functions)**
+
+| Function | Summary |
+| --- | --- |
+| [`ST_Rotate`](#st_rotate) | Alias of ST_RotateZ |
+| [`ST_RotateX`](#st_rotatex) | Rotates a geometry around the X axis. This is a shorthand macro for calling ST_Affine. |
+| [`ST_RotateY`](#st_rotatey) | Rotates a geometry around the Y axis. This is a shorthand macro for calling ST_Affine. |
+| [`ST_RotateZ`](#st_rotatez) | Rotates a geometry around the Z axis. This is a shorthand macro for calling ST_Affine. |
+| [`ST_Scale`](#st_scale) |  |
+| [`ST_TransScale`](#st_transscale) | Translates and then scales a geometry in X and Y direction. This is a shorthand macro for calling ST_Affine. |
+| [`ST_Translate`](#st_translate) |  |
 
 **[Table Functions](#table-functions)**
 
@@ -148,11 +169,120 @@
 | [`ST_GeneratePoints`](#st_generatepoints) | Generates a set of random points within the specified bounding box. |
 | [`ST_Read`](#st_read) | Read and import a variety of geospatial file formats using the GDAL library. |
 | [`ST_ReadOSM`](#st_readosm) | The `ST_ReadOsm()` table function enables reading compressed OpenStreetMap data directly from a `.osm.pbf file.` |
+| [`ST_ReadSHP`](#st_readshp) | Read a Shapefile without relying on the GDAL library |
 | [`ST_Read_Meta`](#st_read_meta) | Read the metadata from a variety of geospatial file formats using the GDAL library. |
 
 ----
 
 ## Scalar Functions
+
+### DuckDB_PROJ_Compiled_Version
+
+
+#### Signature
+
+```sql
+VARCHAR DuckDB_PROJ_Compiled_Version ()
+```
+
+#### Description
+
+Returns a text description of the PROJ library version that that this instance of DuckDB was compiled against.
+
+#### Example
+
+```sql
+SELECT duckdb_proj_compiled_version();
+┌────────────────────────────────┐
+│ duckdb_proj_compiled_version() │
+│            varchar             │
+├────────────────────────────────┤
+│ Rel. 9.1.1, December 1st, 2022 │
+└────────────────────────────────┘
+```
+
+----
+
+### DuckDB_Proj_Version
+
+
+#### Signature
+
+```sql
+VARCHAR DuckDB_Proj_Version ()
+```
+
+#### Description
+
+Returns a text description of the PROJ library version that is being used by this instance of DuckDB.
+
+#### Example
+
+```sql
+SELECT duckdb_proj_version();
+┌───────────────────────┐
+│ duckdb_proj_version() │
+│        varchar        │
+├───────────────────────┤
+│ 9.1.1                 │
+└───────────────────────┘
+```
+
+----
+
+### ST_Affine
+
+
+#### Signatures
+
+```sql
+GEOMETRY ST_Affine (geom GEOMETRY, a DOUBLE, b DOUBLE, c DOUBLE, d DOUBLE, e DOUBLE, f DOUBLE, g DOUBLE, h DOUBLE, i DOUBLE, xoff DOUBLE, yoff DOUBLE, zoff DOUBLE)
+GEOMETRY ST_Affine (geom GEOMETRY, a DOUBLE, b DOUBLE, d DOUBLE, e DOUBLE, xoff DOUBLE, yoff DOUBLE)
+```
+
+#### Description
+
+Applies an affine transformation to a geometry.
+
+For the 2D variant, the transformation matrix is defined as follows:
+```
+| a b xoff |
+| d e yoff |
+| 0 0 1    |
+```
+
+For the 3D variant, the transformation matrix is defined as follows:
+```
+| a b c xoff |
+| d e f yoff |
+| g h i zoff |
+| 0 0 0 1    |
+```
+
+The transformation is applied to all vertices of the geometry.
+
+#### Example
+
+```sql
+-- Translate a point by (2, 3)
+SELECT ST_Affine(ST_Point(1, 1),
+                 1, 0,   -- a, b
+                 0, 1,   -- d, e
+                 2, 3);  -- xoff, yoff
+----
+POINT (3 4)
+
+-- Scale a geometry by factor 2 in X and Y
+SELECT ST_Affine(ST_Point(1, 1),
+                 2, 0, 0,   -- a, b, c
+                 0, 2, 0,   -- d, e, f
+                 0, 0, 1,   -- g, h, i
+                 0, 0, 0);  -- xoff, yoff, zoff
+----
+POINT (2 2)
+```
+
+----
 
 ### ST_Area
 
@@ -317,7 +447,7 @@ Returns the geometry as a WKT string
 #### Example
 
 ```sql
-SELECT ST_AsText(ST_MakeEnvelope(0,0,1,1));
+SELECT ST_MakeEnvelope(0,0,1,1);
 ----
 POLYGON ((0 0, 0 1, 1 1, 1 0, 0 0))
 ```
@@ -343,6 +473,30 @@ Returns the geometry as a WKB (Well-Known-Binary) blob
 SELECT ST_AsWKB('POLYGON((0 0, 0 1, 1 1, 1 0, 0 0))'::GEOMETRY)::BLOB;
 ----
 \x01\x03\x00\x00\x00\x01\x00\x00\x00\x05...
+```
+
+----
+
+### ST_Azimuth
+
+
+#### Signatures
+
+```sql
+DOUBLE ST_Azimuth (origin GEOMETRY, target GEOMETRY)
+DOUBLE ST_Azimuth (origin POINT_2D, target POINT_2D)
+```
+
+#### Description
+
+Returns the azimuth (a clockwise angle measured from north) of two points in radian.
+
+#### Example
+
+```sql
+SELECT degrees(ST_Azimuth(ST_Point(0, 0), ST_Point(0, 1)));
+----
+90.0
 ```
 
 ----
@@ -416,12 +570,12 @@ Unlike ST_Polygonize, this function does not fill in holes.
 #### Signatures
 
 ```sql
+GEOMETRY ST_Centroid (geom GEOMETRY)
 POINT_2D ST_Centroid (point POINT_2D)
 POINT_2D ST_Centroid (linestring LINESTRING_2D)
 POINT_2D ST_Centroid (polygon POLYGON_2D)
 POINT_2D ST_Centroid (box BOX_2D)
 POINT_2D ST_Centroid (box BOX_2DF)
-GEOMETRY ST_Centroid (geom GEOMETRY)
 ```
 
 #### Description
@@ -702,6 +856,21 @@ Returns if two geometries are within a target distance of each-other
 
 ----
 
+### ST_DWithin_GEOS
+
+
+#### Signature
+
+```sql
+BOOLEAN ST_DWithin_GEOS (geom1 GEOMETRY, geom2 GEOMETRY, distance DOUBLE)
+```
+
+#### Description
+
+Returns if two geometries are within a target distance of each-other
+
+----
+
 ### ST_DWithin_Spheroid
 
 
@@ -787,6 +956,34 @@ DOUBLE ST_Distance (point1 POINT_2D, point2 POINT_2D)
 DOUBLE ST_Distance (point POINT_2D, linestring LINESTRING_2D)
 DOUBLE ST_Distance (linestring LINESTRING_2D, point POINT_2D)
 DOUBLE ST_Distance (geom1 GEOMETRY, geom2 GEOMETRY)
+```
+
+#### Description
+
+Returns the planar distance between two geometries
+
+#### Example
+
+```sql
+SELECT ST_Distance('POINT (0 0)'::GEOMETRY, 'POINT (3 4)'::GEOMETRY);
+----
+5.0
+
+-- Z coordinates are ignored
+SELECT ST_Distance('POINT Z (0 0 0)'::GEOMETRY, 'POINT Z (3 4 5)'::GEOMETRY);
+----
+5.0
+```
+
+----
+
+### ST_Distance_GEOS
+
+
+#### Signature
+
+```sql
+DOUBLE ST_Distance_GEOS (geom1 GEOMETRY, geom2 GEOMETRY)
 ```
 
 #### Description
@@ -1595,6 +1792,29 @@ SELECT ST_MMin(ST_Point(1, 2, 3, 4))
 
 ----
 
+### ST_MakeBox2D
+
+
+#### Signature
+
+```sql
+BOX_2D ST_MakeBox2D (point1 GEOMETRY, point2 GEOMETRY)
+```
+
+#### Description
+
+Create a BOX2D from two POINT geometries
+
+#### Example
+
+```sql
+SELECT ST_MakeBox2D(ST_Point(0, 0), ST_Point(1, 1));
+----
+BOX(0 0, 1 1)
+```
+
+----
+
 ### ST_MakeEnvelope
 
 
@@ -1688,6 +1908,17 @@ Returns the maximum inscribed circle of the input geometry, optionally with a to
 By default, the tolerance is computed as `max(width, height) / 1000`.
 The return value is a struct with the center of the circle, the nearest point to the center on the boundary of the geometry, and the radius of the circle.
 
+#### Example
+
+```sql
+-- Find the maximum inscribed circle of a square
+SELECT ST_MaximumInscribedCircle(
+    ST_GeomFromText('POLYGON((0 0, 10 0, 10 10, 0 10, 0 0))')
+);
+----
+{'center': POINT (5 5), 'nearest': POINT (5 0), 'radius': 5.0}
+```
+
 ----
 
 ### ST_MinimumRotatedRectangle
@@ -1766,7 +1997,7 @@ INTEGER ST_NInteriorRings (polygon POLYGON_2D)
 
 #### Description
 
-Returns the number if interior rings of a polygon
+Returns the number of interior rings of a polygon
 
 ----
 
@@ -1801,6 +2032,17 @@ GEOMETRY ST_Node (geom GEOMETRY)
 #### Description
 
 Returns a "noded" MultiLinestring, produced by combining a collection of input linestrings and adding additional vertices where they intersect.
+
+#### Example
+
+```sql
+-- Create a noded multilinestring from two intersecting lines
+SELECT ST_Node(
+    ST_GeomFromText('MULTILINESTRING((0 0, 2 2), (0 2, 2 0))')
+);
+----
+MULTILINESTRING ((0 0, 1 1), (1 1, 2 2), (0 2, 1 1), (1 1, 2 0))
+```
 
 ----
 
@@ -1847,7 +2089,7 @@ INTEGER ST_NumInteriorRings (polygon POLYGON_2D)
 
 #### Description
 
-Returns the number if interior rings of a polygon
+Returns the number of interior rings of a polygon
 
 ----
 
@@ -2083,6 +2325,17 @@ GEOMETRY ST_Polygonize (geometries GEOMETRY[])
 
 Returns a polygonized representation of the input geometries
 
+#### Example
+
+```sql
+-- Create a polygon from a closed linestring ring
+SELECT ST_Polygonize([
+    ST_GeomFromText('LINESTRING(0 0, 0 10, 10 10, 10 0, 0 0)')
+]);
+---
+GEOMETRYCOLLECTION (POLYGON ((0 0, 0 10, 10 10, 10 0, 0 0)))
+```
+
 ----
 
 ### ST_QuadKey
@@ -2225,6 +2478,44 @@ Returns the start point of a LINESTRING.
 
 ----
 
+### ST_TileEnvelope
+
+
+#### Signature
+
+```sql
+GEOMETRY ST_TileEnvelope (tile_zoom INTEGER, tile_x INTEGER, tile_y INTEGER)
+```
+
+#### Description
+
+The `ST_TileEnvelope` scalar function generates tile envelope rectangular polygons from specified zoom level and tile indices.
+
+This is used in MVT generation to select the features corresponding to the tile extent. The envelope is in the Web Mercator
+coordinate reference system (EPSG:3857). The tile pyramid starts at zoom level 0, corresponding to a single tile for the
+world. Each zoom level doubles the number of tiles in each direction, such that zoom level 1 is 2 tiles wide by 2 tiles high,
+zoom level 2 is 4 tiles wide by 4 tiles high, and so on. Tile indices start at `[x=0, y=0]` at the top left, and increase
+down and right. For example, at zoom level 2, the top right tile is `[x=3, y=0]`, the bottom left tile is `[x=0, y=3]`, and
+the bottom right is `[x=3, y=3]`.
+
+```sql
+SELECT ST_TileEnvelope(2, 3, 1);
+```
+
+#### Example
+
+```sql
+SELECT ST_TileEnvelope(2, 3, 1);
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                         st_tileenvelope(2, 3, 1)                                          │
+│                                                 geometry                                                  │
+├───────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ POLYGON ((1.00188E+07 0, 1.00188E+07 1.00188E+07, 2.00375E+07 1.00188E+07, 2.00375E+07 0, 1.00188E+07 0)) │
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+----
+
 ### ST_Touches
 
 
@@ -2273,13 +2564,12 @@ DuckDB spatial vendors its own static copy of the PROJ database of coordinate sy
 -- but the output will be [easting, northing] because that is what's defined by
 -- WebMercator.
 
-SELECT ST_AsText(
+SELECT
     ST_Transform(
         st_point(52.373123, 4.892360),
         'EPSG:4326',
         'EPSG:3857'
-    )
-);
+    );
 ----
 POINT (544615.0239773799 6867874.103539125)
 
@@ -2289,15 +2579,14 @@ POINT (544615.0239773799 6867874.103539125)
 -- a [northing, easting] axis order instead, even though the source coordinate
 -- reference system definition (WGS84) says otherwise.
 
-SELECT ST_AsText(
+SELECT 
     ST_Transform(
         -- note the axis order is reversed here
         st_point(4.892360, 52.373123),
         'EPSG:4326',
         'EPSG:3857',
         always_xy := true
-    )
-);
+    );
 ----
 POINT (544615.0239773799 6867874.103539125)
 
@@ -2366,6 +2655,23 @@ BOOLEAN ST_Within (geom1 GEOMETRY, geom2 GEOMETRY)
 #### Description
 
 Returns true if the first geometry is within the second
+
+----
+
+### ST_WithinProperly
+
+
+#### Signature
+
+```sql
+BOOLEAN ST_WithinProperly (geom1 GEOMETRY, geom2 GEOMETRY)
+```
+
+#### Description
+
+Returns true if the first geometry \"properly\" is contained by the second geometry
+
+This function functions the same as `ST_ContainsProperly`, but the arguments are swapped.
 
 ----
 
@@ -2624,49 +2930,6 @@ SELECT ST_ZMin(ST_Point(1, 2, 3))
 
 ----
 
-### DuckDB_PROJ_Version
-
-
-#### Signature
-
-```sql
-VARCHAR DuckDB_PROJ_Version ()
-```
-
-#### Description
-
-Returns runtime version of the supporting PROJ library.
-
-#### Example
-
-```sql
-SELECT DuckDB_PROJ_Version()
-```
-
-----
-
-
-### DuckDB_PROJ_Compiled_Version
-
-
-#### Signature
-
-```sql
-VARCHAR DuckDB_PROJ_Compiled_Version ()
-```
-
-#### Description
-
-Returns compile-time version of the supporting PROJ library.
-
-#### Example
-
-```sql
-SELECT DuckDB_PROJ_Compiled_Version()
-```
-
-----
-
 ## Aggregate Functions
 
 ### ST_CoverageInvalidEdges_Agg
@@ -2777,6 +3040,22 @@ Computes the intersection of a set of geometries
 
 ----
 
+### ST_MemUnion_Agg
+
+
+#### Signature
+
+```sql
+GEOMETRY ST_MemUnion_Agg (col0 GEOMETRY)
+```
+
+#### Description
+
+Computes the union of a set of input geometries.
+                "Slower, but might be more memory efficient than ST_UnionAgg as each geometry is merged into the union individually rather than all at once.
+
+----
+
 ### ST_Union_Agg
 
 
@@ -2789,6 +3068,143 @@ GEOMETRY ST_Union_Agg (col0 GEOMETRY)
 #### Description
 
 Computes the union of a set of input geometries
+
+----
+
+## Macro Functions
+
+### ST_Rotate
+
+
+#### Signature
+
+```sql
+GEOMETRY ST_Rotate (geom GEOMETRY, radians double)
+```
+
+#### Description
+
+Alias of ST_RotateZ
+
+----
+
+### ST_RotateX
+
+
+#### Signature
+
+```sql
+GEOMETRY ST_RotateX (geom GEOMETRY, radians double)
+```
+
+#### Description
+
+Rotates a geometry around the X axis. This is a shorthand macro for calling ST_Affine.
+
+#### Example
+
+```sql
+-- Rotate a 3D point 90 degrees (π/2 radians) around the X-axis
+SELECT ST_RotateX(ST_GeomFromText('POINT Z(0 1 0)'), pi()/2);
+----
+POINT Z (0 0 1)
+```
+
+----
+
+### ST_RotateY
+
+
+#### Signature
+
+```sql
+GEOMETRY ST_RotateY (geom GEOMETRY, radians double)
+```
+
+#### Description
+
+Rotates a geometry around the Y axis. This is a shorthand macro for calling ST_Affine.
+
+#### Example
+
+```sql
+-- Rotate a 3D point 90 degrees (π/2 radians) around the Y-axis
+SELECT ST_RotateY(ST_GeomFromText('POINT Z(1 0 0)'), pi()/2);
+----
+POINT Z (0 0 -1)
+```
+
+----
+
+### ST_RotateZ
+
+
+#### Signature
+
+```sql
+GEOMETRY ST_RotateZ (geom GEOMETRY, radians double)
+```
+
+#### Description
+
+Rotates a geometry around the Z axis. This is a shorthand macro for calling ST_Affine.
+
+#### Example
+
+```sql
+-- Rotate a point 90 degrees (π/2 radians) around the Z-axis
+SELECT ST_RotateZ(ST_Point(1, 0), pi()/2);
+----
+POINT (0 1)
+```
+
+----
+
+### ST_Scale
+
+
+#### Signatures
+
+```sql
+GEOMETRY ST_Scale (geom GEOMETRY, xs double, ys double, zs double)
+GEOMETRY ST_Scale (geom GEOMETRY, xs double, ys double)
+```
+
+----
+
+### ST_TransScale
+
+
+#### Signature
+
+```sql
+GEOMETRY ST_TransScale (geom GEOMETRY, dx double, dy double, xs double, ys double)
+```
+
+#### Description
+
+Translates and then scales a geometry in X and Y direction. This is a shorthand macro for calling ST_Affine.
+
+#### Example
+
+```sql
+-- Translate by (1, 2) then scale by (2, 3)
+SELECT ST_TransScale(ST_Point(1, 1), 1, 2, 2, 3);
+----
+POINT (4 9)
+```
+
+----
+
+### ST_Translate
+
+
+#### Signatures
+
+```sql
+GEOMETRY ST_Translate (geom GEOMETRY, dx double, dy double, dz double)
+GEOMETRY ST_Translate (geom GEOMETRY, dx double, dy double)
+```
 
 ----
 
@@ -2893,10 +3309,10 @@ The following formats are currently recognized by their file extension:
 
 ```sql
 -- Read a Shapefile
-ELECT * FROM ST_Read('some/file/path/filename.shp');
+SELECT * FROM ST_Read('some/file/path/filename.shp');
 
-- Read a GeoJSON file
-REATE TABLE my_geojson_table AS SELECT * FROM ST_Read('some/file/path/filename.json');
+-- Read a GeoJSON file
+CREATE TABLE my_geojson_table AS SELECT * FROM ST_Read('some/file/path/filename.json');
 ```
 
 ----
@@ -2939,6 +3355,20 @@ LIMIT 5;
 │ node                 │ 125801 │ {TMC:cid_58:tabcd_…  │         │ 53.070685000000005 │  8.7819939 │           │                        │
 └──────────────────────┴────────┴──────────────────────┴─────────┴────────────────────┴────────────┴───────────┴────────────────────────┘
 ```
+
+----
+
+### ST_ReadSHP
+
+#### Signature
+
+```sql
+ST_ReadSHP (col0 VARCHAR, encoding VARCHAR)
+```
+
+#### Description
+
+Read a Shapefile without relying on the GDAL library
 
 ----
 

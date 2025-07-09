@@ -2,13 +2,13 @@
 
 namespace duckdb {
 
-class DatabaseInstance;
+class ExtensionLoader;
 
 struct RTreeModule {
-	static void RegisterIndex(DatabaseInstance &db);
-	static void RegisterIndexScan(DatabaseInstance &db);
-	static void RegisterIndexPlanScan(DatabaseInstance &db);
-	static void RegisterIndexPragmas(DatabaseInstance &db);
+	static void RegisterIndex(ExtensionLoader &loader);
+	static void RegisterIndexScan(ExtensionLoader &loader);
+	static void RegisterIndexPlanScan(ExtensionLoader &loader);
+	static void RegisterIndexPragmas(ExtensionLoader &loader);
 };
 
 } // namespace duckdb

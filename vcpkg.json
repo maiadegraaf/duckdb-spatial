@@ -6,13 +6,37 @@
     "geos",
     "expat",
     {
+      "name": "sqlite3",
+      "features": ["rtree"],
+      "default-features": false
+    },
+    {
+      "name": "proj",
+      "default-features": false,
+      "version>=": "9.1.1"
+    },
+    {
       "name": "curl",
       "platform": "!wasm32 & !ios & !android",
       "features": ["openssl"],
       "default-features": false
+    },
+    {
+      "name": "gdal",
+      "version>=": "3.8.5",
+      "features": [
+        {
+          "name": "network",
+          "platform": "!wasm32 & !ios & !android"
+        },
+        "geos"
+      ]
     }
   ],
   "vcpkg-configuration": {
+    "overlay-ports": [
+      "./vcpkg_ports"
+    ],
     "registries": [
       {
         "kind": "git",
@@ -22,5 +46,5 @@
       }
     ]
   },
-  "builtin-baseline" : "5e5d0e1cd7785623065e77eff011afdeec1a3574"
+  "builtin-baseline" : "ce613c41372b23b1f51333815feb3edd87ef8a8b"
 }

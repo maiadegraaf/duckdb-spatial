@@ -209,8 +209,8 @@ struct ST_Boundary {
 		    });
 	}
 
-	static void Register(DatabaseInstance &db) {
-		FunctionBuilder::RegisterScalar(db, "ST_Boundary", [](ScalarFunctionBuilder &func) {
+	static void Register(ExtensionLoader &loader) {
+		FunctionBuilder::RegisterScalar(loader, "ST_Boundary", [](ScalarFunctionBuilder &func) {
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("geom", GeoTypes::GEOMETRY());
 				variant.SetReturnType(GeoTypes::GEOMETRY());
@@ -306,9 +306,9 @@ struct ST_Buffer {
 	)";
 	static constexpr auto EXAMPLE = "";
 
-	static void Register(DatabaseInstance &db) {
+	static void Register(ExtensionLoader &loader) {
 
-		FunctionBuilder::RegisterScalar(db, "ST_Buffer", [](ScalarFunctionBuilder &func) {
+		FunctionBuilder::RegisterScalar(loader, "ST_Buffer", [](ScalarFunctionBuilder &func) {
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("geom", GeoTypes::GEOMETRY());
 				variant.AddParameter("distance", LogicalType::DOUBLE);
@@ -366,8 +366,8 @@ struct ST_BuildArea {
 
 		Unlike ST_Polygonize, this function does not fill in holes.)";
 
-	static void Register(DatabaseInstance &db) {
-		FunctionBuilder::RegisterScalar(db, "ST_BuildArea", [](ScalarFunctionBuilder &func) {
+	static void Register(ExtensionLoader &loader) {
+		FunctionBuilder::RegisterScalar(loader, "ST_BuildArea", [](ScalarFunctionBuilder &func) {
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("geom", GeoTypes::GEOMETRY());
 				variant.SetReturnType(GeoTypes::GEOMETRY());
@@ -391,8 +391,8 @@ struct ST_Contains : AsymmetricPreparedBinaryFunction<ST_Contains> {
 		return lhs.contains(rhs);
 	}
 
-	static void Register(DatabaseInstance &db) {
-		FunctionBuilder::RegisterScalar(db, "ST_Contains", [](ScalarFunctionBuilder &func) {
+	static void Register(ExtensionLoader &loader) {
+		FunctionBuilder::RegisterScalar(loader, "ST_Contains", [](ScalarFunctionBuilder &func) {
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("geom1", GeoTypes::GEOMETRY());
 				variant.AddParameter("geom2", GeoTypes::GEOMETRY());
@@ -425,8 +425,8 @@ struct ST_ContainsProperly : AsymmetricPreparedBinaryFunction<ST_ContainsProperl
 		return lhs.contains_properly(rhs);
 	}
 
-	static void Register(DatabaseInstance &db) {
-		FunctionBuilder::RegisterScalar(db, "ST_ContainsProperly", [](ScalarFunctionBuilder &func) {
+	static void Register(ExtensionLoader &loader) {
+		FunctionBuilder::RegisterScalar(loader, "ST_ContainsProperly", [](ScalarFunctionBuilder &func) {
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("geom1", GeoTypes::GEOMETRY());
 				variant.AddParameter("geom2", GeoTypes::GEOMETRY());
@@ -459,8 +459,8 @@ struct ST_WithinProperly : AsymmetricPreparedBinaryFunction<ST_WithinProperly> {
 		return lhs.contains_properly(rhs);
 	}
 
-	static void Register(DatabaseInstance &db) {
-		FunctionBuilder::RegisterScalar(db, "ST_WithinProperly", [](ScalarFunctionBuilder &func) {
+	static void Register(ExtensionLoader &loader) {
+		FunctionBuilder::RegisterScalar(loader, "ST_WithinProperly", [](ScalarFunctionBuilder &func) {
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("geom1", GeoTypes::GEOMETRY());
 				variant.AddParameter("geom2", GeoTypes::GEOMETRY());
@@ -494,8 +494,8 @@ struct ST_ConcaveHull {
 		    });
 	}
 
-	static void Register(DatabaseInstance &db) {
-		FunctionBuilder::RegisterScalar(db, "ST_ConcaveHull", [](ScalarFunctionBuilder &func) {
+	static void Register(ExtensionLoader &loader) {
+		FunctionBuilder::RegisterScalar(loader, "ST_ConcaveHull", [](ScalarFunctionBuilder &func) {
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("geom", GeoTypes::GEOMETRY());
 				variant.AddParameter("ratio", LogicalType::DOUBLE);
@@ -528,8 +528,8 @@ struct ST_ConvexHull {
 		});
 	}
 
-	static void Register(DatabaseInstance &db) {
-		FunctionBuilder::RegisterScalar(db, "ST_ConvexHull", [](ScalarFunctionBuilder &func) {
+	static void Register(ExtensionLoader &loader) {
+		FunctionBuilder::RegisterScalar(loader, "ST_ConvexHull", [](ScalarFunctionBuilder &func) {
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("geom", GeoTypes::GEOMETRY());
 				variant.SetReturnType(GeoTypes::GEOMETRY());
@@ -606,8 +606,8 @@ struct ST_CoverageInvalidEdges {
 		    });
 	}
 
-	static void Register(DatabaseInstance &db) {
-		FunctionBuilder::RegisterScalar(db, "ST_CoverageInvalidEdges", [](ScalarFunctionBuilder &func) {
+	static void Register(ExtensionLoader &loader) {
+		FunctionBuilder::RegisterScalar(loader, "ST_CoverageInvalidEdges", [](ScalarFunctionBuilder &func) {
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("geoms", LogicalType::LIST(GeoTypes::GEOMETRY()));
 				variant.AddParameter("tolerance", LogicalType::DOUBLE);
@@ -691,8 +691,8 @@ struct ST_CoverageSimplify {
 		    });
 	}
 
-	static void Register(DatabaseInstance &db) {
-		FunctionBuilder::RegisterScalar(db, "ST_CoverageSimplify", [](ScalarFunctionBuilder &func) {
+	static void Register(ExtensionLoader &loader) {
+		FunctionBuilder::RegisterScalar(loader, "ST_CoverageSimplify", [](ScalarFunctionBuilder &func) {
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("geoms", LogicalType::LIST(GeoTypes::GEOMETRY()));
 				variant.AddParameter("tolerance", LogicalType::DOUBLE);
@@ -767,8 +767,8 @@ struct ST_CoverageUnion {
 		});
 	}
 
-	static void Register(DatabaseInstance &db) {
-		FunctionBuilder::RegisterScalar(db, "ST_CoverageUnion", [](ScalarFunctionBuilder &func) {
+	static void Register(ExtensionLoader &loader) {
+		FunctionBuilder::RegisterScalar(loader, "ST_CoverageUnion", [](ScalarFunctionBuilder &func) {
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("geoms", LogicalType::LIST(GeoTypes::GEOMETRY()));
 				variant.SetReturnType(GeoTypes::GEOMETRY());
@@ -794,8 +794,8 @@ struct ST_CoveredBy : AsymmetricPreparedBinaryFunction<ST_CoveredBy> {
 	static bool ExecutePredicatePrepared(const PreparedGeosGeometry &lhs, const GeosGeometry &rhs) {
 		return lhs.covered_by(rhs);
 	}
-	static void Register(DatabaseInstance &db) {
-		FunctionBuilder::RegisterScalar(db, "ST_CoveredBy", [](ScalarFunctionBuilder &func) {
+	static void Register(ExtensionLoader &loader) {
+		FunctionBuilder::RegisterScalar(loader, "ST_CoveredBy", [](ScalarFunctionBuilder &func) {
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("geom1", GeoTypes::GEOMETRY());
 				variant.AddParameter("geom2", GeoTypes::GEOMETRY());
@@ -819,8 +819,8 @@ struct ST_Covers : AsymmetricPreparedBinaryFunction<ST_Covers> {
 	static bool ExecutePredicatePrepared(const PreparedGeosGeometry &lhs, const GeosGeometry &rhs) {
 		return lhs.covers(rhs);
 	}
-	static void Register(DatabaseInstance &db) {
-		FunctionBuilder::RegisterScalar(db, "ST_Covers", [](ScalarFunctionBuilder &func) {
+	static void Register(ExtensionLoader &loader) {
+		FunctionBuilder::RegisterScalar(loader, "ST_Covers", [](ScalarFunctionBuilder &func) {
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("geom1", GeoTypes::GEOMETRY());
 				variant.AddParameter("geom2", GeoTypes::GEOMETRY());
@@ -844,8 +844,8 @@ struct ST_Crosses : SymmetricPreparedBinaryFunction<ST_Crosses> {
 	static bool ExecutePredicatePrepared(const PreparedGeosGeometry &lhs, const GeosGeometry &rhs) {
 		return lhs.crosses(rhs);
 	}
-	static void Register(DatabaseInstance &db) {
-		FunctionBuilder::RegisterScalar(db, "ST_Crosses", [](ScalarFunctionBuilder &func) {
+	static void Register(ExtensionLoader &loader) {
+		FunctionBuilder::RegisterScalar(loader, "ST_Crosses", [](ScalarFunctionBuilder &func) {
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("geom1", GeoTypes::GEOMETRY());
 				variant.AddParameter("geom2", GeoTypes::GEOMETRY());
@@ -875,8 +875,8 @@ struct ST_Difference {
 		                                                      });
 	}
 
-	static void Register(DatabaseInstance &db) {
-		FunctionBuilder::RegisterScalar(db, "ST_Difference", [](ScalarFunctionBuilder &func) {
+	static void Register(ExtensionLoader &loader) {
+		FunctionBuilder::RegisterScalar(loader, "ST_Difference", [](ScalarFunctionBuilder &func) {
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("geom1", GeoTypes::GEOMETRY());
 				variant.AddParameter("geom2", GeoTypes::GEOMETRY());
@@ -900,8 +900,8 @@ struct ST_Disjoint : SymmetricPreparedBinaryFunction<ST_Disjoint> {
 	static bool ExecutePredicatePrepared(const PreparedGeosGeometry &lhs, const GeosGeometry &rhs) {
 		return lhs.disjoint(rhs);
 	}
-	static void Register(DatabaseInstance &db) {
-		FunctionBuilder::RegisterScalar(db, "ST_Disjoint", [](ScalarFunctionBuilder &func) {
+	static void Register(ExtensionLoader &loader) {
+		FunctionBuilder::RegisterScalar(loader, "ST_Disjoint", [](ScalarFunctionBuilder &func) {
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("geom1", GeoTypes::GEOMETRY());
 				variant.AddParameter("geom2", GeoTypes::GEOMETRY());
@@ -925,8 +925,8 @@ struct ST_Distance : SymmetricPreparedBinaryFunction<ST_Distance, double> {
 	static double ExecutePredicatePrepared(const PreparedGeosGeometry &lhs, const GeosGeometry &rhs) {
 		return lhs.distance_to(rhs);
 	}
-	static void Register(DatabaseInstance &db) {
-		FunctionBuilder::RegisterScalar(db, "ST_Distance", [](ScalarFunctionBuilder &func) {
+	static void Register(ExtensionLoader &loader) {
+		FunctionBuilder::RegisterScalar(loader, "ST_Distance_GEOS", [](ScalarFunctionBuilder &func) {
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("geom1", GeoTypes::GEOMETRY());
 				variant.AddParameter("geom2", GeoTypes::GEOMETRY());
@@ -1015,8 +1015,8 @@ struct ST_DistanceWithin {
 		}
 	}
 
-	static void Register(DatabaseInstance &db) {
-		FunctionBuilder::RegisterScalar(db, "ST_DWithin", [](ScalarFunctionBuilder &func) {
+	static void Register(ExtensionLoader &loader) {
+		FunctionBuilder::RegisterScalar(loader, "ST_DWithin_GEOS", [](ScalarFunctionBuilder &func) {
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("geom1", GeoTypes::GEOMETRY());
 				variant.AddParameter("geom2", GeoTypes::GEOMETRY());
@@ -1048,8 +1048,8 @@ struct ST_Equals {
 			                                                  return lhs.equals(rhs);
 		                                                  });
 	}
-	static void Register(DatabaseInstance &db) {
-		FunctionBuilder::RegisterScalar(db, "ST_Equals", [](ScalarFunctionBuilder &func) {
+	static void Register(ExtensionLoader &loader) {
+		FunctionBuilder::RegisterScalar(loader, "ST_Equals", [](ScalarFunctionBuilder &func) {
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("geom1", GeoTypes::GEOMETRY());
 				variant.AddParameter("geom2", GeoTypes::GEOMETRY());
@@ -1077,8 +1077,8 @@ struct ST_Envelope {
 		});
 	}
 
-	static void Register(DatabaseInstance &db) {
-		FunctionBuilder::RegisterScalar(db, "ST_Envelope", [](ScalarFunctionBuilder &func) {
+	static void Register(ExtensionLoader &loader) {
+		FunctionBuilder::RegisterScalar(loader, "ST_Envelope", [](ScalarFunctionBuilder &func) {
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("geom", GeoTypes::GEOMETRY());
 				variant.SetReturnType(GeoTypes::GEOMETRY());
@@ -1107,8 +1107,8 @@ struct ST_Intersection {
 		                                                      });
 	}
 
-	static void Register(DatabaseInstance &db) {
-		FunctionBuilder::RegisterScalar(db, "ST_Intersection", [](ScalarFunctionBuilder &func) {
+	static void Register(ExtensionLoader &loader) {
+		FunctionBuilder::RegisterScalar(loader, "ST_Intersection", [](ScalarFunctionBuilder &func) {
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("geom1", GeoTypes::GEOMETRY());
 				variant.AddParameter("geom2", GeoTypes::GEOMETRY());
@@ -1134,8 +1134,8 @@ struct ST_Intersects : SymmetricPreparedBinaryFunction<ST_Intersects> {
 		return lhs.intersects(rhs);
 	}
 
-	static void Register(DatabaseInstance &db) {
-		FunctionBuilder::RegisterScalar(db, "ST_Intersects", [](ScalarFunctionBuilder &func) {
+	static void Register(ExtensionLoader &loader) {
+		FunctionBuilder::RegisterScalar(loader, "ST_Intersects", [](ScalarFunctionBuilder &func) {
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("geom1", GeoTypes::GEOMETRY());
 				variant.AddParameter("geom2", GeoTypes::GEOMETRY());
@@ -1161,8 +1161,8 @@ struct ST_IsRing {
 		});
 	}
 
-	static void Register(DatabaseInstance &db) {
-		FunctionBuilder::RegisterScalar(db, "ST_IsRing", [](ScalarFunctionBuilder &func) {
+	static void Register(ExtensionLoader &loader) {
+		FunctionBuilder::RegisterScalar(loader, "ST_IsRing", [](ScalarFunctionBuilder &func) {
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("geom", GeoTypes::GEOMETRY());
 				variant.SetReturnType(LogicalType::BOOLEAN);
@@ -1187,8 +1187,8 @@ struct ST_IsSimple {
 		});
 	}
 
-	static void Register(DatabaseInstance &db) {
-		FunctionBuilder::RegisterScalar(db, "ST_IsSimple", [](ScalarFunctionBuilder &func) {
+	static void Register(ExtensionLoader &loader) {
+		FunctionBuilder::RegisterScalar(loader, "ST_IsSimple", [](ScalarFunctionBuilder &func) {
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("geom", GeoTypes::GEOMETRY());
 				variant.SetReturnType(LogicalType::BOOLEAN);
@@ -1219,8 +1219,8 @@ struct ST_IsValid {
 			}
 		});
 	}
-	static void Register(DatabaseInstance &db) {
-		FunctionBuilder::RegisterScalar(db, "ST_IsValid", [](ScalarFunctionBuilder &func) {
+	static void Register(ExtensionLoader &loader) {
+		FunctionBuilder::RegisterScalar(loader, "ST_IsValid", [](ScalarFunctionBuilder &func) {
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("geom", GeoTypes::GEOMETRY());
 				variant.SetReturnType(LogicalType::BOOLEAN);
@@ -1259,8 +1259,8 @@ struct ST_LineMerge {
 		                                                  });
 	}
 
-	static void Register(DatabaseInstance &db) {
-		FunctionBuilder::RegisterScalar(db, "ST_LineMerge", [](ScalarFunctionBuilder &func) {
+	static void Register(ExtensionLoader &loader) {
+		FunctionBuilder::RegisterScalar(loader, "ST_LineMerge", [](ScalarFunctionBuilder &func) {
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("geom", GeoTypes::GEOMETRY());
 				variant.SetReturnType(GeoTypes::GEOMETRY());
@@ -1294,8 +1294,8 @@ struct ST_MakeValid {
 		});
 	}
 
-	static void Register(DatabaseInstance &db) {
-		FunctionBuilder::RegisterScalar(db, "ST_MakeValid", [](ScalarFunctionBuilder &func) {
+	static void Register(ExtensionLoader &loader) {
+		FunctionBuilder::RegisterScalar(loader, "ST_MakeValid", [](ScalarFunctionBuilder &func) {
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("geom", GeoTypes::GEOMETRY());
 				variant.SetReturnType(GeoTypes::GEOMETRY());
@@ -1371,12 +1371,12 @@ struct ST_MaximumInscribedCircle {
 		    });
 	}
 
-	static void Register(DatabaseInstance &db) {
+	static void Register(ExtensionLoader &loader) {
 
 		const auto result_type = LogicalType::STRUCT(
 		    {{"center", GeoTypes::GEOMETRY()}, {"nearest", GeoTypes::GEOMETRY()}, {"radius", LogicalType::DOUBLE}});
 
-		FunctionBuilder::RegisterScalar(db, "ST_MaximumInscribedCircle", [&](ScalarFunctionBuilder &func) {
+		FunctionBuilder::RegisterScalar(loader, "ST_MaximumInscribedCircle", [&](ScalarFunctionBuilder &func) {
 			func.AddVariant([&](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("geom", GeoTypes::GEOMETRY());
 				variant.SetReturnType(result_type);
@@ -1399,6 +1399,15 @@ struct ST_MaximumInscribedCircle {
 				The return value is a struct with the center of the circle, the nearest point to the center on the boundary of the geometry, and the radius of the circle.
 			)");
 
+			func.SetExample(R"(
+				-- Find the maximum inscribed circle of a square
+				SELECT ST_MaximumInscribedCircle(
+					ST_GeomFromText('POLYGON((0 0, 10 0, 10 10, 0 10, 0 0))')
+				);
+				----
+				{'center': POINT (5 5), 'nearest': POINT (5 0), 'radius': 5.0}
+			)");
+
 			func.SetTag("ext", "spatial");
 			func.SetTag("category", "construction");
 		});
@@ -1416,8 +1425,8 @@ struct ST_MinimumRotatedRectangle {
 		});
 	}
 
-	static void Register(DatabaseInstance &db) {
-		FunctionBuilder::RegisterScalar(db, "ST_MinimumRotatedRectangle", [](ScalarFunctionBuilder &func) {
+	static void Register(ExtensionLoader &loader) {
+		FunctionBuilder::RegisterScalar(loader, "ST_MinimumRotatedRectangle", [](ScalarFunctionBuilder &func) {
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("geom", GeoTypes::GEOMETRY());
 				variant.SetReturnType(GeoTypes::GEOMETRY());
@@ -1449,9 +1458,17 @@ struct ST_Node {
 	static constexpr auto DESCRIPTION = R"(
 		Returns a "noded" MultiLinestring, produced by combining a collection of input linestrings and adding additional vertices where they intersect.
 	)";
+	static constexpr auto EXAMPLE = R"(
+		-- Create a noded multilinestring from two intersecting lines
+		SELECT ST_Node(
+			ST_GeomFromText('MULTILINESTRING((0 0, 2 2), (0 2, 2 0))')
+		);
+		----
+		MULTILINESTRING ((0 0, 1 1), (1 1, 2 2), (0 2, 1 1), (1 1, 2 0))
+	)";
 
-	static void Register(DatabaseInstance &db) {
-		FunctionBuilder::RegisterScalar(db, "ST_Node", [](ScalarFunctionBuilder &func) {
+	static void Register(ExtensionLoader &loader) {
+		FunctionBuilder::RegisterScalar(loader, "ST_Node", [](ScalarFunctionBuilder &func) {
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("geom", GeoTypes::GEOMETRY());
 				variant.SetReturnType(GeoTypes::GEOMETRY());
@@ -1461,6 +1478,7 @@ struct ST_Node {
 			});
 
 			func.SetDescription(DESCRIPTION);
+			func.SetExample(EXAMPLE);
 			func.SetTag("ext", "spatial");
 			func.SetTag("category", "construction");
 		});
@@ -1476,8 +1494,8 @@ struct ST_Normalize {
 			return lstate.Serialize(result, geom);
 		});
 	}
-	static void Register(DatabaseInstance &db) {
-		FunctionBuilder::RegisterScalar(db, "ST_Normalize", [](ScalarFunctionBuilder &func) {
+	static void Register(ExtensionLoader &loader) {
+		FunctionBuilder::RegisterScalar(loader, "ST_Normalize", [](ScalarFunctionBuilder &func) {
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("geom", GeoTypes::GEOMETRY());
 				variant.SetReturnType(GeoTypes::GEOMETRY());
@@ -1501,8 +1519,8 @@ struct ST_Overlaps : SymmetricPreparedBinaryFunction<ST_Overlaps> {
 		return lhs.overlaps(rhs);
 	}
 
-	static void Register(DatabaseInstance &db) {
-		FunctionBuilder::RegisterScalar(db, "ST_Overlaps", [](ScalarFunctionBuilder &func) {
+	static void Register(ExtensionLoader &loader) {
+		FunctionBuilder::RegisterScalar(loader, "ST_Overlaps", [](ScalarFunctionBuilder &func) {
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("geom1", GeoTypes::GEOMETRY());
 				variant.AddParameter("geom2", GeoTypes::GEOMETRY());
@@ -1530,8 +1548,8 @@ struct ST_PointOnSurface {
 		});
 	}
 
-	static void Register(DatabaseInstance &db) {
-		FunctionBuilder::RegisterScalar(db, "ST_PointOnSurface", [](ScalarFunctionBuilder &func) {
+	static void Register(ExtensionLoader &loader) {
+		FunctionBuilder::RegisterScalar(loader, "ST_PointOnSurface", [](ScalarFunctionBuilder &func) {
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("geom", GeoTypes::GEOMETRY());
 				variant.SetReturnType(GeoTypes::GEOMETRY());
@@ -1589,8 +1607,8 @@ struct ST_Polygonize {
 		});
 	}
 
-	static void Register(DatabaseInstance &db) {
-		FunctionBuilder::RegisterScalar(db, "ST_Polygonize", [](ScalarFunctionBuilder &func) {
+	static void Register(ExtensionLoader &loader) {
+		FunctionBuilder::RegisterScalar(loader, "ST_Polygonize", [](ScalarFunctionBuilder &func) {
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("geometries", LogicalType::LIST(GeoTypes::GEOMETRY()));
 				variant.SetReturnType(GeoTypes::GEOMETRY());
@@ -1600,6 +1618,14 @@ struct ST_Polygonize {
 			});
 
 			func.SetDescription("Returns a polygonized representation of the input geometries");
+			func.SetExample(R"(
+				-- Create a polygon from a closed linestring ring
+				SELECT ST_Polygonize([
+					ST_GeomFromText('LINESTRING(0 0, 0 10, 10 10, 10 0, 0 0)')
+				]);
+				---
+				GEOMETRYCOLLECTION (POLYGON ((0 0, 0 10, 10 10, 10 0, 0 0)))
+			)");
 			func.SetTag("ext", "spatial");
 			func.SetTag("category", "construction");
 		});
@@ -1618,8 +1644,8 @@ struct ST_ReducePrecision {
 		    });
 	}
 
-	static void Register(DatabaseInstance &db) {
-		FunctionBuilder::RegisterScalar(db, "ST_ReducePrecision", [](ScalarFunctionBuilder &func) {
+	static void Register(ExtensionLoader &loader) {
+		FunctionBuilder::RegisterScalar(loader, "ST_ReducePrecision", [](ScalarFunctionBuilder &func) {
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("geom", GeoTypes::GEOMETRY());
 				variant.AddParameter("precision", LogicalType::DOUBLE);
@@ -1658,8 +1684,8 @@ struct ST_RemoveRepeatedPoints {
 		    });
 	}
 
-	static void Register(DatabaseInstance &db) {
-		FunctionBuilder::RegisterScalar(db, "ST_RemoveRepeatedPoints", [](ScalarFunctionBuilder &func) {
+	static void Register(ExtensionLoader &loader) {
+		FunctionBuilder::RegisterScalar(loader, "ST_RemoveRepeatedPoints", [](ScalarFunctionBuilder &func) {
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("geom", GeoTypes::GEOMETRY());
 				variant.SetReturnType(GeoTypes::GEOMETRY());
@@ -1695,8 +1721,8 @@ struct ST_Reverse {
 		});
 	}
 
-	static void Register(DatabaseInstance &db) {
-		FunctionBuilder::RegisterScalar(db, "ST_Reverse", [](ScalarFunctionBuilder &func) {
+	static void Register(ExtensionLoader &loader) {
+		FunctionBuilder::RegisterScalar(loader, "ST_Reverse", [](ScalarFunctionBuilder &func) {
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("geom", GeoTypes::GEOMETRY());
 				variant.SetReturnType(GeoTypes::GEOMETRY());
@@ -1724,8 +1750,8 @@ struct ST_ShortestLine {
 		                                                      });
 	}
 
-	static void Register(DatabaseInstance &db) {
-		FunctionBuilder::RegisterScalar(db, "ST_ShortestLine", [](ScalarFunctionBuilder &func) {
+	static void Register(ExtensionLoader &loader) {
+		FunctionBuilder::RegisterScalar(loader, "ST_ShortestLine", [](ScalarFunctionBuilder &func) {
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("geom1", GeoTypes::GEOMETRY());
 				variant.AddParameter("geom2", GeoTypes::GEOMETRY());
@@ -1752,8 +1778,8 @@ struct ST_Simplify {
 			                                                    return lstate.Serialize(result, simplified);
 		                                                    });
 	}
-	static void Register(DatabaseInstance &db) {
-		FunctionBuilder::RegisterScalar(db, "ST_Simplify", [](ScalarFunctionBuilder &func) {
+	static void Register(ExtensionLoader &loader) {
+		FunctionBuilder::RegisterScalar(loader, "ST_Simplify", [](ScalarFunctionBuilder &func) {
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("geom", GeoTypes::GEOMETRY());
 				variant.AddParameter("tolerance", LogicalType::DOUBLE);
@@ -1781,8 +1807,8 @@ struct ST_SimplifyPreserveTopology {
 		    });
 	}
 
-	static void Register(DatabaseInstance &db) {
-		FunctionBuilder::RegisterScalar(db, "ST_SimplifyPreserveTopology", [](ScalarFunctionBuilder &func) {
+	static void Register(ExtensionLoader &loader) {
+		FunctionBuilder::RegisterScalar(loader, "ST_SimplifyPreserveTopology", [](ScalarFunctionBuilder &func) {
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("geom", GeoTypes::GEOMETRY());
 				variant.AddParameter("tolerance", LogicalType::DOUBLE);
@@ -1806,8 +1832,8 @@ struct ST_Touches : SymmetricPreparedBinaryFunction<ST_Touches> {
 	static bool ExecutePredicatePrepared(const PreparedGeosGeometry &lhs, const GeosGeometry &rhs) {
 		return lhs.touches(rhs);
 	}
-	static void Register(DatabaseInstance &db) {
-		FunctionBuilder::RegisterScalar(db, "ST_Touches", [](ScalarFunctionBuilder &func) {
+	static void Register(ExtensionLoader &loader) {
+		FunctionBuilder::RegisterScalar(loader, "ST_Touches", [](ScalarFunctionBuilder &func) {
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("geom1", GeoTypes::GEOMETRY());
 				variant.AddParameter("geom2", GeoTypes::GEOMETRY());
@@ -1836,8 +1862,8 @@ struct ST_Union {
 			                                                      return lstate.Serialize(result, unioned);
 		                                                      });
 	}
-	static void Register(DatabaseInstance &db) {
-		FunctionBuilder::RegisterScalar(db, "ST_Union", [](ScalarFunctionBuilder &func) {
+	static void Register(ExtensionLoader &loader) {
+		FunctionBuilder::RegisterScalar(loader, "ST_Union", [](ScalarFunctionBuilder &func) {
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("geom1", GeoTypes::GEOMETRY());
 				variant.AddParameter("geom2", GeoTypes::GEOMETRY());
@@ -1865,8 +1891,8 @@ struct ST_VoronoiDiagram {
 		});
 	}
 
-	static void Register(DatabaseInstance &db) {
-		FunctionBuilder::RegisterScalar(db, "ST_VoronoiDiagram", [](ScalarFunctionBuilder &func) {
+	static void Register(ExtensionLoader &loader) {
+		FunctionBuilder::RegisterScalar(loader, "ST_VoronoiDiagram", [](ScalarFunctionBuilder &func) {
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("geom", GeoTypes::GEOMETRY());
 				variant.SetReturnType(GeoTypes::GEOMETRY());
@@ -1889,8 +1915,8 @@ struct ST_Within : AsymmetricPreparedBinaryFunction<ST_Within> {
 	static bool ExecutePredicatePrepared(const PreparedGeosGeometry &lhs, const GeosGeometry &rhs) {
 		return lhs.within(rhs);
 	}
-	static void Register(DatabaseInstance &db) {
-		FunctionBuilder::RegisterScalar(db, "ST_Within", [](ScalarFunctionBuilder &func) {
+	static void Register(ExtensionLoader &loader) {
+		FunctionBuilder::RegisterScalar(loader, "ST_Within", [](ScalarFunctionBuilder &func) {
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("geom1", GeoTypes::GEOMETRY());
 				variant.AddParameter("geom2", GeoTypes::GEOMETRY());
@@ -2011,22 +2037,23 @@ struct GeosUnaryAggFunction {
 };
 
 //======================================================================================================================
-// ST_Union_Agg
+// ST_MemUnion_Agg
 //======================================================================================================================
 
-struct ST_Union_Agg : GeosUnaryAggFunction {
+struct ST_MemUnion_Agg : GeosUnaryAggFunction {
 	static GEOSGeometry *Merge(const GEOSContextHandle_t context, const GEOSGeometry *curr, const GEOSGeometry *next) {
 		return GEOSUnion_r(context, curr, next);
 	}
 
-	static void Register(DatabaseInstance &db) {
+	static void Register(ExtensionLoader &loader) {
 		const auto agg =
-		    AggregateFunction::UnaryAggregateDestructor<GeosUnaryAggState, string_t, string_t, ST_Union_Agg>(
+		    AggregateFunction::UnaryAggregateDestructor<GeosUnaryAggState, string_t, string_t, ST_MemUnion_Agg>(
 		        GeoTypes::GEOMETRY(), GeoTypes::GEOMETRY());
 
-		FunctionBuilder::RegisterAggregate(db, "ST_Union_Agg", [&](AggregateFunctionBuilder &func) {
+		FunctionBuilder::RegisterAggregate(loader, "ST_MemUnion_Agg", [&](AggregateFunctionBuilder &func) {
 			func.SetFunction(agg);
-			func.SetDescription("Computes the union of a set of input geometries");
+			func.SetDescription(R"(Computes the union of a set of input geometries.
+				"Slower, but might be more memory efficient than ST_UnionAgg as each geometry is merged into the union individually rather than all at once.)");
 
 			func.SetTag("ext", "spatial");
 			func.SetTag("category", "construction");
@@ -2043,14 +2070,206 @@ struct ST_Intersection_Agg : GeosUnaryAggFunction {
 		return GEOSIntersection_r(context, curr, next);
 	}
 
-	static void Register(DatabaseInstance &db) {
+	static void Register(ExtensionLoader &loader) {
 		const auto agg =
 		    AggregateFunction::UnaryAggregateDestructor<GeosUnaryAggState, string_t, string_t, ST_Intersection_Agg>(
 		        GeoTypes::GEOMETRY(), GeoTypes::GEOMETRY());
 
-		FunctionBuilder::RegisterAggregate(db, "ST_Intersection_Agg", [&](AggregateFunctionBuilder &func) {
+		FunctionBuilder::RegisterAggregate(loader, "ST_Intersection_Agg", [&](AggregateFunctionBuilder &func) {
 			func.SetFunction(agg);
 			func.SetDescription("Computes the intersection of a set of geometries");
+
+			func.SetTag("ext", "spatial");
+			func.SetTag("category", "construction");
+		});
+	}
+};
+
+//======================================================================================================================
+// ST_Union_Agg
+//======================================================================================================================
+struct ST_Union_Agg {
+
+	struct State {
+		GEOSContextHandle_t context = nullptr;
+		vector<GEOSGeometry *> geoms;
+	};
+
+	static idx_t StateSize(const AggregateFunction &) {
+		return sizeof(State);
+	}
+
+	static string_t Serialize(const GEOSContextHandle_t context, Vector &result, const GEOSGeometry *geom) {
+		D_ASSERT(geom);
+		const auto size = GeosSerde::GetRequiredSize(context, geom);
+		auto blob = StringVector::EmptyString(result, size);
+		const auto ptr = blob.GetDataWriteable();
+
+		// Serialize the geometry
+		GeosSerde::Serialize(context, geom, ptr, size);
+
+		blob.Finalize();
+		return blob;
+	}
+
+	// Deserialize a GEOS geometry
+	static GEOSGeometry *Deserialize(const GEOSContextHandle_t context, const string_t &blob) {
+		const auto ptr = blob.GetData();
+		const auto size = blob.GetSize();
+
+		return GeosSerde::Deserialize(context, ptr, size);
+	}
+
+	static void Initialize(const AggregateFunction &, data_ptr_t state_mem) {
+		const auto state_ptr = new (state_mem) State();
+		auto &state = *state_ptr;
+		state.context = GEOS_init_r();
+	}
+
+	static void Update(Vector inputs[], AggregateInputData &, idx_t, Vector &state_vec, idx_t count) {
+
+		auto &geom_vec = inputs[0];
+
+		UnifiedVectorFormat geom_format;
+		geom_vec.ToUnifiedFormat(count, geom_format);
+
+		UnifiedVectorFormat state_format;
+		state_vec.ToUnifiedFormat(count, state_format);
+
+		const auto state_ptr = UnifiedVectorFormat::GetData<State *>(state_format);
+		const auto geom_ptr = UnifiedVectorFormat::GetData<string_t>(geom_format);
+
+		for (idx_t raw_idx = 0; raw_idx < count; raw_idx++) {
+			const auto state_idx = state_format.sel->get_index(raw_idx);
+			const auto geom_idx = geom_format.sel->get_index(raw_idx);
+
+			if (!geom_format.validity.RowIsValid(geom_idx)) {
+				continue;
+			}
+
+			// Now, deserialize the geometry and append it to the list in each state
+			auto &state = *state_ptr[state_idx];
+			const auto geom = Deserialize(state.context, geom_ptr[geom_idx]);
+			state.geoms.push_back(geom);
+		}
+	}
+
+	static void Absorb(Vector &state_vec, Vector &combined, AggregateInputData &aggr_input_data, idx_t count) {
+		D_ASSERT(aggr_input_data.combine_type == AggregateCombineType::ALLOW_DESTRUCTIVE);
+
+		UnifiedVectorFormat state_format;
+		state_vec.ToUnifiedFormat(count, state_format);
+
+		const auto state_ptr = UnifiedVectorFormat::GetData<State *>(state_format);
+		const auto combined_ptr = FlatVector::GetData<State *>(combined);
+
+		for (idx_t raw_idx = 0; raw_idx < count; raw_idx++) {
+			const auto state_idx = state_format.sel->get_index(raw_idx);
+			auto &state = *state_ptr[state_idx];
+
+			// Steal the list from the state and append it to the combined state
+			auto &combined_state = *combined_ptr[raw_idx];
+			combined_state.geoms.insert(combined_state.geoms.end(), state.geoms.begin(), state.geoms.end());
+			state.geoms.clear();
+		}
+	}
+
+	static void Combine(Vector &state_vec, Vector &combined, AggregateInputData &aggr_input_data, idx_t count) {
+
+		//	Can we use destructive combining?
+		if (aggr_input_data.combine_type == AggregateCombineType::ALLOW_DESTRUCTIVE) {
+			Absorb(state_vec, combined, aggr_input_data, count);
+			return;
+		}
+
+		UnifiedVectorFormat state_format;
+		state_vec.ToUnifiedFormat(count, state_format);
+
+		const auto state_ptr = UnifiedVectorFormat::GetData<State *>(state_format);
+		const auto combined_ptr = FlatVector::GetData<State *>(combined);
+
+		for (idx_t raw_idx = 0; raw_idx < count; raw_idx++) {
+			const auto state_idx = state_format.sel->get_index(raw_idx);
+			const auto &state = *state_ptr[state_idx];
+
+			// We can't steal the list, we need to clone and append all elements
+			auto &combined_state = *combined_ptr[raw_idx];
+
+			for (auto &geom : state.geoms) {
+				combined_state.geoms.push_back(GEOSGeom_clone_r(combined_state.context, geom));
+			}
+		}
+	}
+
+	static void Finalize(Vector &state_vec, AggregateInputData &aggr_input_data, Vector &result, idx_t count,
+	                     idx_t offset) {
+
+		UnifiedVectorFormat state_format;
+		state_vec.ToUnifiedFormat(count, state_format);
+
+		const auto state_ptr = UnifiedVectorFormat::GetData<State *>(state_format);
+
+		for (idx_t raw_idx = 0; raw_idx < count; raw_idx++) {
+			auto &state = *state_ptr[state_format.sel->get_index(raw_idx)];
+			const auto out_idx = raw_idx + offset;
+
+			// Now create a geometry collection out of all geometries
+			const auto collection = GEOSGeom_createCollection_r(state.context, GEOS_GEOMETRYCOLLECTION,
+			                                                    state.geoms.data(), state.geoms.size());
+
+			// If we manage to construct the collection, it takes ownership of the geometries
+			// So we need to leak the list or risk a double free
+			state.geoms.clear();
+
+			try {
+				// Compute the coverage
+				const auto result_union = GEOSUnaryUnion_r(state.context, collection);
+
+				// Serialize the result
+				const auto result_ptr = FlatVector::GetData<string_t>(result);
+				result_ptr[out_idx] = Serialize(state.context, result, result_union);
+
+				// Destroy the unioned geometry
+				GEOSGeom_destroy_r(state.context, result_union);
+
+				// Destroy the collection
+				GEOSGeom_destroy_r(state.context, collection);
+
+			} catch (...) {
+				// Destroy the collection, and rethrow the exception
+				GEOSGeom_destroy_r(state.context, collection);
+				throw;
+			}
+		}
+	}
+
+	static void Destroy(Vector &state_vec, AggregateInputData &aggr, idx_t count) {
+		UnifiedVectorFormat state_format;
+		state_vec.ToUnifiedFormat(count, state_format);
+
+		const auto state_ptr = UnifiedVectorFormat::GetData<State *>(state_format);
+		for (idx_t raw_idx = 0; raw_idx < count; raw_idx++) {
+			const auto row_idx = state_format.sel->get_index(raw_idx);
+			if (state_format.validity.RowIsValid(row_idx)) {
+				auto &state = *state_ptr[row_idx];
+
+				state.geoms.clear();
+
+				if (state.context) {
+					GEOS_finish_r(state.context);
+					state.context = nullptr;
+				}
+			}
+		}
+	}
+
+	static void Register(ExtensionLoader &loader) {
+		AggregateFunction agg({GeoTypes::GEOMETRY()}, GeoTypes::GEOMETRY(), StateSize, Initialize, Update, Combine,
+		                      Finalize, nullptr, nullptr, Destroy);
+
+		FunctionBuilder::RegisterAggregate(loader, "ST_Union_Agg", [&](AggregateFunctionBuilder &func) {
+			func.SetFunction(agg);
+			func.SetDescription("Computes the union of a set of input geometries");
 
 			func.SetTag("ext", "spatial");
 			func.SetTag("category", "construction");
@@ -2307,13 +2526,13 @@ struct ST_CoverageSimplify_Agg : GEOSCoverageAggFunction {
 		GEOSGeom_destroy_r(state.context, simplified);
 	}
 
-	static void Register(DatabaseInstance &db) {
+	static void Register(ExtensionLoader &loader) {
 		using SELF = ST_CoverageSimplify_Agg;
 
 		AggregateFunction agg({GeoTypes::GEOMETRY(), LogicalType::DOUBLE}, GeoTypes::GEOMETRY(), StateSize, Initialize,
 		                      Update, Combine, Finalize<SELF>, nullptr, Bind, Destroy);
 
-		FunctionBuilder::RegisterAggregate(db, "ST_CoverageSimplify_Agg", [&](AggregateFunctionBuilder &func) {
+		FunctionBuilder::RegisterAggregate(loader, "ST_CoverageSimplify_Agg", [&](AggregateFunctionBuilder &func) {
 			func.SetFunction(agg);
 			func.SetDescription("Simplifies a set of geometries while maintaining coverage");
 
@@ -2378,13 +2597,13 @@ struct ST_CoverageUnion_Agg : GEOSCoverageAggFunction {
 		GEOSGeom_destroy_r(state.context, coverage);
 	}
 
-	static void Register(DatabaseInstance &db) {
+	static void Register(ExtensionLoader &loader) {
 		using SELF = ST_CoverageUnion_Agg;
 
 		const AggregateFunction agg({GeoTypes::GEOMETRY()}, GeoTypes::GEOMETRY(), StateSize, Initialize, Update,
 		                            Combine, Finalize<SELF>, nullptr, nullptr, Destroy);
 
-		FunctionBuilder::RegisterAggregate(db, "ST_CoverageUnion_Agg", [&](AggregateFunctionBuilder &func) {
+		FunctionBuilder::RegisterAggregate(loader, "ST_CoverageUnion_Agg", [&](AggregateFunctionBuilder &func) {
 			func.SetFunction(agg);
 			func.SetDescription("Unions a set of geometries while maintaining coverage");
 
@@ -2468,13 +2687,13 @@ struct ST_CoverageInvalidEdges_Agg : GEOSCoverageAggFunction {
 		GEOSGeom_destroy_r(state.context, edges);
 	}
 
-	static void Register(DatabaseInstance &db) {
+	static void Register(ExtensionLoader &loader) {
 		using SELF = ST_CoverageInvalidEdges_Agg;
 
 		AggregateFunction agg({GeoTypes::GEOMETRY()}, GeoTypes::GEOMETRY(), StateSize, Initialize, Update, Combine,
 		                      Finalize<SELF>, nullptr, Bind, Destroy, nullptr);
 
-		FunctionBuilder::RegisterAggregate(db, "ST_CoverageInvalidEdges_Agg", [&](AggregateFunctionBuilder &func) {
+		FunctionBuilder::RegisterAggregate(loader, "ST_CoverageInvalidEdges_Agg", [&](AggregateFunctionBuilder &func) {
 			func.SetFunction(agg);
 
 			// TODO: this is a hack
@@ -2495,62 +2714,63 @@ struct ST_CoverageInvalidEdges_Agg : GEOSCoverageAggFunction {
 // Register Module
 //######################################################################################################################
 
-void RegisterGEOSModule(DatabaseInstance &db) {
+void RegisterGEOSModule(ExtensionLoader &loader) {
 
 	// Scalar Functions
-	ST_Boundary::Register(db);
-	ST_Buffer::Register(db);
-	ST_BuildArea::Register(db);
-	ST_Contains::Register(db);
-	ST_ContainsProperly::Register(db);
-	ST_WithinProperly::Register(db);
-	ST_ConcaveHull::Register(db);
-	ST_ConvexHull::Register(db);
-	ST_CoverageInvalidEdges::Register(db);
-	ST_CoverageSimplify::Register(db);
-	ST_CoverageUnion::Register(db);
-	ST_CoveredBy::Register(db);
-	ST_Covers::Register(db);
-	ST_Crosses::Register(db);
-	ST_Difference::Register(db);
-	ST_Disjoint::Register(db);
-	ST_Distance::Register(db);
-	ST_DistanceWithin::Register(db);
-	ST_Equals::Register(db);
-	ST_Envelope::Register(db);
-	ST_Intersection::Register(db);
-	ST_Intersects::Register(db);
-	ST_IsRing::Register(db);
-	ST_IsSimple::Register(db);
-	ST_IsValid::Register(db);
-	ST_LineMerge::Register(db);
-	ST_MakeValid::Register(db);
-	ST_MaximumInscribedCircle::Register(db);
-	ST_MinimumRotatedRectangle::Register(db);
-	ST_Node::Register(db);
-	ST_Normalize::Register(db);
-	ST_Overlaps::Register(db);
-	ST_PointOnSurface::Register(db);
-	ST_Polygonize::Register(db);
-	ST_ReducePrecision::Register(db);
-	ST_RemoveRepeatedPoints::Register(db);
-	ST_Reverse::Register(db);
-	ST_ShortestLine::Register(db);
-	ST_Simplify::Register(db);
-	ST_SimplifyPreserveTopology::Register(db);
-	ST_Touches::Register(db);
-	ST_Union::Register(db);
-	ST_VoronoiDiagram::Register(db);
-	ST_Within::Register(db);
+	ST_Boundary::Register(loader);
+	ST_Buffer::Register(loader);
+	ST_BuildArea::Register(loader);
+	ST_Contains::Register(loader);
+	ST_ContainsProperly::Register(loader);
+	ST_WithinProperly::Register(loader);
+	ST_ConcaveHull::Register(loader);
+	ST_ConvexHull::Register(loader);
+	ST_CoverageInvalidEdges::Register(loader);
+	ST_CoverageSimplify::Register(loader);
+	ST_CoverageUnion::Register(loader);
+	ST_CoveredBy::Register(loader);
+	ST_Covers::Register(loader);
+	ST_Crosses::Register(loader);
+	ST_Difference::Register(loader);
+	ST_Disjoint::Register(loader);
+	ST_Distance::Register(loader);
+	ST_DistanceWithin::Register(loader);
+	ST_Equals::Register(loader);
+	ST_Envelope::Register(loader);
+	ST_Intersection::Register(loader);
+	ST_Intersects::Register(loader);
+	ST_IsRing::Register(loader);
+	ST_IsSimple::Register(loader);
+	ST_IsValid::Register(loader);
+	ST_LineMerge::Register(loader);
+	ST_MakeValid::Register(loader);
+	ST_MaximumInscribedCircle::Register(loader);
+	ST_MinimumRotatedRectangle::Register(loader);
+	ST_Node::Register(loader);
+	ST_Normalize::Register(loader);
+	ST_Overlaps::Register(loader);
+	ST_PointOnSurface::Register(loader);
+	ST_Polygonize::Register(loader);
+	ST_ReducePrecision::Register(loader);
+	ST_RemoveRepeatedPoints::Register(loader);
+	ST_Reverse::Register(loader);
+	ST_ShortestLine::Register(loader);
+	ST_Simplify::Register(loader);
+	ST_SimplifyPreserveTopology::Register(loader);
+	ST_Touches::Register(loader);
+	ST_Union::Register(loader);
+	ST_VoronoiDiagram::Register(loader);
+	ST_Within::Register(loader);
 
 	// Aggregate Functions
-	ST_Union_Agg::Register(db);
-	ST_Intersection_Agg::Register(db);
+	ST_MemUnion_Agg::Register(loader);
+	ST_Intersection_Agg::Register(loader);
+	ST_Union_Agg::Register(loader);
 
 	// Coverage Aggregate Functions
-	ST_CoverageInvalidEdges_Agg::Register(db);
-	ST_CoverageUnion_Agg::Register(db);
-	ST_CoverageSimplify_Agg::Register(db);
+	ST_CoverageInvalidEdges_Agg::Register(loader);
+	ST_CoverageUnion_Agg::Register(loader);
+	ST_CoverageSimplify_Agg::Register(loader);
 }
 
 } // namespace duckdb

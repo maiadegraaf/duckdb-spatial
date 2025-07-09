@@ -2,8 +2,8 @@
 
 namespace duckdb {
 
-class DatabaseInstance;
+class ExtensionLoader;
 
-void RegisterGDALModule(DatabaseInstance &db);
+void RegisterGDALModule(ExtensionLoader &loader);
 
 } // namespace duckdb

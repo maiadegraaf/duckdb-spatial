@@ -10,8 +10,9 @@ public:
 	static constexpr auto TYPE = PhysicalOperatorType::EXTENSION;
 
 public:
-	PhysicalSpatialJoin(LogicalOperator &op, PhysicalOperator &left, PhysicalOperator &right,
-	                    unique_ptr<Expression> spatial_predicate, JoinType join_type, idx_t estimated_cardinality);
+	PhysicalSpatialJoin(PhysicalPlan &physical_plan, LogicalOperator &op, PhysicalOperator &left,
+	                    PhysicalOperator &right, unique_ptr<Expression> spatial_predicate, JoinType join_type,
+	                    idx_t estimated_cardinality, bool has_const_distance, double const_distance);
 
 	//! The condition of the join
 	unique_ptr<Expression> condition;
@@ -30,6 +31,10 @@ public:
 
 	shared_ptr<TupleDataLayout> layout;
 	idx_t build_side_match_offset = 0; // This is the byte offset to the match column for right/outer joins
+
+	// In case this is a ST_DWithin join, we store the constant distance here
+	bool has_const_distance = false;
+	double const_distance = 0.0;
 
 public:
 	// Operator Interface

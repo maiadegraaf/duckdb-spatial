@@ -231,7 +231,7 @@ void RTreeIndex::Delete(IndexLock &lock, DataChunk &input, Vector &rowid_vec) {
 	}
 }
 
-IndexStorageInfo RTreeIndex::GetStorageInfo(const case_insensitive_map_t<Value> &options, const bool to_wal) {
+IndexStorageInfo RTreeIndex::SerializeToDisk(QueryContext context, const case_insensitive_map_t<Value> &options) {
 
 	IndexStorageInfo info;
 	info.name = name;
@@ -240,17 +240,30 @@ IndexStorageInfo RTreeIndex::GetStorageInfo(const case_insensitive_map_t<Value> 
 	auto &leaf_allocator = tree->GetLeafAllocator();
 	auto &node_allocator = tree->GetNodeAllocator();
 
-	if (!to_wal) {
-		// use the partial block manager to serialize all allocator data
-		auto &block_manager = table_io_manager.GetIndexBlockManager();
-		PartialBlockManager partial_block_manager(block_manager, PartialBlockType::FULL_CHECKPOINT);
-		leaf_allocator.SerializeBuffers(partial_block_manager);
-		node_allocator.SerializeBuffers(partial_block_manager);
-		partial_block_manager.FlushPartialBlocks();
-	} else {
-		info.buffers.push_back(leaf_allocator.InitSerializationToWAL());
-		info.buffers.push_back(node_allocator.InitSerializationToWAL());
-	}
+	// Use the partial block manager to serialize allocator data.
+	auto &block_manager = table_io_manager.GetIndexBlockManager();
+	PartialBlockManager partial_block_manager(context, block_manager, PartialBlockType::FULL_CHECKPOINT);
+	leaf_allocator.SerializeBuffers(partial_block_manager);
+	node_allocator.SerializeBuffers(partial_block_manager);
+	partial_block_manager.FlushPartialBlocks();
+
+	info.allocator_infos.push_back(leaf_allocator.GetInfo());
+	info.allocator_infos.push_back(node_allocator.GetInfo());
+
+	return info;
+}
+
+IndexStorageInfo RTreeIndex::SerializeToWAL(const case_insensitive_map_t<Value> &options) {
+
+	IndexStorageInfo info;
+	info.name = name;
+	info.root = tree->GetRoot().pointer.Get();
+
+	auto &leaf_allocator = tree->GetLeafAllocator();
+	auto &node_allocator = tree->GetNodeAllocator();
+
+	info.buffers.push_back(leaf_allocator.InitSerializationToWAL());
+	info.buffers.push_back(node_allocator.InitSerializationToWAL());
 
 	info.allocator_infos.push_back(leaf_allocator.GetInfo());
 	info.allocator_infos.push_back(node_allocator.GetInfo());
@@ -284,7 +297,7 @@ void RTreeIndex::VerifyBuffers(IndexLock &l) {
 //------------------------------------------------------------------------------
 // Register Index Type
 //------------------------------------------------------------------------------
-void RTreeModule::RegisterIndex(DatabaseInstance &db) {
+void RTreeModule::RegisterIndex(ExtensionLoader &loader) {
 
 	IndexType index_type;
 
@@ -293,6 +306,7 @@ void RTreeModule::RegisterIndex(DatabaseInstance &db) {
 	index_type.create_plan = RTreeIndex::CreatePlan;
 
 	// Register the index type
+	auto &db = loader.GetDatabaseInstance();
 	db.config.GetIndexTypes().RegisterIndexType(index_type);
 }
 

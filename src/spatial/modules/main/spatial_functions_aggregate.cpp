@@ -49,8 +49,8 @@ struct ExtentAggFunction {
 		sgl::geometry geom;
 		Serde::Deserialize(geom, aggregate.input.allocator, input.GetDataUnsafe(), input.GetSize());
 
-		auto bbox = sgl::box_xy::smallest();
-		if (sgl::ops::try_get_extent_xy(&geom, &bbox)) {
+		auto bbox = sgl::extent_xy::smallest();
+		if (sgl::ops::get_total_extent_xy(geom, bbox)) {
 
 			if (!state.is_set) {
 				state.is_set = true;
@@ -97,7 +97,7 @@ struct ExtentAggFunction {
 			buf[9] = state.ymin;
 
 			sgl::geometry ring(sgl::geometry_type::LINESTRING, false, false);
-			ring.set_vertex_data(reinterpret_cast<const char *>(buf), 5);
+			ring.set_vertex_array(buf, 5);
 
 			sgl::geometry bbox(sgl::geometry_type::POLYGON, false, false);
 			bbox.append_part(&ring);
@@ -139,13 +139,13 @@ static constexpr const char *DOC_ALIAS_DESCRIPTION = R"(
 //------------------------------------------------------------------------
 // Register
 //------------------------------------------------------------------------
-void RegisterSpatialAggregateFunctions(DatabaseInstance &db) {
+void RegisterSpatialAggregateFunctions(ExtensionLoader &loader) {
 
 	// TODO: Dont use geometry_t here
 	const auto agg = AggregateFunction::UnaryAggregate<ExtentAggState, string_t, string_t, ExtentAggFunction>(
 	    GeoTypes::GEOMETRY(), GeoTypes::GEOMETRY());
 
-	FunctionBuilder::RegisterAggregate(db, "ST_Extent_Agg", [&](AggregateFunctionBuilder &func) {
+	FunctionBuilder::RegisterAggregate(loader, "ST_Extent_Agg", [&](AggregateFunctionBuilder &func) {
 		func.SetFunction(agg);
 		func.SetDescription(DOC_DESCRIPTION);
 		func.SetExample(DOC_EXAMPLE);
@@ -154,7 +154,7 @@ void RegisterSpatialAggregateFunctions(DatabaseInstance &db) {
 		func.SetTag("category", "construction");
 	});
 
-	FunctionBuilder::RegisterAggregate(db, "ST_Envelope_Agg", [&](AggregateFunctionBuilder &func) {
+	FunctionBuilder::RegisterAggregate(loader, "ST_Envelope_Agg", [&](AggregateFunctionBuilder &func) {
 		func.SetFunction(agg);
 		func.SetDescription(DOC_ALIAS_DESCRIPTION);
 		func.SetExample(DOC_EXAMPLE);
