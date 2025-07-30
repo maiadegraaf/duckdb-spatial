@@ -1,3 +1,6 @@
+# name: test/sql/geometry/op_intersect.test
+# group: [geometry]
+
 # require spatial
 #
 # # Test && operator (bbox intersects) with BOX_2D and GEOMETRY

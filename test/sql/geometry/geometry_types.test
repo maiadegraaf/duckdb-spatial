@@ -1,3 +1,6 @@
+# name: test/sql/geometry/geometry_types.test
+# group: [geometry]
+
 require spatial
 
 # Test text roundtrip for geometry types

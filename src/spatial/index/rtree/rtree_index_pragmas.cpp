@@ -76,9 +76,14 @@ static void RTreeIndexInfoExecute(ClientContext &context, TableFunctionInput &da
 		RTreeIndex *rtree_index = nullptr;
 
 		auto &table_info = *storage.GetDataTableInfo();
-		table_info.GetIndexes().BindAndScan<RTreeIndex>(context, table_info, [&](RTreeIndex &index) {
-			if (index.name == index_entry.name) {
-				rtree_index = &index;
+		table_info.BindIndexes(context, RTreeIndex::TYPE_NAME);
+		table_info.GetIndexes().Scan([&](Index &index) {
+			if (!index.IsBound() || RTreeIndex::TYPE_NAME != index.GetIndexType()) {
+				return false;
+			}
+			auto &rtree = index.Cast<RTreeIndex>();
+			if (rtree.name == index_entry.name) {
+				rtree_index = &rtree;
 				return true;
 			}
 			return false;
@@ -115,9 +120,14 @@ static optional_ptr<RTreeIndex> TryGetIndex(ClientContext &context, const string
 	RTreeIndex *rtree_index = nullptr;
 
 	auto &table_info = *storage.GetDataTableInfo();
-	table_info.GetIndexes().BindAndScan<RTreeIndex>(context, table_info, [&](RTreeIndex &index) {
+	table_info.BindIndexes(context, RTreeIndex::TYPE_NAME);
+	table_info.GetIndexes().Scan([&](Index &index) {
+		if (!index.IsBound() || RTreeIndex::TYPE_NAME != index.GetIndexType()) {
+			return false;
+		}
+		auto &rtree = index.Cast<RTreeIndex>();
 		if (index_entry.name == index_name) {
-			rtree_index = &index;
+			rtree_index = &rtree;
 			return true;
 		}
 		return false;

@@ -1,3 +1,6 @@
+# name: test/sql/geometry/st_hilbert.test
+# group: [geometry]
+
 require spatial
 
 # TODO: use more proper test cases for ST_Hilbert

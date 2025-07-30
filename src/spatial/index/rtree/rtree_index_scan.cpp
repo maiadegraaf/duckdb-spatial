@@ -213,7 +213,12 @@ static unique_ptr<FunctionData> RTreeScanDeserialize(Deserializer &deserializer,
 
 	unique_ptr<RTreeIndexScanBindData> result = nullptr;
 
-	table_info.GetIndexes().BindAndScan<RTreeIndex>(context, table_info, [&](RTreeIndex &index_entry) {
+	table_info.BindIndexes(context, RTreeIndex::TYPE_NAME);
+	table_info.GetIndexes().Scan([&](Index &index) {
+		if (!index.IsBound() || RTreeIndex::TYPE_NAME != index.GetIndexType()) {
+			return false;
+		}
+		auto &index_entry = index.Cast<RTreeIndex>();
 		if (index_entry.GetIndexName() == index_name) {
 			result = make_uniq<RTreeIndexScanBindData>(duck_table, index_entry, bbox);
 			return true;
