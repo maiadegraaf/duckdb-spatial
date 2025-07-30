@@ -122,6 +122,23 @@ struct vertex_xyzm {
 	vertex_xyzm operator/(const double scalar) const {
 		return {x / scalar, y / scalar, z / scalar, m / scalar};
 	}
+
+	double &operator[](const size_t index) {
+		switch (index) {
+		case 0:
+			return x;
+		case 1:
+			return y;
+		case 2:
+			return z;
+		case 3:
+			return m;
+		default:
+			SGL_ASSERT(false && "Index out of bounds");
+			static double dummy = 0; // To avoid returning a reference to an invalid location
+			return dummy;
+		}
+	}
 };
 
 } // namespace sgl
@@ -682,6 +699,8 @@ void extract_points(geometry &geom, geometry &result);
 void extract_linestrings(geometry &geom, geometry &result);
 void extract_polygons(geometry &geom, geometry &result);
 
+void locate_along(allocator &alloc, const geometry &linear_geom, double measure, double offset, geometry &out_geom);
+
 } // namespace ops
 
 // TODO: Move these
@@ -692,6 +711,10 @@ bool interpolate(const geometry &geom, double frac, vertex_xyzm &out);
 // returns a multipoint with interpolated points
 void interpolate_points(allocator &alloc, const geometry &geom, double frac, geometry &result);
 void substring(allocator &alloc, const geometry &geom, double beg_frac, double end_frac, geometry &result);
+
+bool interpolate_point(const geometry &linear_geom, const geometry &point_geom, double &out_measure);
+void locate_along(allocator &alloc, const geometry &linear_geom, double measure, double offset, geometry &out_geom);
+
 } // namespace linestring
 
 namespace multi_linestring {

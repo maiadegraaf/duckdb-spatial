@@ -25,9 +25,9 @@ namespace duckdb {
 
 namespace {
 
-//######################################################################################################################
-// Util
-//######################################################################################################################
+// ######################################################################################################################
+//  Util
+// ######################################################################################################################
 
 //======================================================================================================================
 // LocalState
@@ -97,9 +97,9 @@ string_t LocalState::Serialize(Vector &vector, const sgl::geometry &geom) {
 
 namespace {
 
-//######################################################################################################################
-// Functions
-//######################################################################################################################
+// ######################################################################################################################
+//  Functions
+// ######################################################################################################################
 
 //======================================================================================================================
 // ST_Affine
@@ -5441,6 +5441,79 @@ struct ST_LineSubstring {
 };
 
 //======================================================================================================================
+// ST_LocateAlong
+//======================================================================================================================
+
+struct ST_LocateAlong {
+
+	//------------------------------------------------------------------------------------------------------------------
+	// GEOMETRY
+	//------------------------------------------------------------------------------------------------------------------
+	static void ExecuteGeometry(DataChunk &args, ExpressionState &state, Vector &result) {
+		auto &lstate = LocalState::ResetAndGet(state);
+		auto &alloc = lstate.GetAllocator();
+
+		TernaryExecutor::Execute<string_t, double, double, string_t>(
+		    args.data[0], args.data[1], args.data[2], result, args.size(),
+		    [&](const string_t &blob, const double measure, const double offset) {
+			    sgl::geometry geom;
+			    lstate.Deserialize(blob, geom);
+
+			    if (!geom.has_m()) {
+				    throw InvalidInputException("ST_LocateAlong: input geometry does not have M dimension");
+			    }
+
+			    sgl::geometry points(sgl::geometry_type::MULTI_POINT, geom.has_z(), geom.has_m());
+			    sgl::ops::locate_along(alloc, geom, measure, offset, points);
+
+			    if (points.get_part_count() == 1) {
+				    auto part = points.get_first_part();
+				    return lstate.Serialize(result, *part);
+			    }
+
+			    return lstate.Serialize(result, points);
+		    });
+	}
+
+	//------------------------------------------------------------------------------------------------------------------
+	// Documentation
+	//------------------------------------------------------------------------------------------------------------------
+	static constexpr auto DESCRIPTION = R"(
+		Returns a point or multi-point, containing the point(s) at the geometry with the given measure
+		
+		For a LINESTRING, or MULTILINESTRING, the location is determined by interpolating between M values
+		For a POINT and MULTIPOINT, the point is returned if the measure matches the M value of the vertex, otherwise an empty geometry is returned
+		For a POLYGON, only the exterior ring is considered, and the measure is applied to the M values of the vertices in that ring
+
+		If offset is provided, the resulting point(s) is offset by the given amount perpendicular to the line direction.
+	)";
+	static constexpr auto EXAMPLE = "";
+
+	//------------------------------------------------------------------------------------------------------------------
+	// Register
+	//------------------------------------------------------------------------------------------------------------------
+	static void Register(ExtensionLoader &loader) {
+		FunctionBuilder::RegisterScalar(loader, "ST_LocateAlong", [](ScalarFunctionBuilder &func) {
+			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("line", GeoTypes::GEOMETRY());
+				variant.AddParameter("measure", LogicalType::DOUBLE);
+				variant.AddParameter("offset", LogicalType::DOUBLE);
+				variant.SetReturnType(GeoTypes::GEOMETRY());
+
+				variant.SetFunction(ExecuteGeometry);
+				variant.SetInit(LocalState::Init);
+			});
+
+			func.SetDescription(DESCRIPTION);
+			func.SetExample(EXAMPLE);
+
+			func.SetTag("ext", "spatial");
+			func.SetTag("category", "referencing");
+		});
+	}
+};
+
+//======================================================================================================================
 // ST_ZMFlag
 //======================================================================================================================
 
@@ -5846,6 +5919,85 @@ struct ST_Hilbert {
 
 			func.SetDescription(DESCRIPTION);
 			func.SetExample(EXAMPLE);
+		});
+	}
+};
+
+//======================================================================================================================
+// ST_InterpolatePoint
+//======================================================================================================================
+
+struct ST_InterpolatePoint {
+
+	//------------------------------------------------------------------------------------------------------------------
+	// GEOMETRY
+	//------------------------------------------------------------------------------------------------------------------
+	static void ExecuteGeometry(DataChunk &args, ExpressionState &state, Vector &result) {
+		auto &lstate = LocalState::ResetAndGet(state);
+
+		BinaryExecutor::Execute<string_t, string_t, double>(
+		    args.data[0], args.data[1], result, args.size(),
+		    [&](const string_t &line_blob, const string_t &point_blob) {
+			    sgl::geometry line_geom;
+			    sgl::geometry point_geom;
+
+			    lstate.Deserialize(line_blob, line_geom);
+			    lstate.Deserialize(point_blob, point_geom);
+
+			    if (line_geom.get_type() != sgl::geometry_type::LINESTRING) {
+				    throw InvalidInputException("ST_InterpolatePoint: input is not a LINESTRING");
+			    }
+			    if (point_geom.get_type() != sgl::geometry_type::POINT) {
+				    throw InvalidInputException("ST_InterpolatePoint: input is not a POINT");
+			    }
+			    if (!line_geom.has_m()) {
+				    throw InvalidInputException("ST_InterpolatePoint: input LINESTRING must have M values");
+			    }
+			    if (line_geom.is_empty()) {
+				    throw InvalidInputException("ST_InterpolatePoint: input LINESTRING must not be empty");
+			    }
+			    if (point_geom.is_empty()) {
+				    throw InvalidInputException("ST_InterpolatePoint: input POINT must not be empty");
+			    }
+
+			    double result = 0.0;
+			    if (!sgl::linestring::interpolate_point(line_geom, point_geom, result)) {
+				    throw InvalidInputException("ST_InterpolatePoint: unknown error");
+			    }
+			    return result;
+		    });
+	}
+
+	//------------------------------------------------------------------------------------------------------------------
+	// Documentation
+	//------------------------------------------------------------------------------------------------------------------
+	static constexpr auto DESCRIPTION = R"(
+		Computes the closest point on a LINESTRING to a given POINT and returns the interpolated M value of that point.
+
+		First argument must be a linestring and must have a M dimension. The second argument must be a point. 
+		Neither argument can be empty.
+	)";
+	static constexpr auto EXAMPLE = "";
+
+	//------------------------------------------------------------------------------------------------------------------
+	// Register
+	//------------------------------------------------------------------------------------------------------------------
+	static void Register(ExtensionLoader &loader) {
+		FunctionBuilder::RegisterScalar(loader, "ST_InterpolatePoint", [](ScalarFunctionBuilder &func) {
+			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("line", GeoTypes::GEOMETRY());
+				variant.AddParameter("point", GeoTypes::GEOMETRY());
+				variant.SetReturnType(LogicalType::DOUBLE);
+
+				variant.SetInit(LocalState::Init);
+				variant.SetFunction(ExecuteGeometry);
+			});
+
+			func.SetDescription(DESCRIPTION);
+			func.SetExample(EXAMPLE);
+
+			func.SetTag("ext", "spatial");
+			func.SetTag("category", "referencing");
 		});
 	}
 };
@@ -8808,9 +8960,9 @@ bool ST_DWithinHelper::TryGetConstDistance(const unique_ptr<FunctionData> &bind_
 	return false;
 }
 
-//######################################################################################################################
-// Register
-//######################################################################################################################
+// ######################################################################################################################
+//  Register
+// ######################################################################################################################
 
 void RegisterSpatialScalarFunctions(ExtensionLoader &loader) {
 	ST_Affine::Register(loader);
@@ -8849,9 +9001,11 @@ void RegisterSpatialScalarFunctions(ExtensionLoader &loader) {
 	ST_LineInterpolatePoint::Register(loader);
 	ST_LineInterpolatePoints::Register(loader);
 	ST_LineSubstring::Register(loader);
+	ST_LocateAlong::Register(loader);
 	ST_ZMFlag::Register(loader);
 	ST_Distance_Sphere::Register(loader);
 	ST_Hilbert::Register(loader);
+	ST_InterpolatePoint::Register(loader);
 	ST_Intersects::Register(loader);
 	ST_IntersectsExtent::Register(loader);
 	ST_IsClosed::Register(loader);

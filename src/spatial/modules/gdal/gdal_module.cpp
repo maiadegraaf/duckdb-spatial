@@ -30,11 +30,12 @@ namespace duckdb {
 
 namespace {
 
-//######################################################################################################################
-// DuckDB GDAL VFS
-//######################################################################################################################
-// This implements a GDAL "VFS" (Virtual File System) that allows GDAL to read and write files from DuckDB's file system
-// TODO: Make another pass at this, we should be able to clean it up a bit more.
+// ######################################################################################################################
+//  DuckDB GDAL VFS
+// ######################################################################################################################
+//  This implements a GDAL "VFS" (Virtual File System) that allows GDAL to read and write files from DuckDB's file
+//  system
+//  TODO: Make another pass at this, we should be able to clean it up a bit more.
 
 class DuckDBFileHandle final : public VSIVirtualHandle {
 private:
@@ -396,11 +397,11 @@ public:
 	}
 };
 
-//######################################################################################################################
-// Context State
-//######################################################################################################################
-// We give every client a unique prefix so that multiple connections can use their own attached file systems.
-// This is necessary because GDAL is not otherwise aware of the connection context.
+// ######################################################################################################################
+//  Context State
+// ######################################################################################################################
+//  We give every client a unique prefix so that multiple connections can use their own attached file systems.
+//  This is necessary because GDAL is not otherwise aware of the connection context.
 
 class GDALClientContextState final : public ClientContextState {
 	ClientContext &context;
@@ -456,9 +457,9 @@ GDALClientContextState &GDALClientContextState::GetOrCreate(ClientContext &conte
 	return *gdal_state;
 }
 
-//######################################################################################################################
-// Functions
-//######################################################################################################################
+// ######################################################################################################################
+//  Functions
+// ######################################################################################################################
 
 //======================================================================================================================
 // ST_Read
@@ -2020,9 +2021,9 @@ struct ST_Write {
 
 } // namespace
 
-//######################################################################################################################
-// Register Module
-//######################################################################################################################
+// ######################################################################################################################
+//  Register Module
+// ######################################################################################################################
 void RegisterGDALModule(ExtensionLoader &loader) {
 
 	// Load GDAL (once)

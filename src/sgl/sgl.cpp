@@ -754,6 +754,158 @@ void linestring::interpolate_points(allocator &alloc, const geometry &geom, doub
 	}
 }
 
+// Returns an interpolated "m" value for at the closest location from the line to the point
+bool linestring::interpolate_point(const geometry &linear_geom, const geometry &point_geom, double &out_measure) {
+	if (linear_geom.get_type() != geometry_type::LINESTRING || point_geom.get_type() != geometry_type::POINT) {
+		return false;
+	}
+	if (linear_geom.is_empty() || point_geom.is_empty()) {
+		return false;
+	}
+	if (!linear_geom.has_m()) {
+		return false; // No "m" values to interpolate
+	}
+
+	const auto vertex_width = linear_geom.get_vertex_width();
+	const auto vertex_array = linear_geom.get_vertex_array();
+	const auto vertex_count = linear_geom.get_vertex_count();
+
+	if (vertex_count < 2) {
+		return false; // Not enough points to interpolate
+	}
+
+	const auto m_offset = linear_geom.has_z() ? 3 * sizeof(double) : 2 * sizeof(double);
+
+	vertex_xy point = point_geom.get_vertex_xy(0);
+
+	double min_distance = std::numeric_limits<double>::max();
+
+	vertex_xy prev = {0, 0};
+	double prev_m = 0.0;
+	vertex_xy next = {0, 0};
+	double next_m = 0.0;
+
+	memcpy(&prev, vertex_array, sizeof(vertex_xy));
+	memcpy(&prev_m, vertex_array + m_offset, sizeof(double));
+
+	for (size_t i = 1; i < vertex_count; i++) {
+		memcpy(&next, vertex_array + i * vertex_width, sizeof(vertex_xy));
+		memcpy(&next_m, vertex_array + i * vertex_width + m_offset, sizeof(double));
+
+		const auto dx = next.x - prev.x;
+		const auto dy = next.y - prev.y;
+
+		const auto segment_length = std::sqrt(dx * dx + dy * dy);
+		if (segment_length == 0) {
+			prev = next;
+			continue; // Skip zero-length segments
+		}
+
+		const double t = ((point.x - prev.x) * dx + (point.y - prev.y) * dy) / (segment_length * segment_length);
+		const double clamped_t = math::clamp(t, 0.0, 1.0);
+
+		const double closest_x = prev.x + clamped_t * dx;
+		const double closest_y = prev.y + clamped_t * dy;
+
+		const double distance_squared =
+		    (closest_x - point.x) * (closest_x - point.x) + (closest_y - point.y) * (closest_y - point.y);
+
+		if (distance_squared < min_distance) {
+			min_distance = distance_squared;
+			out_measure = prev_m + clamped_t * (next_m - prev_m);
+		}
+
+		prev = next;
+		prev_m = next_m;
+	}
+
+	return true;
+}
+
+void linestring::locate_along(allocator &alloc, const geometry &linear_geom, double measure, double offset,
+                              geometry &out_geom) {
+	if (linear_geom.get_type() != geometry_type::LINESTRING) {
+		return;
+	}
+	if (linear_geom.is_empty()) {
+		return;
+	}
+	if (!linear_geom.has_m()) {
+		return; // No "m" values to locate along
+	}
+
+	const auto vertex_width = linear_geom.get_vertex_width();
+	const auto vertex_array = linear_geom.get_vertex_array();
+	const auto vertex_count = linear_geom.get_vertex_count();
+
+	if (vertex_count < 2) {
+		return; // Not enough points to locate along
+	}
+
+	const auto has_z = linear_geom.has_z();
+	const auto has_m = linear_geom.has_m();
+
+	const auto m_offset = has_z ? 3 : 2;
+	const auto z_offset = has_z ? 2 : 3;
+
+	vertex_xyzm prev = {0, 0, 0, 0};
+	vertex_xyzm next = {0, 0, 0, 0};
+
+	memcpy(&prev, vertex_array, vertex_width);
+
+	// Loop over the segments of the line
+	for (uint32_t i = 1; i < vertex_count; i++) {
+		memcpy(&next, vertex_array + i * vertex_width, vertex_width);
+
+		const auto dx = next.x - prev.x;
+		const auto dy = next.y - prev.y;
+
+		const auto segment_length = std::sqrt(dx * dx + dy * dy);
+		if (segment_length == 0) {
+			prev = next;
+			continue; // Skip zero-length segments
+		}
+
+		const double t = (measure - prev[m_offset]) / (next[m_offset] - prev[m_offset]);
+		if (t < 0 || t > 1) {
+			prev = next;
+			continue; // Measure is outside the segment
+		}
+
+		vertex_xyzm point = {};
+		point.x = prev.x + t * dx;
+		point.y = prev.y + t * dy;
+		point[m_offset] = measure; // Set the "m" value to the measure
+
+		// If the geometry has Z values, interpolate them as well
+		if (has_z) {
+			point[z_offset] = prev[z_offset] + t * (next[z_offset] - prev[z_offset]);
+		}
+
+		if (offset != 0.0) {
+			const double offset_x = offset * dy / segment_length;  // Perpendicular offset
+			const double offset_y = -offset * dx / segment_length; // Perpendicular offset
+			point.x += offset_x;
+			point.y += offset_y;
+		}
+
+		// Allocate memory for the point vertex
+		const auto mem = static_cast<char *>(alloc.alloc(vertex_width));
+		memcpy(mem, &point, vertex_width);
+
+		// Allocate memory for the point geometry
+		const auto point_mem = alloc.alloc(sizeof(sgl::geometry));
+		auto point_ptr = new (point_mem) sgl::geometry(geometry_type::POINT, has_z, has_m);
+
+		point_ptr->set_vertex_array(mem, 1);
+
+		// Append the point to the output geometry
+		out_geom.append_part(point_ptr);
+
+		prev = next; // Move to the next segment
+	}
+}
+
 void linestring::substring(allocator &alloc, const geometry &geom, double beg_frac, double end_frac, geometry &result) {
 	result.set_type(geometry_type::LINESTRING);
 	result.set_z(geom.has_z());
@@ -916,6 +1068,48 @@ void polygon::init_from_bbox(allocator &alloc, double min_x, double min_y, doubl
 //======================================================================================================================
 
 namespace sgl {
+
+void ops::locate_along(allocator &alloc, const geometry &geom, double measure, double offset, geometry &out_geom) {
+
+	if (!geom.has_m()) {
+		return; // No "m" values to locate along
+	}
+
+	const auto has_z = geom.has_z();
+
+	visit_leaf_geometries(geom, [&alloc, &out_geom, &measure, &offset, &has_z](const geometry &part) {
+		if (part.is_empty()) {
+			return; // Skip empty geometries
+		}
+		switch (part.get_type()) {
+		case geometry_type::POINT: {
+			const auto vertex = part.get_vertex_xyzm(0);
+			if ((has_z && vertex.m == measure) || (!has_z && vertex.z == measure)) {
+				// If the point's "m" value matches the measure, include it in the output
+
+				// Make a new point geometry
+				const auto point_mem = alloc.alloc(sizeof(sgl::geometry));
+				auto point_ptr = new (point_mem) sgl::geometry(geometry_type::POINT, has_z, part.has_m());
+
+				// Make the point reference the same vertex
+				point_ptr->set_vertex_array(part.get_vertex_array(), 1);
+			}
+		} break;
+		case geometry_type::LINESTRING: {
+			linestring::locate_along(alloc, part, measure, offset, out_geom);
+		} break;
+		case geometry_type::POLYGON: {
+			// Only consider the outer ring of the polygon
+			const auto shell = part.get_first_part();
+			linestring::locate_along(alloc, *shell, measure, offset, out_geom);
+		} break;
+		default:
+			// Unsupported geometry type
+			SGL_ASSERT(false);
+			return;
+		}
+	});
+}
 
 bool ops::get_centroid_from_points(const geometry &geom, vertex_xyzm &out) {
 
