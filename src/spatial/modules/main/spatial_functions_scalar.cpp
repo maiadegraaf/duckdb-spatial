@@ -3343,8 +3343,8 @@ struct Op_IntersectApprox {
             func.SetDescription(R"(
                 Returns true if the bounding boxes intersects.
 
-                Note that, this operation is not very accurate; `&&` compares the cached bbox of the geometry using float precision.
-                If you prefer accuracy, please use some other function like `ST_Intersects()`.
+                Note that, this operation is not very accurate; `&&` compares the cached bbox of the geometry using
+float precision. If you prefer accuracy, please use some other function like `ST_Intersects()`.
             )");
 
             func.SetExample(R"(
@@ -7043,7 +7043,7 @@ struct ST_NPoints {
 	static void ExecuteGeometry(DataChunk &args, ExpressionState &state, Vector &result) {
 		auto &lstate = LocalState::ResetAndGet(state);
 
-		UnaryExecutor::Execute<string_t, int32_t>(args.data[0], result, args.size(), [&](const string_t &blob) {
+		UnaryExecutor::Execute<string_t, uint32_t>(args.data[0], result, args.size(), [&](const string_t &blob) {
 			sgl::geometry geom;
 			lstate.Deserialize(blob, geom);
 			return sgl::ops::get_total_vertex_count(geom);
@@ -8832,7 +8832,7 @@ void RegisterSpatialScalarFunctions(ExtensionLoader &loader) {
 	ST_EndPoint::Register(loader);
 	ST_Extent::Register(loader);
 	ST_Extent_Approx::Register(loader);
-	//Op_IntersectApprox::Register(loader);
+	// Op_IntersectApprox::Register(loader);
 	ST_ExteriorRing::Register(loader);
 	ST_FlipCoordinates::Register(loader);
 	ST_Force2D::Register(loader);

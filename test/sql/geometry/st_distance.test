@@ -1,3 +1,6 @@
+# name: test/sql/geometry/st_distance.test
+# group: [geometry]
+
 require spatial
 
 # This test case comes from a bug report, where the indexed point-in-polygon check would not consider that

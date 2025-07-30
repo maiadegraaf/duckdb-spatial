@@ -1,3 +1,6 @@
+# name: test/sql/geometry/st_intersects_extent.test
+# group: [geometry]
+
 require spatial
 
 # Test identical points - extents should intersect

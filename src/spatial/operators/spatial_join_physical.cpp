@@ -418,7 +418,7 @@ PhysicalSpatialJoin::PhysicalSpatialJoin(PhysicalPlan &physical_plan, LogicalOpe
 	// Initialize the layout
 	// TODO: Align?
 	layout = make_shared_ptr<TupleDataLayout>();
-	layout->Initialize(std::move(layout_types), false);
+	layout->Initialize(std::move(layout_types), TupleDataValidityType::CAN_HAVE_NULL_VALUES);
 
 	// For right/outer joins, this is where the build side match column goes
 	if (PropagatesBuildSide(join_type)) {

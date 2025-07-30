@@ -523,7 +523,7 @@ struct ST_Read : ArrowTableFunction {
 		// before they are renamed
 		vector<string> all_names = {};
 		vector<LogicalType> all_types = {};
-		ArrowTableType arrow_table = {};
+		ArrowTableSchema arrow_table = {};
 
 		bool has_approximate_feature_count = false;
 		idx_t approximate_feature_count = 0;
@@ -722,7 +722,7 @@ struct ST_Read : ArrowTableFunction {
 			if (duckdb_type.id() == LogicalTypeId::BLOB && attribute.metadata != nullptr &&
 			    strncmp(attribute.metadata, ogc_flag, sizeof(ogc_flag)) == 0) {
 				// This is a WKB geometry blob
-				result->arrow_table.AddColumn(col_idx, std::move(arrow_type));
+				result->arrow_table.AddColumn(col_idx, std::move(arrow_type), column_name);
 
 				if (result->keep_wkb) {
 					return_types.emplace_back(GeoTypes::WKB_BLOB());
@@ -738,10 +738,10 @@ struct ST_Read : ArrowTableFunction {
 				auto dictionary_type = ArrowType::GetArrowLogicalType(DBConfig::GetConfig(context), attribute);
 				return_types.emplace_back(dictionary_type->GetDuckType());
 				arrow_type->SetDictionary(std::move(dictionary_type));
-				result->arrow_table.AddColumn(col_idx, std::move(arrow_type));
+				result->arrow_table.AddColumn(col_idx, std::move(arrow_type), column_name);
 			} else {
 				return_types.emplace_back(arrow_type->GetDuckType());
-				result->arrow_table.AddColumn(col_idx, std::move(arrow_type));
+				result->arrow_table.AddColumn(col_idx, std::move(arrow_type), column_name);
 			}
 
 			// keep these around for projection/filter pushdown later

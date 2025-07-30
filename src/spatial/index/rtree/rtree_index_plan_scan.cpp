@@ -194,7 +194,14 @@ public:
 		                                            "ST_Within",    "ST_Contains",        "ST_Overlaps", "ST_Covers",
 		                                            "ST_CoveredBy", "ST_ContainsProperly"};
 
-		table_info.GetIndexes().BindAndScan<RTreeIndex>(context, table_info, [&](RTreeIndex &index_entry) {
+		table_info.BindIndexes(context, RTreeIndex::TYPE_NAME);
+		table_info.GetIndexes().Scan([&](Index &index) {
+			if (!index.IsBound() || RTreeIndex::TYPE_NAME != index.GetIndexType()) {
+				return false;
+			}
+
+			auto &index_entry = index.Cast<RTreeIndex>();
+
 			// Create the bind data for this index given the bounding box
 			bool rewrite_possible = true;
 			auto index_expr = index_entry.unbound_expressions[0]->Copy();

@@ -26,18 +26,18 @@ namespace sgl {
 
 class allocator {
 public:
-	virtual void* alloc(size_t size) = 0;
-	virtual void dealloc(void* ptr, size_t size) = 0;
-	virtual void* realloc(void* ptr, size_t old_size, size_t new_size) = 0;
+	virtual void *alloc(size_t size) = 0;
+	virtual void dealloc(void *ptr, size_t size) = 0;
+	virtual void *realloc(void *ptr, size_t old_size, size_t new_size) = 0;
 	virtual ~allocator() = default;
 
-	template<class T, class ...ARGS>
-	T* make(ARGS&&... args) {
-		auto ptr = static_cast<T*>(alloc(sizeof(T)));
+	template <class T, class... ARGS>
+	T *make(ARGS &&... args) {
+		auto ptr = static_cast<T *>(alloc(sizeof(T)));
 		if (!ptr) {
 			return nullptr;
 		}
-		new (ptr) T(static_cast<ARGS&&>(args)...);
+		new (ptr) T(static_cast<ARGS &&>(args)...);
 		return ptr;
 	}
 };
@@ -49,14 +49,21 @@ public:
 //======================================================================================================================
 namespace sgl {
 namespace math {
-	// Avoid including <algorithm> in the header to keep dependencies minimal
-	template <class T> const T& max (const T& a, const T& b) { return (a < b) ? b : a; }
-	template <class T> const T& min (const T& a, const T& b) { return !(b < a) ? a : b; }
-
-	template <class T> T clamp(const T& value, const T& min_value, const T& max_value) {
-		return (value < min_value) ? min_value : (value > max_value ? max_value : value);
-	}
+// Avoid including <algorithm> in the header to keep dependencies minimal
+template <class T>
+const T &max(const T &a, const T &b) {
+	return (a < b) ? b : a;
 }
+template <class T>
+const T &min(const T &a, const T &b) {
+	return !(b < a) ? a : b;
+}
+
+template <class T>
+T clamp(const T &value, const T &min_value, const T &max_value) {
+	return (value < min_value) ? min_value : (value > max_value ? max_value : value);
+}
+} // namespace math
 } // namespace sgl
 //======================================================================================================================
 // Vertex
@@ -65,10 +72,10 @@ namespace math {
 namespace sgl {
 
 enum class vertex_type : uint8_t {
-	XY		= 0,
-	XYZ		= 1,
-	XYM		= 2,
-	XYZM	= 3,
+	XY = 0,
+	XYZ = 1,
+	XYM = 2,
+	XYZM = 3,
 };
 
 struct vertex_xy {
@@ -130,10 +137,8 @@ struct extent_xy {
 	vertex_xy max;
 
 	static extent_xy smallest() {
-		return {
-			{std::numeric_limits<double>::max(), std::numeric_limits<double>::max()},
-			{std::numeric_limits<double>::lowest(), std::numeric_limits<double>::lowest()}
-		};
+		return {{std::numeric_limits<double>::max(), std::numeric_limits<double>::max()},
+		        {std::numeric_limits<double>::lowest(), std::numeric_limits<double>::lowest()}};
 	}
 
 	bool contains(const vertex_xy &other) const {
@@ -144,7 +149,7 @@ struct extent_xy {
 		return !(min.x > other.max.x || max.x < other.min.x || min.y > other.max.y || max.y < other.min.y);
 	}
 
-	double distance_to(const vertex_xy& other) const {
+	double distance_to(const vertex_xy &other) const {
 		if (contains(other)) {
 			return 0.0;
 		}
@@ -153,7 +158,6 @@ struct extent_xy {
 		const auto dy = math::max(min.y - other.y, other.y - max.y);
 		return std::sqrt(dx * dx + dy * dy);
 	}
-
 
 	double distance_to_sq(const extent_xy &other) const {
 		const auto dx = math::max(0.0, math::max(min.x - other.max.x, other.min.x - max.x));
@@ -178,22 +182,14 @@ struct extent_xyzm {
 	vertex_xyzm max;
 
 	static extent_xyzm smallest() {
-		return {
-			{
-				std::numeric_limits<double>::max(), std::numeric_limits<double>::max(),
-			   std::numeric_limits<double>::max(), std::numeric_limits<double>::max()
-			},
-				{std::numeric_limits<double>::lowest(), std::numeric_limits<double>::lowest(),
-				std::numeric_limits<double>::lowest(), std::numeric_limits<double>::lowest()
-			}
-		};
+		return {{std::numeric_limits<double>::max(), std::numeric_limits<double>::max(),
+		         std::numeric_limits<double>::max(), std::numeric_limits<double>::max()},
+		        {std::numeric_limits<double>::lowest(), std::numeric_limits<double>::lowest(),
+		         std::numeric_limits<double>::lowest(), std::numeric_limits<double>::lowest()}};
 	}
 
 	static extent_xyzm zero() {
-		return {
-			{0, 0, 0, 0},
-			{0, 0, 0, 0}
-		};
+		return {{0, 0, 0, 0}, {0, 0, 0, 0}};
 	}
 };
 
@@ -215,39 +211,39 @@ struct affine_matrix {
 	double v[16] = {};
 
 	static affine_matrix identity() {
-        affine_matrix result;
-        result.v[0] = 1;
-        result.v[5] = 1;
-        result.v[10] = 1;
-        return result;
-    }
+		affine_matrix result;
+		result.v[0] = 1;
+		result.v[5] = 1;
+		result.v[10] = 1;
+		return result;
+	}
 
 	static affine_matrix translate(const double x, const double y, const double z = 0) {
-        affine_matrix result = identity();
-        result.v[3] = x;
-        result.v[7] = y;
-        result.v[11] = z;
-        return result;
-    }
+		affine_matrix result = identity();
+		result.v[3] = x;
+		result.v[7] = y;
+		result.v[11] = z;
+		return result;
+	}
 
 	static affine_matrix scale(const double x, const double y, const double z = 1) {
-        affine_matrix result = identity();
-        result.v[0] = x;
-        result.v[5] = y;
-        result.v[10] = z;
-        return result;
-    }
+		affine_matrix result = identity();
+		result.v[0] = x;
+		result.v[5] = y;
+		result.v[10] = z;
+		return result;
+	}
 
 	static affine_matrix rotate_x(const double angle) {
-        affine_matrix result = identity();
-        const auto c = std::cos(angle);
-        const auto s = std::sin(angle);
-        result.v[5] = c;
-        result.v[6] = -s;
-        result.v[9] = s;
-        result.v[10] = c;
-        return result;
-    }
+		affine_matrix result = identity();
+		const auto c = std::cos(angle);
+		const auto s = std::sin(angle);
+		result.v[5] = c;
+		result.v[6] = -s;
+		result.v[9] = s;
+		result.v[10] = c;
+		return result;
+	}
 
 	static affine_matrix rotate_y(const double angle) {
 		affine_matrix result = identity();
@@ -271,17 +267,17 @@ struct affine_matrix {
 		return result;
 	}
 
-	static affine_matrix translate_scale(const double x, const double y, const double z,
-		const double sx, const double sy, const double sz) {
-        affine_matrix result = identity();
-        result.v[0] = sx;
-        result.v[5] = sy;
-        result.v[10] = sz;
-        result.v[3] = x;
-        result.v[7] = y;
-        result.v[11] = z;
-        return result;
-    }
+	static affine_matrix translate_scale(const double x, const double y, const double z, const double sx,
+	                                     const double sy, const double sz) {
+		affine_matrix result = identity();
+		result.v[0] = sx;
+		result.v[5] = sy;
+		result.v[10] = sz;
+		result.v[3] = x;
+		result.v[7] = y;
+		result.v[11] = z;
+		return result;
+	}
 
 	vertex_xy apply_xy(const vertex_xy &vertex) const {
 
@@ -301,11 +297,11 @@ struct affine_matrix {
 		// z = g * x + h * y + i * z + zoff;
 
 		vertex_xyzm result = {0, 0, 0, 0};
-		result.x = v[0] * vertex.x + v[1] * vertex.y + v[2]  * vertex.z + v[3];
-		result.y = v[4] * vertex.x + v[5] * vertex.y + v[6]  * vertex.z + v[7];
+		result.x = v[0] * vertex.x + v[1] * vertex.y + v[2] * vertex.z + v[3];
+		result.y = v[4] * vertex.x + v[5] * vertex.y + v[6] * vertex.z + v[7];
 		result.z = v[8] * vertex.x + v[9] * vertex.y + v[10] * vertex.z + v[11];
-        return result;
-    }
+		return result;
+	}
 };
 
 } // namespace sgl
@@ -328,7 +324,6 @@ enum class geometry_type : uint8_t {
 
 class geometry {
 public:
-
 	//------------------------------------------------------------------------------------------------------------------
 	// Constructors
 	//------------------------------------------------------------------------------------------------------------------
@@ -336,16 +331,16 @@ public:
 	geometry() : next(nullptr), prnt(nullptr), type(geometry_type::INVALID), flag(0), padd(0), size(0), data(nullptr) {
 	}
 
-	geometry(const geometry_type type, const bool has_z, const bool has_m) : next(nullptr), prnt(nullptr), type(type),
-		flag(0), padd(0), size(0), data(nullptr) {
+	geometry(const geometry_type type, const bool has_z, const bool has_m)
+	    : next(nullptr), prnt(nullptr), type(type), flag(0), padd(0), size(0), data(nullptr) {
 		set_z(has_z);
 		set_m(has_m);
 	}
 
-	geometry(const geometry& other) = delete;				// Not copyable
-	geometry& operator=(const geometry& other) = delete;	// Not copy assignable
-	geometry(geometry&& other) = delete;					// Not movable
-	geometry& operator=(geometry&& other) = delete;			// Not move assignable
+	geometry(const geometry &other) = delete;            // Not copyable
+	geometry &operator=(const geometry &other) = delete; // Not copy assignable
+	geometry(geometry &&other) = delete;                 // Not movable
+	geometry &operator=(geometry &&other) = delete;      // Not move assignable
 
 	//------------------------------------------------------------------------------------------------------------------
 	// Property Getters and Setters
@@ -425,43 +420,43 @@ public:
 	// Relationship Getters and Setters
 	//------------------------------------------------------------------------------------------------------------------
 
-	geometry* get_parent() {
+	geometry *get_parent() {
 		return prnt;
 	}
 
-	const geometry* get_parent() const {
+	const geometry *get_parent() const {
 		return prnt;
 	}
 
-	geometry* get_next() {
+	geometry *get_next() {
 		return next;
 	}
 
-	const geometry* get_next() const {
+	const geometry *get_next() const {
 		return next;
 	}
 
-	geometry* get_first_part() {
+	geometry *get_first_part() {
 		return get_last_part() ? get_last_part()->next : nullptr;
 	}
 
-	const geometry* get_first_part() const {
+	const geometry *get_first_part() const {
 		return get_last_part() ? get_last_part()->next : nullptr;
 	}
 
-	geometry* get_last_part() {
-		return static_cast<geometry*>(data);
+	geometry *get_last_part() {
+		return static_cast<geometry *>(data);
 	}
 
-	const geometry* get_last_part() const {
-		return static_cast<const geometry*>(data);
+	const geometry *get_last_part() const {
+		return static_cast<const geometry *>(data);
 	}
 
 	uint32_t get_part_count() const {
 		return size;
 	}
 
-	void append_part(geometry* part) {
+	void append_part(geometry *part) {
 		SGL_ASSERT(is_multi_part() || type == geometry_type::INVALID);
 		SGL_ASSERT(part != nullptr);
 
@@ -481,9 +476,8 @@ public:
 		size++;
 	}
 
-	void filter_parts(void *state,
-		bool (*select_callback)(void *state, const geometry *part),
-		void (*handle_callback)(void *state, geometry *part));
+	void filter_parts(void *state, bool (*select_callback)(void *state, const geometry *part),
+	                  void (*handle_callback)(void *state, geometry *part));
 
 	//------------------------------------------------------------------------------------------------------------------
 	// Vertex Getters and Setters
@@ -502,20 +496,20 @@ public:
 		return size;
 	}
 
-	char* get_vertex_array() {
+	char *get_vertex_array() {
 		SGL_ASSERT(!is_multi_part() || type == geometry_type::INVALID);
-		return static_cast<char*>(data);
+		return static_cast<char *>(data);
 	}
 
-	void set_vertex_array(const void* data, uint32_t size) {
+	void set_vertex_array(const void *data, uint32_t size) {
 		SGL_ASSERT(!is_multi_part() || type == geometry_type::INVALID);
-		this->data = const_cast<void*>(data);
+		this->data = const_cast<void *>(data);
 		this->size = size;
 	}
 
-	const char* get_vertex_array() const {
+	const char *get_vertex_array() const {
 		SGL_ASSERT(!is_multi_part() || type == geometry_type::INVALID);
-		return static_cast<char*>(data);
+		return static_cast<char *>(data);
 	}
 
 	vertex_xy get_vertex_xy(const uint32_t index) const {
@@ -537,20 +531,19 @@ public:
 	}
 
 private:
-
 	//------------------------------------------------------------------------------------------------------------------
 	// Private Members
 	//------------------------------------------------------------------------------------------------------------------
 
-	geometry*		next;
-	geometry*		prnt;
+	geometry *next;
+	geometry *prnt;
 
-	geometry_type	type;
-	uint8_t			flag;
-	uint16_t		padd;
-	uint32_t		size;
+	geometry_type type;
+	uint8_t flag;
+	uint16_t padd;
+	uint32_t size;
 
-	void*			data;
+	void *data;
 };
 
 } // namespace sgl
@@ -569,7 +562,7 @@ enum class point_in_polygon_result {
 class prepared_geometry : public geometry {
 public:
 	explicit prepared_geometry(geometry_type type = geometry_type::INVALID, bool has_z = false, bool has_m = false)
-		: geometry(type, has_z, has_m) {
+	    : geometry(type, has_z, has_m) {
 	}
 
 	// Construct the prepared geometry by indexing the vertex array
@@ -603,20 +596,19 @@ public:
 		static constexpr uint32_t MAX_DEPTH = 8; // 16^8 >= max(uint32_t)
 
 		struct level {
-			extent_xy*	entry_array;
-			uint32_t	entry_count;
+			extent_xy *entry_array;
+			uint32_t entry_count;
 		};
-		level*		level_array;
-		uint32_t	level_count;
+		level *level_array;
+		uint32_t level_count;
 
-		uint32_t    items_count; // Total number of leaf items in the index
+		uint32_t items_count; // Total number of leaf items in the index
 	};
 
 	prepared_index index = {};
 };
 
 } // namespace sgl
-
 
 //======================================================================================================================
 // Algorithms
@@ -627,44 +619,46 @@ namespace sgl {
 namespace ops {
 
 // Return the area of all polygonal parts of the geometry
-double get_area(const geometry& geom);
+double get_area(const geometry &geom);
 
 // Return the length of all linestring parts of the geometry
-double get_length(const geometry& geom);
+double get_length(const geometry &geom);
 
 // Return the perimeter of all polygonal parts of the geometry
-double get_perimeter(const geometry& geom);
+double get_perimeter(const geometry &geom);
 
 // Get the total number of vertices in all parts of the geometry
-uint32_t get_total_vertex_count(const geometry& geom);
+uint32_t get_total_vertex_count(const geometry &geom);
 
 // Get the total extent of all parts of the geometry, and return the number of vertices
-uint32_t get_total_extent_xy(const geometry& geom, extent_xy& ext);
+uint32_t get_total_extent_xy(const geometry &geom, extent_xy &ext);
 
 // Get the total extent of all parts of the geometry, and return the number of vertices
-uint32_t get_total_extent_xyzm(const geometry& geom, extent_xyzm& ext);
+uint32_t get_total_extent_xyzm(const geometry &geom, extent_xyzm &ext);
 
 // Get the max surface dimension of the geometry, ignoring empty parts
 // Empty geometries are not counted, and if the whole geometry is empty, -1 is returned
-int32_t get_max_surface_dimension(const geometry& geom, bool ignore_empty);
+int32_t get_max_surface_dimension(const geometry &geom, bool ignore_empty);
 
-bool get_centroid(const geometry& geom, vertex_xyzm& centroid);
+bool get_centroid(const geometry &geom, vertex_xyzm &centroid);
 
-bool get_centroid_from_polygons(const geometry& geom, vertex_xyzm& centroid);
+bool get_centroid_from_polygons(const geometry &geom, vertex_xyzm &centroid);
 
-bool get_centroid_from_points(const geometry& geom, vertex_xyzm& centroid);
+bool get_centroid_from_points(const geometry &geom, vertex_xyzm &centroid);
 
-bool get_centroid_from_linestrings(const geometry& geom, vertex_xyzm& centroid);
+bool get_centroid_from_linestrings(const geometry &geom, vertex_xyzm &centroid);
 
 bool get_euclidean_distance(const geometry &lhs_geom, const geometry &rhs_geom, double &result);
 
 // Visits all geometries in the geometry, calling the callback for each vertex
 void visit_vertices_xy(const geometry &geom, void *state, void (*callback)(void *state, const vertex_xy &vertex));
 void visit_vertices_xyzm(const geometry &geom, void *state, void (*callback)(void *state, const vertex_xyzm &vertex));
-void transform_vertices(allocator &allocator, geometry &geom, void *state, void (*callback)(void *state, vertex_xyzm &vertex));
+void transform_vertices(allocator &allocator, geometry &geom, void *state,
+                        void (*callback)(void *state, vertex_xyzm &vertex));
 
 void visit_point_geometries(const geometry &geom, void *state, void (*callback)(void *state, const geometry &part));
-void visit_linestring_geometries(const geometry &geom, void *state, void (*callback)(void *state, const geometry &part));
+void visit_linestring_geometries(const geometry &geom, void *state,
+                                 void (*callback)(void *state, const geometry &part));
 void visit_polygon_geometries(const geometry &geom, void *state, void (*callback)(void *state, const geometry &part));
 
 // Flips vertices, by replacing the vertex arrays in each geometry with a newly allocated array where
@@ -690,21 +684,22 @@ void extract_polygons(geometry &geom, geometry &result);
 
 } // namespace ops
 
-
 // TODO: Move these
 namespace linestring {
-	bool is_closed(const geometry &geom);
-	bool interpolate(const geometry &geom, double frac, vertex_xyzm &out);
+bool is_closed(const geometry &geom);
+bool interpolate(const geometry &geom, double frac, vertex_xyzm &out);
 
-	// returns a multipoint with interpolated points
-	void interpolate_points(allocator &alloc, const geometry &geom, double frac, geometry &result);
-	void substring(allocator &alloc, const geometry &geom, double beg_frac, double end_frac, geometry &result);
+// returns a multipoint with interpolated points
+void interpolate_points(allocator &alloc, const geometry &geom, double frac, geometry &result);
+void substring(allocator &alloc, const geometry &geom, double beg_frac, double end_frac, geometry &result);
+} // namespace linestring
+
+namespace multi_linestring {
+bool is_closed(const geometry &geom);
 }
 
-namespace multi_linestring { bool is_closed(const geometry &geom); }
-
 namespace polygon {
-	void init_from_bbox(allocator &alloc, double min_x, double min_y, double max_x, double max_y, geometry &result);
+void init_from_bbox(allocator &alloc, double min_x, double min_y, double max_x, double max_y, geometry &result);
 }
 
 } // namespace sgl
@@ -717,22 +712,24 @@ namespace sgl {
 
 class wkt_reader {
 public:
-	explicit wkt_reader(allocator &alloc) : alloc(alloc), buf(nullptr), end(nullptr), pos(nullptr), error(nullptr) {}
+	explicit wkt_reader(allocator &alloc) : alloc(alloc), buf(nullptr), end(nullptr), pos(nullptr), error(nullptr) {
+	}
 
-	wkt_reader(const wkt_reader& other) = delete;
-	wkt_reader& operator=(const wkt_reader& other) = delete;
-	wkt_reader(wkt_reader&& other) = delete;
-	wkt_reader& operator=(wkt_reader&& other) = delete;
+	wkt_reader(const wkt_reader &other) = delete;
+	wkt_reader &operator=(const wkt_reader &other) = delete;
+	wkt_reader(wkt_reader &&other) = delete;
+	wkt_reader &operator=(wkt_reader &&other) = delete;
 
-	bool try_parse(geometry &out, const char* buf, const size_t size) {
+	bool try_parse(geometry &out, const char *buf, const size_t size) {
 		return try_parse(out, buf, buf + size);
 	}
-	bool try_parse(geometry &out, const char* cstr) {
+	bool try_parse(geometry &out, const char *cstr) {
 		return try_parse(out, cstr, cstr + strlen(cstr));
 	}
-	bool try_parse(geometry &out, const char* buf, const char* end);
+	bool try_parse(geometry &out, const char *buf, const char *end);
 
-	const char* get_error_message() const;
+	const char *get_error_message() const;
+
 private:
 	void match_ws();
 	bool match_str(const char *str);
@@ -746,7 +743,6 @@ private:
 	const char *error;
 };
 
-
 enum class wkb_reader_error {
 	OK = 0,
 	UNSUPPORTED_TYPE = 1,
@@ -758,27 +754,27 @@ enum class wkb_reader_error {
 
 class wkb_reader {
 public:
+	explicit wkb_reader(allocator &alloc)
+	    : alloc(alloc), buf(nullptr), end(nullptr), pos(nullptr), copy_vertices(false), allow_mixed_zm(false),
+	      nan_as_empty(false), error(wkb_reader_error::OK), srid(0), type_id(0), le(false), has_mixed_zm(false),
+	      has_any_z(false), has_any_m(false), stack_depth(0) {
+	}
 
-	explicit wkb_reader(allocator &alloc) : alloc(alloc) , buf(nullptr), end(nullptr), pos(nullptr),
-		copy_vertices(false), allow_mixed_zm(false), nan_as_empty(false), error(wkb_reader_error::OK),
-		srid(0), type_id(0), le(false), has_mixed_zm(false), has_any_z(false), has_any_m(false),
-		stack_depth(0) {}
-
-	bool try_parse(geometry &out, const char* buf, const size_t size) {
+	bool try_parse(geometry &out, const char *buf, const size_t size) {
 		return try_parse(out, buf, buf + size);
 	}
-	bool try_parse(geometry &out, const char* cstr) {
+	bool try_parse(geometry &out, const char *cstr) {
 		return try_parse(out, cstr, cstr + strlen(cstr));
 	}
-	bool try_parse(geometry &out, const char* buf, const char* end);
+	bool try_parse(geometry &out, const char *buf, const char *end);
 
-	bool try_parse_stats(extent_xy &out_extent, size_t &out_vertex_count, const char* buf, const size_t size) {
+	bool try_parse_stats(extent_xy &out_extent, size_t &out_vertex_count, const char *buf, const size_t size) {
 		return try_parse_stats(out_extent, out_vertex_count, buf, buf + size);
 	}
-	bool try_parse_stats(extent_xy &out_extent, size_t &out_vertex_count, const char* cstr) {
+	bool try_parse_stats(extent_xy &out_extent, size_t &out_vertex_count, const char *cstr) {
 		return try_parse_stats(out_extent, out_vertex_count, cstr, cstr + strlen(cstr));
 	}
-	bool try_parse_stats(extent_xy &out_extent, size_t &out_vertex_count, const char* buf, const char* end);
+	bool try_parse_stats(extent_xy &out_extent, size_t &out_vertex_count, const char *buf, const char *end);
 
 	// Options
 	void set_copy_vertices(const bool value) {
@@ -808,7 +804,7 @@ public:
 
 	// This might allocate memory using the allocator, or return a static string.
 	// Returns nullptr if there is no error.
-	const char* get_error_message() const;
+	const char *get_error_message() const;
 
 private:
 	static constexpr auto MAX_STACK_DEPTH = 32;
@@ -822,9 +818,9 @@ private:
 	bool read_line(geometry *val);
 
 	allocator &alloc;
-	const char* buf;
-	const char* end;
-	const char* pos;
+	const char *buf;
+	const char *end;
+	const char *pos;
 
 	bool copy_vertices;
 	bool allow_mixed_zm;
@@ -841,7 +837,6 @@ private:
 
 	size_t stack_depth;
 	uint32_t stack_buf[16] = {0};
-
 };
 
 } // namespace sgl
@@ -868,12 +863,11 @@ inline double haversine_distance(const double lat1_p, const double lon1_p, const
 	const auto dlon = lon2 - lon1;
 
 	const auto a =
-		std::pow(std::sin(dlat / 2.0), 2.0) + std::cos(lat1) * std::cos(lat2) * std::pow(std::sin(dlon / 2.0), 2.0);
+	    std::pow(std::sin(dlat / 2.0), 2.0) + std::cos(lat1) * std::cos(lat2) * std::pow(std::sin(dlon / 2.0), 2.0);
 	const auto c = 2.0 * std::atan2(std::sqrt(a), std::sqrt(1.0 - a));
 
 	return R * c;
 }
-
 
 // Hilbert Curve Encoding, from (Public Domain): https://github.com/rawrunprotected/hilbert_curves
 inline uint32_t hilbert_interleave(uint32_t x) {

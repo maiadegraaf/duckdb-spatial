@@ -6,11 +6,13 @@ set(TARGET_NAME spatial)
 set(EXTENSION_NAME ${TARGET_NAME}_extension)
 set(CMAKE_CXX_STANDARD 11)
 
-if (EMSCRIPTEN)
-  # _LINKED_LIBS influences only Wasm compilation
-  # it's unclear why this is needed, but somehow the global symbol pj_release from PROJ is not properly exported otherwise
-  # this solves by basically re-linking (at the moment the Wasm binary is actually produced)
-  set (DUCKDB_EXTENSION_SPATIAL_LINKED_LIBS "../../vcpkg_installed/wasm32-emscripten/lib/lib*.a")
+if(EMSCRIPTEN)
+  # _LINKED_LIBS influences only Wasm compilation it's unclear why this is
+  # needed, but somehow the global symbol pj_release from PROJ is not properly
+  # exported otherwise this solves by basically re-linking (at the moment the
+  # Wasm binary is actually produced)
+  set(DUCKDB_EXTENSION_SPATIAL_LINKED_LIBS
+      "../../vcpkg_installed/wasm32-emscripten/lib/lib*.a")
 endif()
 
 project(${TARGET_NAME})
@@ -53,8 +55,8 @@ find_package(EXPAT REQUIRED)
 find_package(unofficial-sqlite3 CONFIG REQUIRED)
 
 # Important: The link order matters, its the reverse order of dependency
-set(EXTENSION_DEPENDENCIES GDAL::GDAL PROJ::proj EXPAT::EXPAT unofficial::sqlite3::sqlite3
-                           ZLIB::ZLIB)
+set(EXTENSION_DEPENDENCIES GDAL::GDAL PROJ::proj EXPAT::EXPAT
+                           unofficial::sqlite3::sqlite3 ZLIB::ZLIB)
 
 if(SPATIAL_USE_GEOS)
   message(STATUS "Building with GEOS functionality")

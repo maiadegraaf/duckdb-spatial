@@ -79,26 +79,25 @@ double vertex_array_signed_area(const geometry &geom) {
 	return area * 0.5;
 }
 
-
-template<class CALLBACK>
+template <class CALLBACK>
 void visit_polygons(const geometry &geom, CALLBACK &&callback) {
 	const auto root = geom.get_parent();
 
 	auto part = &geom;
 	while (true) {
 		switch (part->get_type()) {
-			case geometry_type::POLYGON:
-				callback(*part);
+		case geometry_type::POLYGON:
+			callback(*part);
+			break;
+		case geometry_type::MULTI_POLYGON:
+		case geometry_type::GEOMETRY_COLLECTION:
+			if (part->is_empty()) {
 				break;
-			case geometry_type::MULTI_POLYGON:
-			case geometry_type::GEOMETRY_COLLECTION:
-				if (part->is_empty()) {
-					break;
-				}
-				part = part->get_first_part();
-				continue;
-			default:
-				break;
+			}
+			part = part->get_first_part();
+			continue;
+		default:
+			break;
 		}
 
 		while (true) {
@@ -115,25 +114,25 @@ void visit_polygons(const geometry &geom, CALLBACK &&callback) {
 	}
 }
 
-template<class CALLBACK>
+template <class CALLBACK>
 void visit_lines(const geometry &geom, CALLBACK &&callback) {
 	const auto root = geom.get_parent();
 
 	auto part = &geom;
 	while (true) {
 		switch (part->get_type()) {
-			case geometry_type::LINESTRING:
-				callback(*part);
+		case geometry_type::LINESTRING:
+			callback(*part);
+			break;
+		case geometry_type::MULTI_LINESTRING:
+		case geometry_type::GEOMETRY_COLLECTION:
+			if (part->is_empty()) {
 				break;
-			case geometry_type::MULTI_LINESTRING:
-			case geometry_type::GEOMETRY_COLLECTION:
-				if (part->is_empty()) {
-					break;
-				}
-				part = part->get_first_part();
-				continue;
-			default:
-				break;
+			}
+			part = part->get_first_part();
+			continue;
+		default:
+			break;
 		}
 
 		while (true) {
@@ -150,7 +149,7 @@ void visit_lines(const geometry &geom, CALLBACK &&callback) {
 	}
 }
 
-template<class CALLBACK>
+template <class CALLBACK>
 void visit_points(const geometry &geom, CALLBACK &&callback) {
 	const auto root = geom.get_parent();
 
@@ -189,29 +188,29 @@ void visit_points(const geometry &geom, CALLBACK &&callback) {
 // - POINT
 // - LINESTRING
 // - POLYGON RING
-template<class CALLBACK>
+template <class CALLBACK>
 void visit_vertex_arrays(const geometry &geom, CALLBACK &&callback) {
 	const auto root = geom.get_parent();
 
 	auto part = &geom;
 	while (true) {
 		switch (part->get_type()) {
-			case geometry_type::POINT:
-			case geometry_type::LINESTRING:
-				callback(*part);
+		case geometry_type::POINT:
+		case geometry_type::LINESTRING:
+			callback(*part);
+			break;
+		case geometry_type::POLYGON:
+		case geometry_type::MULTI_POINT:
+		case geometry_type::MULTI_LINESTRING:
+		case geometry_type::MULTI_POLYGON:
+		case geometry_type::GEOMETRY_COLLECTION:
+			if (part->is_empty()) {
 				break;
-			case geometry_type::POLYGON:
-			case geometry_type::MULTI_POINT:
-			case geometry_type::MULTI_LINESTRING:
-			case geometry_type::MULTI_POLYGON:
-			case geometry_type::GEOMETRY_COLLECTION:
-				if (part->is_empty()) {
-					break;
-				}
-				part = part->get_first_part();
-				continue;
-			default:
-				break;
+			}
+			part = part->get_first_part();
+			continue;
+		default:
+			break;
 		}
 
 		while (true) {
@@ -228,7 +227,7 @@ void visit_vertex_arrays(const geometry &geom, CALLBACK &&callback) {
 	}
 }
 
-template<class CALLBACK>
+template <class CALLBACK>
 void visit_vertex_arrays_mutable(geometry &geom, CALLBACK &&callback) {
 	const auto root = geom.get_parent();
 
@@ -268,7 +267,7 @@ void visit_vertex_arrays_mutable(geometry &geom, CALLBACK &&callback) {
 }
 
 // Visit all non-collection geometries
-template<class CALLBACK>
+template <class CALLBACK>
 void visit_leaf_geometries(const geometry &geom, CALLBACK &&callback) {
 	const auto root = geom.get_parent();
 
@@ -308,7 +307,7 @@ void visit_leaf_geometries(const geometry &geom, CALLBACK &&callback) {
 	}
 }
 
-template<class CALLBACK_ENTER, class CALLBACK_LEAVE>
+template <class CALLBACK_ENTER, class CALLBACK_LEAVE>
 void visit_all_parts(const geometry &geom, CALLBACK_ENTER &&on_enter, CALLBACK_LEAVE &&on_leave) {
 	const auto root = geom.get_parent();
 
@@ -340,7 +339,7 @@ void visit_all_parts(const geometry &geom, CALLBACK_ENTER &&on_enter, CALLBACK_L
 	}
 }
 
-template<class CALLBACK_ENTER, class CALLBACK_LEAVE>
+template <class CALLBACK_ENTER, class CALLBACK_LEAVE>
 void visit_all_parts_mutable(geometry &geom, CALLBACK_ENTER &&on_enter, CALLBACK_LEAVE &&on_leave) {
 	const auto root = geom.get_parent();
 
@@ -405,9 +404,7 @@ double ops::get_area(const geometry &geom) {
 double ops::get_length(const geometry &geom) {
 	auto length = 0.0;
 
-	visit_lines(geom, [&length](const geometry &part) {
-		length += vertex_array_length(part);
-	});
+	visit_lines(geom, [&length](const geometry &part) { length += vertex_array_length(part); });
 
 	return length;
 }
@@ -424,8 +421,7 @@ double ops::get_perimeter(const geometry &geom) {
 		do {
 			head = head->get_next();
 			perimeter += vertex_array_length(*head);
-		}
-		while (head != tail);
+		} while (head != tail);
 	});
 
 	return perimeter;
@@ -434,9 +430,7 @@ double ops::get_perimeter(const geometry &geom) {
 uint32_t ops::get_total_vertex_count(const geometry &geom) {
 	uint32_t count = 0;
 
-	visit_vertex_arrays(geom, [&count](const geometry &part) {
-		count += part.get_vertex_count();
-	});
+	visit_vertex_arrays(geom, [&count](const geometry &part) { count += part.get_vertex_count(); });
 
 	return count;
 }
@@ -445,7 +439,6 @@ uint32_t ops::get_total_extent_xy(const geometry &geom, extent_xy &ext) {
 	uint32_t count = 0;
 
 	visit_vertex_arrays(geom, [&count, &ext](const geometry &part) {
-
 		const auto vertex_count = part.get_vertex_count();
 		const auto vertex_array = part.get_vertex_array();
 		const auto vertex_width = part.get_vertex_width();
@@ -494,7 +487,6 @@ uint32_t ops::get_total_extent_xyzm(const geometry &geom, extent_xyzm &ext) {
 	return count;
 }
 
-
 int32_t ops::get_max_surface_dimension(const geometry &geom, const bool ignore_empty) {
 	const auto root = geom.get_parent();
 
@@ -542,7 +534,7 @@ int32_t ops::get_max_surface_dimension(const geometry &geom, const bool ignore_e
 }
 
 void ops::visit_point_geometries(const geometry &geom, void *state,
-								 void (*callback)(void *state, const geometry &part)) {
+                                 void (*callback)(void *state, const geometry &part)) {
 	visit_points(geom, [state, callback](const geometry &part) {
 		SGL_ASSERT(part.get_type() == geometry_type::POINT);
 		callback(state, part);
@@ -584,10 +576,7 @@ bool linestring::is_closed(const geometry &geom) {
 	const auto last = geom.get_vertex_xyzm(geom.get_vertex_count() - 1);
 
 	// TODO: Make this robust
-	return first.x == last.x &&
-		   first.y == last.y &&
-		   first.z == last.z &&
-		   first.m == last.m;
+	return first.x == last.x && first.y == last.y && first.z == last.z && first.m == last.m;
 }
 
 bool multi_linestring::is_closed(const geometry &geom) {
@@ -610,10 +599,10 @@ bool multi_linestring::is_closed(const geometry &geom) {
 }
 
 bool linestring::interpolate(const geometry &geom, double frac, vertex_xyzm &out) {
-	if(geom.get_type() != geometry_type::LINESTRING) {
+	if (geom.get_type() != geometry_type::LINESTRING) {
 		return false;
 	}
-	if(geom.is_empty()) {
+	if (geom.is_empty()) {
 		return false;
 	}
 
@@ -621,7 +610,7 @@ bool linestring::interpolate(const geometry &geom, double frac, vertex_xyzm &out
 	const auto vertex_array = geom.get_vertex_array();
 	const auto vertex_count = geom.get_vertex_count();
 
-	if(geom.get_vertex_count() == 1) {
+	if (geom.get_vertex_count() == 1) {
 		memcpy(&out, vertex_array, vertex_width);
 		return true;
 	}
@@ -630,12 +619,12 @@ bool linestring::interpolate(const geometry &geom, double frac, vertex_xyzm &out
 	frac = math::min(math::max(frac, 0.0), 1.0);
 
 	// Special cases
-	if(frac == 0) {
+	if (frac == 0) {
 		memcpy(&out, vertex_array, vertex_width);
 		return true;
 	}
 
-	if(frac == 1) {
+	if (frac == 1) {
 		memcpy(&out, vertex_array + (vertex_count - 1) * vertex_width, vertex_width);
 		return true;
 	}
@@ -651,14 +640,14 @@ bool linestring::interpolate(const geometry &geom, double frac, vertex_xyzm &out
 
 	memcpy(&prev, vertex_array, vertex_width);
 
-	for(size_t i = 1; i < vertex_count; i++) {
+	for (size_t i = 1; i < vertex_count; i++) {
 		memcpy(&next, vertex_array + i * vertex_width, vertex_width);
 		const auto dx = next.x - prev.x;
 		const auto dy = next.y - prev.y;
 
 		const auto segment_length = std::sqrt(dx * dx + dy * dy);
 
-		if(length + segment_length >= target_length) {
+		if (length + segment_length >= target_length) {
 			const auto remaining = target_length - length;
 			const auto sfrac = remaining / segment_length;
 			out.x = prev.x + sfrac * (next.x - prev.x);
@@ -679,16 +668,16 @@ void linestring::interpolate_points(allocator &alloc, const geometry &geom, doub
 	result.set_z(geom.has_z());
 	result.set_m(geom.has_m());
 
-	if(geom.get_type() != geometry_type::LINESTRING) {
+	if (geom.get_type() != geometry_type::LINESTRING) {
 		result.set_type(geometry_type::POINT);
 		return;
 	}
-	if(geom.is_empty()) {
+	if (geom.is_empty()) {
 		result.set_type(geometry_type::POINT);
 		return;
 	}
 
-	if(geom.get_vertex_count() == 1) {
+	if (geom.get_vertex_count() == 1) {
 		result.set_type(geometry_type::POINT);
 		result.set_vertex_array(geom.get_vertex_array(), 1);
 		return;
@@ -702,18 +691,17 @@ void linestring::interpolate_points(allocator &alloc, const geometry &geom, doub
 	const auto vertex_count = geom.get_vertex_count();
 
 	// Special cases
-	if(frac == 0) {
+	if (frac == 0) {
 		result.set_type(geometry_type::POINT);
 		result.set_vertex_array(geom.get_vertex_array(), 1);
 		return;
 	}
 
-	if(frac == 1) {
+	if (frac == 1) {
 		result.set_type(geometry_type::POINT);
 		result.set_vertex_array(vertex_array + (vertex_count - 1) * vertex_width, 1);
 		return;
 	}
-
 
 	// Make a multi-point
 	result.set_type(geometry_type::MULTI_POINT);
@@ -746,7 +734,6 @@ void linestring::interpolate_points(allocator &alloc, const geometry &geom, doub
 			point.z = prev.z + sfrac * (next.z - prev.z);
 			point.m = prev.m + sfrac * (next.m - prev.m);
 
-
 			// Allocate memory for the point vertex
 			const auto data_mem = static_cast<char *>(alloc.alloc(vertex_width));
 			memcpy(data_mem, &point, vertex_width);
@@ -772,17 +759,17 @@ void linestring::substring(allocator &alloc, const geometry &geom, double beg_fr
 	result.set_z(geom.has_z());
 	result.set_m(geom.has_m());
 
-	if(geom.get_type() != sgl::geometry_type::LINESTRING) {
+	if (geom.get_type() != sgl::geometry_type::LINESTRING) {
 		return;
 	}
-	if(geom.is_empty()) {
-		if(beg_frac == end_frac) {
+	if (geom.is_empty()) {
+		if (beg_frac == end_frac) {
 			result.set_type(geometry_type::POINT);
 		}
 		return;
 	}
 
-	if(beg_frac > end_frac) {
+	if (beg_frac > end_frac) {
 		return;
 	}
 
@@ -794,19 +781,19 @@ void linestring::substring(allocator &alloc, const geometry &geom, double beg_fr
 	const auto vertex_count = geom.get_vertex_count();
 
 	// Reference the whole line
-	if(beg_frac == 0 && end_frac == 1) {
+	if (beg_frac == 0 && end_frac == 1) {
 		result.set_vertex_array(vertex_array, vertex_count);
 		return;
 	}
 
-	if(beg_frac == end_frac) {
+	if (beg_frac == end_frac) {
 		// Just interpolate once
 		vertex_xyzm point = {};
 
 		// Make it a point instead!
 		result.set_type(geometry_type::POINT);
 
-		if(interpolate(geom, beg_frac, point)) {
+		if (interpolate(geom, beg_frac, point)) {
 			const auto mem = static_cast<char *>(alloc.alloc(vertex_width));
 			memcpy(mem, &point, vertex_width);
 			result.set_vertex_array(mem, 1);
@@ -833,13 +820,13 @@ void linestring::substring(allocator &alloc, const geometry &geom, double beg_fr
 	// First look for the beg point
 	size_t vertex_idx = 1;
 
-	for(; vertex_idx < vertex_count; vertex_idx++) {
+	for (; vertex_idx < vertex_count; vertex_idx++) {
 		memcpy(&next, vertex_array + vertex_idx * vertex_width, vertex_width);
 		const auto dx = next.x - prev.x;
 		const auto dy = next.y - prev.y;
 		const auto segment_length = std::sqrt(dx * dx + dy * dy);
 
-		if(length + segment_length >= beg_length) {
+		if (length + segment_length >= beg_length) {
 			const auto remaining = beg_length - length;
 			const auto sfrac = remaining / segment_length;
 			beg.x = prev.x + sfrac * (next.x - prev.x);
@@ -855,13 +842,13 @@ void linestring::substring(allocator &alloc, const geometry &geom, double beg_fr
 	}
 
 	// Now look for the end point
-	for(; vertex_idx < vertex_count; vertex_idx++) {
+	for (; vertex_idx < vertex_count; vertex_idx++) {
 		memcpy(&next, vertex_array + vertex_idx * vertex_width, vertex_width);
 		const auto dx = next.x - prev.x;
 		const auto dy = next.y - prev.y;
 		const auto segment_length = std::sqrt(dx * dx + dy * dy);
 
-		if(length + segment_length >= end_length) {
+		if (length + segment_length >= end_length) {
 			const auto remaining = end_length - length;
 			const auto sfrac = remaining / segment_length;
 			end.x = prev.x + sfrac * (next.x - prev.x);
@@ -884,7 +871,8 @@ void linestring::substring(allocator &alloc, const geometry &geom, double beg_fr
 	// Copy the beg point
 	memcpy(new_vertex_data, &beg, vertex_width);
 	// Copy the points in between
-	memcpy(new_vertex_data + vertex_width, vertex_array + (beg_idx + 1) * vertex_width, (new_vertex_count - 2) * vertex_width);
+	memcpy(new_vertex_data + vertex_width, vertex_array + (beg_idx + 1) * vertex_width,
+	       (new_vertex_count - 2) * vertex_width);
 	// Copy the end point
 	memcpy(new_vertex_data + (new_vertex_count - 1) * vertex_width, &end, vertex_width);
 
@@ -901,7 +889,7 @@ void polygon::init_from_bbox(allocator &alloc, double min_x, double min_y, doubl
 	const auto ring_ptr = new (ring_mem) geometry(geometry_type::LINESTRING, false, false);
 
 	const auto data_mem = alloc.alloc(2 * sizeof(double) * 5);
-	const auto data_ptr = static_cast<double*>(data_mem);
+	const auto data_ptr = static_cast<double *>(data_mem);
 
 	data_ptr[0] = min_x;
 	data_ptr[1] = min_y;
@@ -921,7 +909,6 @@ void polygon::init_from_bbox(allocator &alloc, double min_x, double min_y, doubl
 	ring_ptr->set_vertex_array(data_mem, 5);
 	result.append_part(ring_ptr);
 }
-
 
 } // namespace sgl
 //======================================================================================================================
@@ -970,7 +957,7 @@ bool ops::get_centroid_from_linestrings(const geometry &geom, vertex_xyzm &out) 
 	vertex_xyzm centroid = {0, 0, 0, 0};
 
 	visit_lines(geom, [&centroid, &total_length](const geometry &part) {
-		if(part.is_empty()) {
+		if (part.is_empty()) {
 			return;
 		}
 
@@ -982,7 +969,7 @@ bool ops::get_centroid_from_linestrings(const geometry &geom, vertex_xyzm &out) 
 		vertex_xyzm next = {0, 0, 0, 0};
 
 		memcpy(&prev, v_array, v_width);
-		for(uint32_t i = 1; i < v_count; i++) {
+		for (uint32_t i = 1; i < v_count; i++) {
 			memcpy(&next, v_array + i * v_width, v_width);
 
 			const auto dx = next.x - prev.x;
@@ -1016,9 +1003,8 @@ bool ops::get_centroid_from_polygons(const geometry &geom, vertex_xyzm &out) {
 	vertex_xyzm centroid = {0, 0, 0, 0};
 
 	visit_polygons(geom, [&centroid, &total_area2](const geometry &part) {
-
 		const auto tail = part.get_last_part();
-		if(!tail) {
+		if (!tail) {
 			return;
 		}
 
@@ -1038,7 +1024,7 @@ bool ops::get_centroid_from_polygons(const geometry &geom, vertex_xyzm &out) {
 			const auto is_shell = head == tail->get_next();
 			const auto is_clock = vertex_array_signed_area(*head) >= 0;
 
-			if(is_shell) {
+			if (is_shell) {
 				memcpy(&base, v_array, v_width);
 			}
 
@@ -1048,11 +1034,10 @@ bool ops::get_centroid_from_polygons(const geometry &geom, vertex_xyzm &out) {
 			const auto sign = is_shell != is_clock ? -1.0 : 1.0;
 
 			memcpy(&prev, v_array, v_width);
-			for(uint32_t i = 1; i < v_count; i++) {
+			for (uint32_t i = 1; i < v_count; i++) {
 				memcpy(&next, v_array + i * v_width, v_width);
 
-				const auto area2	= (prev.x - base.x) * (next.y - base.y)
-										- (next.x - base.x) * (prev.y - base.y);
+				const auto area2 = (prev.x - base.x) * (next.y - base.y) - (next.x - base.x) * (prev.y - base.y);
 
 				centroid.x += sign * area2 * (base.x + next.x + prev.x);
 				centroid.y += sign * area2 * (base.y + next.y + prev.y);
@@ -1082,11 +1067,15 @@ bool ops::get_centroid(const geometry &geom, vertex_xyzm &centroid) {
 		return false;
 	}
 	const auto dim = get_max_surface_dimension(geom, true);
-	switch(dim) {
-	case 0: return get_centroid_from_points(geom, centroid);
-	case 1: return get_centroid_from_linestrings(geom, centroid);
-	case 2: return get_centroid_from_polygons(geom, centroid);
-	default: return false;
+	switch (dim) {
+	case 0:
+		return get_centroid_from_points(geom, centroid);
+	case 1:
+		return get_centroid_from_linestrings(geom, centroid);
+	case 2:
+		return get_centroid_from_polygons(geom, centroid);
+	default:
+		return false;
 	}
 }
 
@@ -1245,7 +1234,6 @@ void ops::extract_linestrings(geometry &geom, geometry &result) {
 	result.set_m(geom.has_m());
 
 	geom.filter_parts(&result, select_lines, handle_lines);
-
 }
 
 void ops::extract_polygons(geometry &geom, geometry &result) {
@@ -1275,35 +1263,31 @@ int orient2d_fast(const vertex_xy &p, const vertex_xy &q, const vertex_xy &r) {
 	return (det > 0) - (det < 0);
 }
 
-enum class raycast_result {
-	NONE = 0,
-	CROSS,
-	BOUNDARY
-};
+enum class raycast_result { NONE = 0, CROSS, BOUNDARY };
 
 // TODO: Make robust
 raycast_result raycast_fast(const vertex_xy &prev, const vertex_xy &next, const vertex_xy &vert) {
-	if(prev.x < vert.x && next.x < vert.x) {
+	if (prev.x < vert.x && next.x < vert.x) {
 		// The segment is to the left of the point
 		return raycast_result::NONE;
 	}
 
-	if(next.x == vert.x && next.y == vert.y) {
+	if (next.x == vert.x && next.y == vert.y) {
 		// The point is on the segment, they share a vertex
 		return raycast_result::BOUNDARY;
 	}
 
-	if(prev.y == vert.y && next.y == vert.y) {
+	if (prev.y == vert.y && next.y == vert.y) {
 		// The segment is horizontal, check if the point is within the min/max x
 		double minx = prev.x;
 		double maxx = next.x;
 
-		if(minx > maxx) {
+		if (minx > maxx) {
 			minx = next.x;
 			maxx = prev.x;
 		}
 
-		if(vert.x >= minx && vert.x <= maxx) {
+		if (vert.x >= minx && vert.x <= maxx) {
 			// if its inside, then its on the boundary
 			return raycast_result::BOUNDARY;
 		}
@@ -1312,17 +1296,17 @@ raycast_result raycast_fast(const vertex_xy &prev, const vertex_xy &next, const 
 		return raycast_result::NONE;
 	}
 
-	if((prev.y > vert.y && next.y <= vert.y) || (next.y > vert.y && prev.y <= vert.y)) {
+	if ((prev.y > vert.y && next.y <= vert.y) || (next.y > vert.y && prev.y <= vert.y)) {
 		int sign = orient2d_fast(prev, next, vert);
-		if(sign == 0) {
+		if (sign == 0) {
 			return raycast_result::BOUNDARY;
 		}
 
-		if(next.y < prev.y) {
+		if (next.y < prev.y) {
 			sign = -sign;
 		}
 
-		if(sign > 0) {
+		if (sign > 0) {
 			return raycast_result::CROSS;
 		}
 	}
@@ -1334,13 +1318,13 @@ raycast_result raycast_fast(const vertex_xy &prev, const vertex_xy &next, const 
 point_in_polygon_result vertex_in_ring(const vertex_xy &vert, const geometry &ring) {
 	SGL_ASSERT(ring.get_type() == geometry_type::LINESTRING);
 
-	if(ring.get_vertex_count() < 3) {
+	if (ring.get_vertex_count() < 3) {
 		// Degenerate case, should not happen
 		// TODO: Return something better?
 		return point_in_polygon_result::INVALID;
 	}
 
-	if(ring.is_prepared()) {
+	if (ring.is_prepared()) {
 		auto &prep = static_cast<const prepared_geometry &>(ring);
 		return prep.contains(vert);
 	}
@@ -1353,7 +1337,7 @@ point_in_polygon_result vertex_in_ring(const vertex_xy &vert, const geometry &ri
 
 	vertex_xy prev;
 	memcpy(&prev, vertex_array, sizeof(vertex_xy));
-	for(uint32_t i = 1; i < vertex_count; i++) {
+	for (uint32_t i = 1; i < vertex_count; i++) {
 
 		vertex_xy next;
 		memcpy(&next, vertex_array + i * vertex_width, sizeof(vertex_xy));
@@ -1375,11 +1359,8 @@ point_in_polygon_result vertex_in_ring(const vertex_xy &vert, const geometry &ri
 	}
 
 	// Even number of crossings means the point is outside the polygon
-	return crossings % 2 == 0
-		? point_in_polygon_result::EXTERIOR
-		: point_in_polygon_result::INTERIOR;
+	return crossings % 2 == 0 ? point_in_polygon_result::EXTERIOR : point_in_polygon_result::INTERIOR;
 }
-
 
 double vertex_distance_squared(const vertex_xy &lhs, const vertex_xy &rhs) {
 	return std::pow(lhs.x - rhs.x, 2) + std::pow(lhs.y - rhs.y, 2);
@@ -1413,7 +1394,7 @@ double segment_segment_distance(const vertex_xy &a, const vertex_xy &b, const ve
 	// Degenerate cases
 
 	// TODO: Robust comparisons
-	if(a.x == b.x && a.y == b.y) {
+	if (a.x == b.x && a.y == b.y) {
 		return vertex_segment_distance(a, c, d);
 	}
 	if (c.x == d.x && c.y == d.y) {
@@ -1421,7 +1402,7 @@ double segment_segment_distance(const vertex_xy &a, const vertex_xy &b, const ve
 	}
 
 	const auto denominator = ((b.x - a.x) * (d.y - c.y)) - ((b.y - a.y) * (d.x - c.x));
-	if(denominator == 0) {
+	if (denominator == 0) {
 		// The segments are parallel, return the distance between the closest endpoints
 		const auto dist_a = vertex_segment_distance(a, c, d);
 		const auto dist_b = vertex_segment_distance(b, c, d);
@@ -1553,23 +1534,23 @@ bool distance_point_polyg(const geometry &lhs, const geometry &rhs, distance_res
 
 	const auto shell = rhs.get_first_part();
 	switch (vertex_in_ring(lhs_vertex, *shell)) {
-		case point_in_polygon_result::EXTERIOR:
-			return distance_point_lines(lhs, *shell, result);
-		case point_in_polygon_result::INTERIOR:
-			// We need to check the holes
-			for(auto ring = shell->get_next(); ring != shell; ring = ring->get_next()) {
-				if(vertex_in_ring(lhs_vertex, *ring) != point_in_polygon_result::EXTERIOR) {
-					// A point can only be inside a single hole, so we can stop here
-					// (holes cant overlap if the polygon is valid)
-					return distance_point_lines(lhs, *ring, result);
-				}
+	case point_in_polygon_result::EXTERIOR:
+		return distance_point_lines(lhs, *shell, result);
+	case point_in_polygon_result::INTERIOR:
+		// We need to check the holes
+		for (auto ring = shell->get_next(); ring != shell; ring = ring->get_next()) {
+			if (vertex_in_ring(lhs_vertex, *ring) != point_in_polygon_result::EXTERIOR) {
+				// A point can only be inside a single hole, so we can stop here
+				// (holes cant overlap if the polygon is valid)
+				return distance_point_lines(lhs, *ring, result);
 			}
-			// The point is inside the polygon and not inside any holes
-			// fall-through
-		case point_in_polygon_result::BOUNDARY:
-		default:
-			result.set(0.0);
-			return true;
+		}
+		// The point is inside the polygon and not inside any holes
+		// fall-through
+	case point_in_polygon_result::BOUNDARY:
+	default:
+		result.set(0.0);
+		return true;
 	}
 }
 
@@ -1675,7 +1656,6 @@ bool distance_lines_polyg(const geometry &lhs, const geometry &rhs, distance_res
 	vertex_xy lhs_vertex;
 	memcpy(&lhs_vertex, lhs_vertex_array, sizeof(vertex_xy));
 
-
 	const auto shell = rhs.get_first_part();
 	if (vertex_in_ring(lhs_vertex, *shell) == point_in_polygon_result::EXTERIOR) {
 		// The linestring is either outside the polygon, or intersects somewhere on the boundary
@@ -1693,7 +1673,7 @@ bool distance_lines_polyg(const geometry &lhs, const geometry &rhs, distance_res
 	for (auto ring = shell->get_next(); ring != shell; ring = ring->get_next()) {
 		// The linestring is either completely in the hole, or intersects somewhere on hole boundary
 		// Regardless, we already have the distance to the hole
-		if(vertex_in_ring(lhs_vertex, *ring) != point_in_polygon_result::EXTERIOR) {
+		if (vertex_in_ring(lhs_vertex, *ring) != point_in_polygon_result::EXTERIOR) {
 			return true;
 		}
 	}
@@ -1727,20 +1707,20 @@ bool distance_polyg_polyg(const geometry &lhs, const geometry &rhs, distance_res
 	const auto lhs_loc = vertex_in_ring(lhs_vert, *rhs_shell);
 	const auto rhs_loc = vertex_in_ring(rhs_vert, *lhs_shell);
 
-	if(lhs_loc == point_in_polygon_result::EXTERIOR && rhs_loc == point_in_polygon_result::EXTERIOR) {
+	if (lhs_loc == point_in_polygon_result::EXTERIOR && rhs_loc == point_in_polygon_result::EXTERIOR) {
 		// The polygons are completely disjoint, or intersect on the boundary
 		return distance_lines_lines(*lhs_shell, *rhs_shell, result);
 	}
 
-	for(auto lhs_ring = lhs_shell->get_next(); lhs_ring != lhs_shell; lhs_ring = lhs_ring->get_next()) {
-		if(vertex_in_ring(rhs_vert, *lhs_ring) != point_in_polygon_result::EXTERIOR) {
+	for (auto lhs_ring = lhs_shell->get_next(); lhs_ring != lhs_shell; lhs_ring = lhs_ring->get_next()) {
+		if (vertex_in_ring(rhs_vert, *lhs_ring) != point_in_polygon_result::EXTERIOR) {
 			// One polygon is inside the hole of the other, or they intersect on one of the holes.
 			return distance_lines_lines(*lhs_ring, *rhs_shell, result);
 		}
 	}
 
-	for(auto rhs_ring = rhs_shell->get_next(); rhs_ring != rhs_shell; rhs_ring = rhs_ring->get_next()) {
-		if(vertex_in_ring(lhs_vert, *rhs_ring) != point_in_polygon_result::EXTERIOR) {
+	for (auto rhs_ring = rhs_shell->get_next(); rhs_ring != rhs_shell; rhs_ring = rhs_ring->get_next()) {
+		if (vertex_in_ring(lhs_vert, *rhs_ring) != point_in_polygon_result::EXTERIOR) {
 			// One polygon is inside the hole of the other, or they intersect on one of the holes.
 			return distance_lines_lines(*lhs_shell, *rhs_ring, result);
 		}
@@ -1759,35 +1739,35 @@ bool distance_dispatch(const geometry &lhs, const geometry &rhs, distance_result
 	case geometry_type::POINT:
 		switch (rhs.get_type()) {
 		case geometry_type::POINT:
-				return distance_point_point(lhs, rhs, result);
+			return distance_point_point(lhs, rhs, result);
 		case geometry_type::LINESTRING:
-				return distance_point_lines(lhs, rhs, result);
+			return distance_point_lines(lhs, rhs, result);
 		case geometry_type::POLYGON:
-				return distance_point_polyg(lhs, rhs, result);
+			return distance_point_polyg(lhs, rhs, result);
 		default:
-				return false;
+			return false;
 		}
 	case geometry_type::LINESTRING:
 		switch (rhs.get_type()) {
 		case geometry_type::POINT:
-				return distance_point_lines(rhs, lhs, result);
+			return distance_point_lines(rhs, lhs, result);
 		case geometry_type::LINESTRING:
-				return distance_lines_lines(lhs, rhs, result);
+			return distance_lines_lines(lhs, rhs, result);
 		case geometry_type::POLYGON:
-				return distance_lines_polyg(lhs, rhs, result);
+			return distance_lines_polyg(lhs, rhs, result);
 		default:
-				return false;
+			return false;
 		}
 	case geometry_type::POLYGON:
 		switch (rhs.get_type()) {
 		case geometry_type::POINT:
-				return distance_point_polyg(rhs, lhs, result);
+			return distance_point_polyg(rhs, lhs, result);
 		case geometry_type::LINESTRING:
-				return distance_lines_polyg(rhs, lhs, result);
+			return distance_lines_polyg(rhs, lhs, result);
 		case geometry_type::POLYGON:
-				return distance_polyg_polyg(lhs, rhs, result);
+			return distance_polyg_polyg(lhs, rhs, result);
 		default:
-				return false;
+			return false;
 		}
 	default:
 		return false;
@@ -1795,7 +1775,6 @@ bool distance_dispatch(const geometry &lhs, const geometry &rhs, distance_result
 }
 
 } // namespace
-
 
 bool ops::get_euclidean_distance(const geometry &lhs_geom, const geometry &rhs_geom, double &result) {
 
@@ -1855,14 +1834,14 @@ void visit_vertices_xy(const geometry &geom, void *state, void (*callback)(void 
 }
 
 void transform_vertices(allocator &allocator, geometry &geom, void *state,
-	void (*callback)(void *state, vertex_xyzm &vertex)) {
+                        void (*callback)(void *state, vertex_xyzm &vertex)) {
 
 	visit_vertex_arrays_mutable(geom, [&](geometry &part) {
 		const auto vertex_count = part.get_vertex_count();
 		const auto vertex_width = part.get_vertex_width();
 
 		const auto old_vertex_array = part.get_vertex_array();
-		const auto new_vertex_array = static_cast<uint8_t*>(allocator.alloc(vertex_count * vertex_width));
+		const auto new_vertex_array = static_cast<uint8_t *>(allocator.alloc(vertex_count * vertex_width));
 
 		vertex_xyzm vertex = {0, 0, 0, 0};
 		for (uint32_t i = 0; i < vertex_count; i++) {
@@ -1883,7 +1862,7 @@ void flip_vertices(allocator &allocator, geometry &geom) {
 		const auto vertex_width = part.get_vertex_width();
 
 		const auto old_vertex_array = part.get_vertex_array();
-		const auto new_vertex_array = static_cast<uint8_t*>(allocator.alloc(vertex_count * vertex_width));
+		const auto new_vertex_array = static_cast<uint8_t *>(allocator.alloc(vertex_count * vertex_width));
 
 		vertex_xyzm vertex = {0, 0, 0, 0};
 		for (uint32_t i = 0; i < vertex_count; i++) {
@@ -1905,7 +1884,7 @@ void affine_transform(allocator &allocator, geometry &geom, const affine_matrix 
 		const auto vertex_width = part.get_vertex_width();
 
 		const auto old_vertex_array = part.get_vertex_array();
-		const auto new_vertex_array = static_cast<uint8_t*>(allocator.alloc(vertex_count * vertex_width));
+		const auto new_vertex_array = static_cast<uint8_t *>(allocator.alloc(vertex_count * vertex_width));
 
 		vertex_xyzm vertex = {0, 0, 1, 1};
 		for (uint32_t i = 0; i < vertex_count; i++) {
@@ -1933,7 +1912,6 @@ void collect_vertices(allocator &alloc, const geometry &geom, geometry &result) 
 	result.set_m(has_m);
 
 	visit_vertex_arrays(geom, [&](const geometry &part) {
-
 		const auto vertex_array = part.get_vertex_array();
 		const auto vertex_count = part.get_vertex_count();
 		const auto vertex_width = part.get_vertex_width();
@@ -1960,7 +1938,7 @@ namespace sgl {
 namespace ops {
 
 static char *resize_vertices(allocator &alloc, geometry &geom, bool set_z, bool set_m, double default_z,
-								double default_m) {
+                             double default_m) {
 
 	const auto has_z = geom.has_z();
 	const auto has_m = geom.has_m();
@@ -2120,7 +2098,7 @@ static char *resize_vertices(allocator &alloc, geometry &geom, bool set_z, bool 
 				memcpy(target_data + target_offset, source_data + source_offset, sizeof(double) * 2);
 				memcpy(target_data + target_offset + sizeof(double) * 2, &default_z, sizeof(double));
 				memcpy(target_data + target_offset + sizeof(double) * 3,
-					   source_data + source_offset + sizeof(double) * 2, sizeof(double));
+				       source_data + source_offset + sizeof(double) * 2, sizeof(double));
 			}
 
 			return target_data;
@@ -2166,7 +2144,7 @@ static char *resize_vertices(allocator &alloc, geometry &geom, bool set_z, bool 
 				const auto target_offset = i * target_size;
 				memcpy(target_data + target_offset, source_data + source_offset, sizeof(double) * 2);
 				memcpy(target_data + target_offset + sizeof(double) * 2,
-					   source_data + source_offset + sizeof(double) * 3, sizeof(double));
+				       source_data + source_offset + sizeof(double) * 3, sizeof(double));
 			}
 
 			return target_data;
@@ -2186,22 +2164,23 @@ static char *resize_vertices(allocator &alloc, geometry &geom, bool set_z, bool 
 	}
 }
 
-void force_zm(allocator &alloc, geometry &geom, const bool set_z, const bool set_m, const double default_z, const double default_m) {
-	visit_all_parts_mutable(geom,
-		[&](geometry &part) {
+void force_zm(allocator &alloc, geometry &geom, const bool set_z, const bool set_m, const double default_z,
+              const double default_m) {
+	visit_all_parts_mutable(
+	    geom,
+	    [&](geometry &part) {
+		    if (!part.is_multi_part() && !part.is_empty()) {
+			    SGL_ASSERT(part.get_type() == geometry_type::LINESTRING || part.get_type() == geometry_type::POINT);
 
-		if (!part.is_multi_part() && !part.is_empty()) {
-			SGL_ASSERT(part.get_type() == geometry_type::LINESTRING || part.get_type() == geometry_type::POINT);
-
-			// Single part geometry, resize vertices
-			const auto target_data = resize_vertices(alloc, part, set_z, set_m, default_z, default_m);
-			part.set_vertex_array(target_data, part.get_vertex_count());
-		}
-
-	}, [&](geometry &part) {
-		part.set_z(set_z);
-		part.set_m(set_m);
-	});
+			    // Single part geometry, resize vertices
+			    const auto target_data = resize_vertices(alloc, part, set_z, set_m, default_z, default_m);
+			    part.set_vertex_array(target_data, part.get_vertex_count());
+		    }
+	    },
+	    [&](geometry &part) {
+		    part.set_z(set_z);
+		    part.set_m(set_m);
+	    });
 }
 
 } // namespace ops
@@ -2262,9 +2241,7 @@ void prepared_geometry::build(allocator &allocator) {
 	const uint32_t count = (vertex_count + NODE_SIZE - 1) / NODE_SIZE;
 	while (true) {
 		layer_bound[layer_count] = static_cast<uint32_t>(
-			std::ceil(static_cast<double>(count) /
-			std::pow(static_cast<double>(NODE_SIZE), layer_count)
-		));
+		    std::ceil(static_cast<double>(count) / std::pow(static_cast<double>(NODE_SIZE), layer_count)));
 
 		if (layer_bound[layer_count++] <= 1) {
 			break; // We have reached the last layer
@@ -2276,20 +2253,19 @@ void prepared_geometry::build(allocator &allocator) {
 	index.items_count = vertex_count;
 
 	// Allocate the layers
-	index.level_array = static_cast<prepared_index::level *>(
-		allocator.alloc(sizeof(prepared_index::level) * layer_count));
+	index.level_array =
+	    static_cast<prepared_index::level *>(allocator.alloc(sizeof(prepared_index::level) * layer_count));
 	index.level_count = layer_count;
 
 	for (uint32_t i = 0; i < layer_count; i++) {
 		index.level_array[i].entry_count = layer_bound[i];
-		index.level_array[i].entry_array = static_cast<extent_xy *>(
-			allocator.alloc(sizeof(extent_xy) * layer_bound[i])
-		);
+		index.level_array[i].entry_array =
+		    static_cast<extent_xy *>(allocator.alloc(sizeof(extent_xy) * layer_bound[i]));
 	}
 
 	// Fill lower layer
 	const auto &last_entry = index.level_array[layer_count - 1];
-	for(uint32_t i = 0; i < last_entry.entry_count; i++) {
+	for (uint32_t i = 0; i < last_entry.entry_count; i++) {
 
 		auto &box = last_entry.entry_array[i];
 		box = extent_xy::smallest();
@@ -2309,18 +2285,18 @@ void prepared_geometry::build(allocator &allocator) {
 	}
 
 	// Now fill the upper layers (if we got any)
-	for(int64_t i = static_cast<int64_t>(index.level_count) - 2; i >= 0; i--) {
+	for (int64_t i = static_cast<int64_t>(index.level_count) - 2; i >= 0; i--) {
 		const auto &prev = index.level_array[i + 1];
 		const auto &curr = index.level_array[i];
 
-		for(uint32_t j = 0; j < curr.entry_count; j++) {
+		for (uint32_t j = 0; j < curr.entry_count; j++) {
 			auto &box = curr.entry_array[j];
 			box = extent_xy::smallest();
 
 			const auto beg = j * NODE_SIZE;
 			const auto end = math::min(beg + NODE_SIZE, prev.entry_count);
 
-			for(uint32_t k = beg; k < end; k++) {
+			for (uint32_t k = beg; k < end; k++) {
 				auto &prev_box = prev.entry_array[k];
 
 				box.min.x = math::min(box.min.x, prev_box.min.x);
@@ -2353,13 +2329,13 @@ point_in_polygon_result prepared_geometry::contains(const vertex_xy &vert) const
 	uint32_t crossings = 0;
 
 	// Traverse the tree
-	while(true) {
+	while (true) {
 		const auto &level = index.level_array[depth];
 		const auto entry = stack[depth];
 		const auto &box = level.entry_array[entry];
 
 		// Check if the vertex is in the box y-slice
-		if(box.min.y <= vert.y && box.max.y >= vert.y) {
+		if (box.min.y <= vert.y && box.max.y >= vert.y) {
 			if (depth != index.level_count - 1) {
 				// We are not at a leaf, so go downwards
 				depth++;
@@ -2382,29 +2358,29 @@ point_in_polygon_result prepared_geometry::contains(const vertex_xy &vert) const
 				memcpy(&next, vertex_array + i * vertex_width, sizeof(vertex_xy));
 
 				switch (raycast_fast(prev, next, vert)) {
-					case raycast_result::NONE:
-						// No intersection
-						break;
-					case raycast_result::CROSS:
-						// The ray crosses the segment, so we count it
-						crossings++;
-						break;
-					case raycast_result::BOUNDARY:
-						// The point is on the boundary, so we return BOUNDARY
-						return point_in_polygon_result::BOUNDARY;
+				case raycast_result::NONE:
+					// No intersection
+					break;
+				case raycast_result::CROSS:
+					// The ray crosses the segment, so we count it
+					crossings++;
+					break;
+				case raycast_result::BOUNDARY:
+					// The point is on the boundary, so we return BOUNDARY
+					return point_in_polygon_result::BOUNDARY;
 				}
 				prev = next;
 			}
 		}
 
-		while(true) {
+		while (true) {
 
-			if(depth == 0) {
+			if (depth == 0) {
 				// Even number of crossings means the point is outside the polygon
 				return crossings % 2 == 0 ? point_in_polygon_result::EXTERIOR : point_in_polygon_result::INTERIOR;
 			}
 
-			if(stack[depth] != index.level_array[depth].entry_count - 1) {
+			if (stack[depth] != index.level_array[depth].entry_count - 1) {
 				// Go sideways!
 				stack[depth]++;
 				break;
@@ -2423,12 +2399,14 @@ point_in_polygon_result prepared_geometry::contains(const vertex_xy &vert) const
 // in Best-First-Search requires us to keep track of all nodes in the priority queue.
 //
 // The trick of the branch-and-bound algorithm is to compute the worst case upper bound of the distance for all the
-// child nodes in a node, and only expand a child node if its minimum distance is smaller than the worst-case upper bound
+// child nodes in a node, and only expand a child node if its minimum distance is smaller than the worst-case upper
+// bound
 //
 // Basically, the distance to a box is an optimistic lower bound for the distance to the closest element within it,
 // but the "minimum maximum distance" is a pessimistic upper bound.
 //
-bool prepared_geometry::try_get_distance_recursive(uint32_t level, uint32_t entry, const vertex_xy &vertex, double &distance) const {
+bool prepared_geometry::try_get_distance_recursive(uint32_t level, uint32_t entry, const vertex_xy &vertex,
+                                                   double &distance) const {
 
 	constexpr auto NODE_SIZE = prepared_index::NODE_SIZE;
 
@@ -2527,7 +2505,6 @@ bool prepared_geometry::try_get_distance_recursive(uint32_t level, uint32_t entr
 	return found_any;
 }
 
-
 bool prepared_geometry::try_get_distance(const vertex_xy &vertex, double &distance) const {
 	if (!is_prepared()) {
 		return false; // Not prepared
@@ -2558,8 +2535,8 @@ static double point_segment_dist_sq(const vertex_xy &p, const vertex_xy &a, cons
 }
 
 static bool point_on_segment(const vertex_xy &p, const vertex_xy &q, const vertex_xy &r) {
-	return q.x >= std::min(p.x, r.x) && q.x <= std::max(p.x, r.x)
-		&& q.y >= std::min(p.y, r.y) && q.y <= std::max(p.y, r.y);
+	return q.x >= std::min(p.x, r.x) && q.x <= std::max(p.x, r.x) && q.y >= std::min(p.y, r.y) &&
+	       q.y <= std::max(p.y, r.y);
 }
 
 static bool segment_intersects(const vertex_xy &a1, const vertex_xy &a2, const vertex_xy &b1, const vertex_xy &b2) {
@@ -2590,24 +2567,20 @@ static bool segment_intersects(const vertex_xy &a1, const vertex_xy &a2, const v
 	return false; // Segments do not intersect
 }
 
-static double segment_segment_dist_sq(const vertex_xy &a1, const vertex_xy &a2, const vertex_xy &b1, const vertex_xy &b2) {
+static double segment_segment_dist_sq(const vertex_xy &a1, const vertex_xy &a2, const vertex_xy &b1,
+                                      const vertex_xy &b2) {
 
 	// Calculate the squared distance between two segments
 	if (segment_intersects(a1, a2, b1, b2)) {
 		return 0.0; // Segments intersect, distance is zero
 	}
 
-	return math::min(
-		math::min(
-			point_segment_dist_sq(a1, b1, b2),
-			point_segment_dist_sq(a2, b1, b2)
-		), math::min(
-			point_segment_dist_sq(b1, a1, a2),
-			point_segment_dist_sq(b2, a1, a2)
-		));
+	return math::min(math::min(point_segment_dist_sq(a1, b1, b2), point_segment_dist_sq(a2, b1, b2)),
+	                 math::min(point_segment_dist_sq(b1, a1, a2), point_segment_dist_sq(b2, a1, a2)));
 }
 
-static bool try_get_prepared_distance_lines(const prepared_geometry &lhs, const prepared_geometry &rhs, double &distance) {
+static bool try_get_prepared_distance_lines(const prepared_geometry &lhs, const prepared_geometry &rhs,
+                                            double &distance) {
 
 	SGL_ASSERT(lhs.is_prepared() && rhs.is_prepared());
 
@@ -2622,8 +2595,9 @@ static bool try_get_prepared_distance_lines(const prepared_geometry &lhs, const 
 		uint32_t rhs_level;
 		uint32_t rhs_entry;
 
-		entry (double dist, uint32_t lhs_lvl, uint32_t lhs_ent, uint32_t rhs_lvl, uint32_t rhs_ent)
-			: distance(dist), lhs_level(lhs_lvl), lhs_entry(lhs_ent), rhs_level(rhs_lvl), rhs_entry(rhs_ent) {}
+		entry(double dist, uint32_t lhs_lvl, uint32_t lhs_ent, uint32_t rhs_lvl, uint32_t rhs_ent)
+		    : distance(dist), lhs_level(lhs_lvl), lhs_entry(lhs_ent), rhs_level(rhs_lvl), rhs_entry(rhs_ent) {
+		}
 
 		bool operator<(const entry &other) const {
 			return distance > other.distance; // We want a min-heap, so we reverse the comparison
@@ -2682,7 +2656,7 @@ static bool try_get_prepared_distance_lines(const prepared_geometry &lhs, const 
 
 				// Quick check. If the distance between the segment and the box (all the segments)
 				// is greater than min_dist, we can skip the exact distance check
-				extent_xy lhs_seg = { lhs_prev, lhs_next };
+				extent_xy lhs_seg = {lhs_prev, lhs_next};
 				if (lhs_seg.distance_to_sq(rhs_box) > min_dist) {
 					lhs_prev = lhs_next;
 					continue;
@@ -2692,7 +2666,7 @@ static bool try_get_prepared_distance_lines(const prepared_geometry &lhs, const 
 				for (uint32_t j = rhs_beg_idx + 1; j < rhs_end_idx; j++) {
 					memcpy(&rhs_next, rhs_vertex_array + j * rhs_vertex_width, sizeof(vertex_xy));
 
-					extent_xy rhs_seg =  {rhs_prev, rhs_next };
+					extent_xy rhs_seg = {rhs_prev, rhs_next};
 
 					// Quick check. If the distance between the segment bounds are greater than min_dist,
 					// we can skip the exact distance check
@@ -2700,7 +2674,6 @@ static bool try_get_prepared_distance_lines(const prepared_geometry &lhs, const 
 						rhs_prev = rhs_next;
 						continue;
 					}
-
 
 					const auto dist = segment_segment_dist_sq(lhs_prev, lhs_next, rhs_prev, rhs_next);
 					if (dist <= min_dist) {
@@ -2715,7 +2688,8 @@ static bool try_get_prepared_distance_lines(const prepared_geometry &lhs, const 
 			}
 		} else if (lhs_is_leaf && !rhs_is_leaf) {
 			const auto rhs_beg_idx = pair.rhs_entry * NODE_SIZE;
-			const auto rhs_end_idx = math::min(rhs_beg_idx + NODE_SIZE, rhs.index.level_array[pair.rhs_level + 1].entry_count);
+			const auto rhs_end_idx =
+			    math::min(rhs_beg_idx + NODE_SIZE, rhs.index.level_array[pair.rhs_level + 1].entry_count);
 
 			const auto lhs_box = lhs.index.level_array[pair.lhs_level].entry_array[pair.lhs_entry];
 
@@ -2730,7 +2704,8 @@ static bool try_get_prepared_distance_lines(const prepared_geometry &lhs, const 
 			}
 		} else if (!lhs_is_leaf && rhs_is_leaf) {
 			const auto lhs_beg_idx = pair.lhs_entry * NODE_SIZE;
-			const auto lhs_end_idx = math::min(lhs_beg_idx + NODE_SIZE, lhs.index.level_array[pair.lhs_level + 1].entry_count);
+			const auto lhs_end_idx =
+			    math::min(lhs_beg_idx + NODE_SIZE, lhs.index.level_array[pair.lhs_level + 1].entry_count);
 
 			const auto &rhs_box = rhs.index.level_array[pair.rhs_level].entry_array[pair.rhs_entry];
 
@@ -2755,7 +2730,8 @@ static bool try_get_prepared_distance_lines(const prepared_geometry &lhs, const 
 			if (lhs_area > rhs_area) {
 
 				const auto lhs_beg_idx = pair.lhs_entry * NODE_SIZE;
-				const auto lhs_end_idx = math::min(lhs_beg_idx + NODE_SIZE, lhs.index.level_array[pair.lhs_level + 1].entry_count);
+				const auto lhs_end_idx =
+				    math::min(lhs_beg_idx + NODE_SIZE, lhs.index.level_array[pair.lhs_level + 1].entry_count);
 
 				for (auto i = lhs_beg_idx; i < lhs_end_idx; i++) {
 					const auto &lhs_child_box = lhs.index.level_array[pair.lhs_level + 1].entry_array[i];
@@ -2768,7 +2744,8 @@ static bool try_get_prepared_distance_lines(const prepared_geometry &lhs, const 
 			} else {
 
 				const auto rhs_beg_idx = pair.rhs_entry * NODE_SIZE;
-				const auto rhs_end_idx = math::min(rhs_beg_idx + NODE_SIZE, rhs.index.level_array[pair.rhs_level + 1].entry_count);
+				const auto rhs_end_idx =
+				    math::min(rhs_beg_idx + NODE_SIZE, rhs.index.level_array[pair.rhs_level + 1].entry_count);
 
 				for (auto i = rhs_beg_idx; i < rhs_end_idx; i++) {
 					const auto &rhs_child_box = rhs.index.level_array[pair.rhs_level + 1].entry_array[i];
@@ -2793,7 +2770,6 @@ bool prepared_geometry::try_get_distance(const prepared_geometry &other, double 
 	return try_get_prepared_distance_lines(*this, other, distance);
 }
 
-
 } // namespace sgl
 //======================================================================================================================
 // WKT Parsing
@@ -2806,8 +2782,8 @@ namespace {
 class vertex_buffer {
 public:
 	explicit vertex_buffer(allocator &alloc, uint32_t vertex_width_p)
-		: alloc(alloc), vertex_array(nullptr), vertex_width(vertex_width_p), vertex_count(0), vertex_total(1) {
-		vertex_array = static_cast<double*>(alloc.alloc(vertex_width * 1 * sizeof(double)));
+	    : alloc(alloc), vertex_array(nullptr), vertex_width(vertex_width_p), vertex_count(0), vertex_total(1) {
+		vertex_array = static_cast<double *>(alloc.alloc(vertex_width * 1 * sizeof(double)));
 	}
 
 	void push_back(const double *vertex) {
@@ -2818,7 +2794,7 @@ public:
 			const auto new_size = vertex_width * new_total * sizeof(double);
 			const auto old_size = vertex_width * old_total * sizeof(double);
 
-			vertex_array = static_cast<double*>(alloc.realloc(vertex_array, old_size, new_size));
+			vertex_array = static_cast<double *>(alloc.realloc(vertex_array, old_size, new_size));
 			vertex_total = new_total;
 		}
 
@@ -2832,17 +2808,17 @@ public:
 			const auto old_size = vertex_width * vertex_total * sizeof(double);
 			const auto new_size = vertex_width * vertex_count * sizeof(double);
 
-			vertex_array = static_cast<double*>(alloc.realloc(vertex_array, old_size, new_size));
+			vertex_array = static_cast<double *>(alloc.realloc(vertex_array, old_size, new_size));
 		}
 		geom.set_vertex_array(vertex_array, vertex_count);
 	}
 
 private:
 	allocator &alloc;
-	double*			vertex_array;
-	const size_t	vertex_width;
-	uint32_t		vertex_count;
-	uint32_t		vertex_total;
+	double *vertex_array;
+	const size_t vertex_width;
+	uint32_t vertex_count;
+	uint32_t vertex_total;
 };
 
 } // namespace
@@ -2919,7 +2895,7 @@ bool wkt_reader::match_number(double &val) {
 
 	// If we got here, we know there is something resembling a number within the bounds of the buffer
 	// We can now use std::strtod to actually parse the number
-	char* end_ptr = nullptr;
+	char *end_ptr = nullptr;
 	val = std::strtod(pos, &end_ptr);
 	if (end_ptr == pos) {
 		return false;
@@ -2973,7 +2949,7 @@ bool wkt_reader::try_parse(geometry &out, const char *buf_arg, const char *end_a
 			geom->set_type(geometry_type::LINESTRING);
 		} else if (match_str("POLYGON")) {
 			geom->set_type(geometry_type::POLYGON);
-		} else if (match_str( "MULTIPOINT")) {
+		} else if (match_str("MULTIPOINT")) {
 			geom->set_type(geometry_type::MULTI_POINT);
 		} else if (match_str("MULTILINESTRING")) {
 			geom->set_type(geometry_type::MULTI_LINESTRING);
@@ -3158,7 +3134,8 @@ bool wkt_reader::try_parse(geometry &out, const char *buf_arg, const char *end_a
 
 				geom->append_part(new_geom);
 				geom = new_geom;
-			} continue; // This 'continue' moves us to the next iteration
+			}
+				continue; // This 'continue' moves us to the next iteration
 			default:
 				error = "Unsupported geometry type";
 				return false;
@@ -3222,7 +3199,6 @@ const char *wkt_reader::get_error_message() const {
 	return str;
 }
 
-
 } // namespace sgl
 
 //======================================================================================================================
@@ -3260,7 +3236,6 @@ bool wkb_reader::read_u8(bool &val) {
 	val = tmp;
 	return true;
 }
-
 
 bool wkb_reader::read_u32(uint32_t &val) {
 	if (pos + sizeof(uint32_t) > end) {
@@ -3559,7 +3534,8 @@ bool wkb_reader::try_parse(geometry &out, const char *buf_ptr, const char *end_p
 	}
 }
 
-bool wkb_reader::try_parse_stats(extent_xy &out_extent, size_t &out_vertex_count, const char* buf_ptr, const char* end_ptr) {
+bool wkb_reader::try_parse_stats(extent_xy &out_extent, size_t &out_vertex_count, const char *buf_ptr,
+                                 const char *end_ptr) {
 
 	// Setup state
 	buf = buf_ptr;
@@ -3628,7 +3604,7 @@ bool wkb_reader::try_parse_stats(extent_xy &out_extent, size_t &out_vertex_count
 				all_nan = all_nan && std::isnan(m);
 			}
 			// For points, all NaN is usually interpreted as an empty point
-			if(nan_as_empty && all_nan) {
+			if (nan_as_empty && all_nan) {
 				break;
 			}
 			extent.min.x = math::min(extent.min.x, x);
@@ -3642,7 +3618,7 @@ bool wkb_reader::try_parse_stats(extent_xy &out_extent, size_t &out_vertex_count
 			if (!read_u32(num_points)) {
 				return false;
 			}
-			for(uint32_t i = 0; i < num_points; i++) {
+			for (uint32_t i = 0; i < num_points; i++) {
 				double x;
 				double y;
 				if (!read_f64(x)) {
@@ -3651,12 +3627,12 @@ bool wkb_reader::try_parse_stats(extent_xy &out_extent, size_t &out_vertex_count
 				if (!read_f64(y)) {
 					return false;
 				}
-				if(has_z) {
+				if (has_z) {
 					if (!skip(sizeof(double))) {
 						return false;
 					}
 				}
-				if(has_m) {
+				if (has_m) {
 					if (!skip(sizeof(double))) {
 						return false;
 					}
@@ -3673,12 +3649,12 @@ bool wkb_reader::try_parse_stats(extent_xy &out_extent, size_t &out_vertex_count
 			if (!read_u32(num_rings)) {
 				return false;
 			}
-			for(uint32_t i = 0; i < num_rings; i++) {
+			for (uint32_t i = 0; i < num_rings; i++) {
 				uint32_t num_points;
 				if (!read_u32(num_points)) {
 					return false;
 				}
-				for(uint32_t j = 0; j < num_points; j++) {
+				for (uint32_t j = 0; j < num_points; j++) {
 					double x;
 					double y;
 					if (!read_f64(x)) {
@@ -3687,12 +3663,12 @@ bool wkb_reader::try_parse_stats(extent_xy &out_extent, size_t &out_vertex_count
 					if (!read_f64(y)) {
 						return false;
 					}
-					if(has_z) {
+					if (has_z) {
 						if (!skip(sizeof(double))) {
 							return false;
 						}
 					}
-					if(has_m) {
+					if (has_m) {
 						if (!skip(sizeof(double))) {
 							return false;
 						}
@@ -3733,7 +3709,7 @@ bool wkb_reader::try_parse_stats(extent_xy &out_extent, size_t &out_vertex_count
 			return false;
 		}
 
-		while(true) {
+		while (true) {
 			if (stack_depth == 0) {
 				// We reached the bottom, return!
 				out_vertex_count = vertex_count;
@@ -3755,7 +3731,7 @@ bool wkb_reader::try_parse_stats(extent_xy &out_extent, size_t &out_vertex_count
 	}
 }
 
-const char* wkb_reader::get_error_message() const {
+const char *wkb_reader::get_error_message() const {
 	if (error == wkb_reader_error::OK) {
 		return nullptr;
 	}
@@ -3770,7 +3746,7 @@ const char* wkb_reader::get_error_message() const {
 		const auto msg_fmt = "Recursion limit '%u' reached";
 		const auto msg_len = std::snprintf(nullptr, 0, msg_fmt, MAX_STACK_DEPTH);
 
-		auto msg_buf = static_cast<char*>(alloc.alloc(msg_len + 1));
+		auto msg_buf = static_cast<char *>(alloc.alloc(msg_len + 1));
 		std::snprintf(msg_buf, msg_len + 1, msg_fmt, MAX_STACK_DEPTH);
 		return msg_buf;
 	}
@@ -3784,32 +3760,84 @@ const char* wkb_reader::get_error_message() const {
 
 		auto guessed_type = "UNKNOWN";
 		switch (type) {
-		case 1: guessed_type = "POINT"; break;
-		case 2: guessed_type = "LINESTRING"; break;
-		case 3: guessed_type = "POLYGON"; break;
-		case 4: guessed_type = "MULTIPOINT"; break;
-		case 5: guessed_type = "MULTILINESTRING"; break;
-		case 6: guessed_type = "MULTIPOLYGON"; break;
-		case 7: guessed_type = "GEOMETRYCOLLECTION"; break;
-		case 8: guessed_type = "CIRCULARSTRING"; break;
-		case 9: guessed_type = "COMPOUNDCURVE"; break;
-		case 10: guessed_type = "CURVEPOLYGON"; break;
-		case 11: guessed_type = "MULTICURVE"; break;
-		case 12: guessed_type = "MULTISURFACE"; break;
-		case 13: guessed_type = "CURVE"; break;
-		case 14: guessed_type = "SURFACE"; break;
-		case 15: guessed_type = "POLYHEDRALSURFACE"; break;
-		case 16: guessed_type = "TIN"; break;
-		case 17: guessed_type = "TRIANGLE"; break;
-		case 18: guessed_type = "CIRCLE"; break;
-		case 19: guessed_type = "GEODESICSTRING"; break;
-		case 20: guessed_type = "ELLIPTICALCURVE"; break;
-		case 21: guessed_type = "NURBSCURVE"; break;
-		case 22: guessed_type = "CLOTHOID"; break;
-		case 23: guessed_type = "SPIRALCURVE"; break;
-		case 24: guessed_type = "COMPOUNDSURFACE"; break;
-		case 25: guessed_type = "ORIENTABLESURFACE"; break;
-		case 102: guessed_type = "AFFINEPLACEMENT"; break;
+		case 1:
+			guessed_type = "POINT";
+			break;
+		case 2:
+			guessed_type = "LINESTRING";
+			break;
+		case 3:
+			guessed_type = "POLYGON";
+			break;
+		case 4:
+			guessed_type = "MULTIPOINT";
+			break;
+		case 5:
+			guessed_type = "MULTILINESTRING";
+			break;
+		case 6:
+			guessed_type = "MULTIPOLYGON";
+			break;
+		case 7:
+			guessed_type = "GEOMETRYCOLLECTION";
+			break;
+		case 8:
+			guessed_type = "CIRCULARSTRING";
+			break;
+		case 9:
+			guessed_type = "COMPOUNDCURVE";
+			break;
+		case 10:
+			guessed_type = "CURVEPOLYGON";
+			break;
+		case 11:
+			guessed_type = "MULTICURVE";
+			break;
+		case 12:
+			guessed_type = "MULTISURFACE";
+			break;
+		case 13:
+			guessed_type = "CURVE";
+			break;
+		case 14:
+			guessed_type = "SURFACE";
+			break;
+		case 15:
+			guessed_type = "POLYHEDRALSURFACE";
+			break;
+		case 16:
+			guessed_type = "TIN";
+			break;
+		case 17:
+			guessed_type = "TRIANGLE";
+			break;
+		case 18:
+			guessed_type = "CIRCLE";
+			break;
+		case 19:
+			guessed_type = "GEODESICSTRING";
+			break;
+		case 20:
+			guessed_type = "ELLIPTICALCURVE";
+			break;
+		case 21:
+			guessed_type = "NURBSCURVE";
+			break;
+		case 22:
+			guessed_type = "CLOTHOID";
+			break;
+		case 23:
+			guessed_type = "SPIRALCURVE";
+			break;
+		case 24:
+			guessed_type = "COMPOUNDSURFACE";
+			break;
+		case 25:
+			guessed_type = "ORIENTABLESURFACE";
+			break;
+		case 102:
+			guessed_type = "AFFINEPLACEMENT";
+			break;
 		default:
 			break;
 		}
@@ -3824,7 +3852,7 @@ const char* wkb_reader::get_error_message() const {
 		}
 
 		const auto msg_len = std::snprintf(nullptr, 0, fmt_str, guessed_type, type_id, has_srid ? srid : 0);
-		const auto msg_buf = static_cast<char*>(alloc.alloc(msg_len + 1));
+		const auto msg_buf = static_cast<char *>(alloc.alloc(msg_len + 1));
 		std::snprintf(msg_buf, msg_len + 1, fmt_str, guessed_type, type_id, has_srid ? srid : 0);
 		return msg_buf;
 	}
@@ -3838,5 +3866,3 @@ const char* wkb_reader::get_error_message() const {
 }
 
 } // namespace sgl
-
-

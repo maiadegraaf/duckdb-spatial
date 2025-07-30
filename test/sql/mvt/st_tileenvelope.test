@@ -1,4 +1,6 @@
 # name: test/sql/mvt/st_tileenvelope.test
+# group: [mvt]
+
 # group [mvt]
 
 require spatial
