@@ -15,6 +15,7 @@
 #include "duckdb/execution/expression_executor.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
 #include "duckdb/common/vector_operations/septenary_executor.hpp"
+#include "duckdb/planner/expression/bound_constant_expression.hpp"
 
 #include "spatial/util/distance_extract.hpp"
 
@@ -5380,6 +5381,77 @@ struct ST_LineInterpolatePoints {
 };
 
 //======================================================================================================================
+// ST_LineLocatePoint
+//======================================================================================================================
+
+struct ST_LineLocatePoint {
+
+	//------------------------------------------------------------------------------------------------------------------
+	// GEOMETRY
+	//------------------------------------------------------------------------------------------------------------------
+	static void ExecuteGeometry(DataChunk &args, ExpressionState &state, Vector &result) {
+		auto &lstate = LocalState::ResetAndGet(state);
+
+		BinaryExecutor::Execute<string_t, string_t, double>(
+		    args.data[0], args.data[1], result, args.size(),
+		    [&](const string_t &line_blob, const string_t &point_blob) {
+			    sgl::geometry line;
+			    lstate.Deserialize(line_blob, line);
+
+			    if (line.get_type() != sgl::geometry_type::LINESTRING) {
+				    throw InvalidInputException("ST_LineLocatePoint: input is not a LINESTRING");
+			    }
+			    if (line.is_empty()) {
+				    throw InvalidInputException("ST_LineLocatePoint: input LINESTRING is empty");
+			    }
+
+			    sgl::geometry point;
+			    lstate.Deserialize(point_blob, point);
+
+			    if (point.get_type() != sgl::geometry_type::POINT) {
+				    throw InvalidInputException("ST_LineLocatePoint: input point is not a POINT");
+			    }
+
+			    if (point.is_empty()) {
+				    throw InvalidInputException("ST_LineLocatePoint: input point is empty");
+			    }
+
+			    return sgl::linestring::line_locate_point(line, point);
+		    });
+	}
+
+	//------------------------------------------------------------------------------------------------------------------
+	// Documentation
+	//------------------------------------------------------------------------------------------------------------------
+	static constexpr auto DESCRIPTION = R"(
+		Returns the location on a line closest to a point as a fraction of the total 2D length of the line.
+	)";
+	static constexpr auto EXAMPLE = R"()";
+
+	//------------------------------------------------------------------------------------------------------------------
+	// Register
+	//------------------------------------------------------------------------------------------------------------------
+	static void Register(ExtensionLoader &loader) {
+		FunctionBuilder::RegisterScalar(loader, "ST_LineLocatePoint", [](ScalarFunctionBuilder &func) {
+			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("line", GeoTypes::GEOMETRY());
+				variant.AddParameter("point", GeoTypes::GEOMETRY());
+				variant.SetReturnType(LogicalType::DOUBLE);
+
+				variant.SetInit(LocalState::Init);
+				variant.SetFunction(ExecuteGeometry);
+			});
+
+			func.SetDescription(DESCRIPTION);
+			func.SetExample(EXAMPLE);
+
+			func.SetTag("ext", "spatial");
+			func.SetTag("category", "referencing");
+		});
+	}
+};
+
+//======================================================================================================================
 // ST_LineSubstring
 //======================================================================================================================
 
@@ -5447,6 +5519,18 @@ struct ST_LineSubstring {
 struct ST_LocateAlong {
 
 	//------------------------------------------------------------------------------------------------------------------
+	// Bind
+	//------------------------------------------------------------------------------------------------------------------
+	static unique_ptr<FunctionData> Bind(ClientContext &context, ScalarFunction &bound_function,
+	                                     vector<unique_ptr<Expression>> &arguments) {
+		if (arguments.size() == 2) {
+			// Push back offset constant
+			arguments.push_back(make_uniq<BoundConstantExpression>(Value::DOUBLE(0.0)));
+		}
+		return nullptr; // No additional data needed
+	}
+
+	//------------------------------------------------------------------------------------------------------------------
 	// GEOMETRY
 	//------------------------------------------------------------------------------------------------------------------
 	static void ExecuteGeometry(DataChunk &args, ExpressionState &state, Vector &result) {
@@ -5456,6 +5540,9 @@ struct ST_LocateAlong {
 		TernaryExecutor::Execute<string_t, double, double, string_t>(
 		    args.data[0], args.data[1], args.data[2], result, args.size(),
 		    [&](const string_t &blob, const double measure, const double offset) {
+			    // Reset after each execution, because this can be quite memory hungry
+			    lstate.GetArena().Reset();
+
 			    sgl::geometry geom;
 			    lstate.Deserialize(blob, geom);
 
@@ -5467,7 +5554,7 @@ struct ST_LocateAlong {
 			    sgl::ops::locate_along(alloc, geom, measure, offset, points);
 
 			    if (points.get_part_count() == 1) {
-				    auto part = points.get_first_part();
+				    const auto part = points.get_first_part();
 				    return lstate.Serialize(result, *part);
 			    }
 
@@ -5483,7 +5570,7 @@ struct ST_LocateAlong {
 		
 		For a LINESTRING, or MULTILINESTRING, the location is determined by interpolating between M values
 		For a POINT and MULTIPOINT, the point is returned if the measure matches the M value of the vertex, otherwise an empty geometry is returned
-		For a POLYGON, only the exterior ring is considered, and the measure is applied to the M values of the vertices in that ring
+		For a POLYGON, only the exterior ring is considered, and treated as a LINESTRING
 
 		If offset is provided, the resulting point(s) is offset by the given amount perpendicular to the line direction.
 	)";
@@ -5500,13 +5587,160 @@ struct ST_LocateAlong {
 				variant.AddParameter("offset", LogicalType::DOUBLE);
 				variant.SetReturnType(GeoTypes::GEOMETRY());
 
-				variant.SetFunction(ExecuteGeometry);
+				variant.SetBind(Bind);
 				variant.SetInit(LocalState::Init);
+				variant.SetFunction(ExecuteGeometry);
+			});
+
+			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("line", GeoTypes::GEOMETRY());
+				variant.AddParameter("measure", LogicalType::DOUBLE);
+				variant.SetReturnType(GeoTypes::GEOMETRY());
+
+				variant.SetBind(Bind);
+				variant.SetInit(LocalState::Init);
+				variant.SetFunction(ExecuteGeometry);
 			});
 
 			func.SetDescription(DESCRIPTION);
 			func.SetExample(EXAMPLE);
 
+			func.SetTag("ext", "spatial");
+			func.SetTag("category", "referencing");
+		});
+	}
+};
+
+//======================================================================================================================
+// ST_LocateBetween
+//======================================================================================================================
+
+struct ST_LocateBetween {
+
+	//------------------------------------------------------------------------------------------------------------------
+	// Bind
+	//------------------------------------------------------------------------------------------------------------------
+	static unique_ptr<FunctionData> Bind(ClientContext &context, ScalarFunction &bound_function,
+	                                     vector<unique_ptr<Expression>> &arguments) {
+		if (arguments.size() == 3) {
+			// Push back offset constant
+			arguments.push_back(make_uniq<BoundConstantExpression>(Value::DOUBLE(0.0)));
+		}
+		return nullptr; // No additional data needed
+	}
+
+	//------------------------------------------------------------------------------------------------------------------
+	// GEOMETRY
+	//------------------------------------------------------------------------------------------------------------------
+	static void ExecuteGeometry(DataChunk &args, ExpressionState &state, Vector &result) {
+		auto &lstate = LocalState::ResetAndGet(state);
+		auto &alloc = lstate.GetAllocator();
+
+		// There is no quaternary executor
+		const auto row_count = args.size();
+
+		UnifiedVectorFormat geom_format;
+		UnifiedVectorFormat lower_format;
+		UnifiedVectorFormat upper_format;
+		UnifiedVectorFormat offset_format;
+
+		args.data[0].ToUnifiedFormat(row_count, geom_format);
+		args.data[1].ToUnifiedFormat(row_count, lower_format);
+		args.data[2].ToUnifiedFormat(row_count, upper_format);
+		args.data[3].ToUnifiedFormat(row_count, offset_format);
+
+		const auto geom_data = UnifiedVectorFormat::GetData<string_t>(geom_format);
+		const auto lower_data = UnifiedVectorFormat::GetData<double>(lower_format);
+		const auto upper_data = UnifiedVectorFormat::GetData<double>(upper_format);
+		const auto offset_data = UnifiedVectorFormat::GetData<double>(offset_format);
+
+		const auto result_data = FlatVector::GetData<string_t>(result);
+
+		for (idx_t out_idx = 0; out_idx < row_count; out_idx++) {
+			const auto geom_idx = geom_format.sel->get_index(out_idx);
+			const auto lower_idx = lower_format.sel->get_index(out_idx);
+			const auto upper_idx = upper_format.sel->get_index(out_idx);
+			const auto offset_idx = offset_format.sel->get_index(out_idx);
+
+			if (!geom_format.validity.RowIsValid(geom_idx) || !lower_format.validity.RowIsValid(lower_idx) ||
+			    !upper_format.validity.RowIsValid(upper_idx) || !offset_format.validity.RowIsValid(offset_idx)) {
+				FlatVector::SetNull(result, out_idx, true);
+				continue;
+			}
+
+			// Reset after each execution, because this can be quite memory hungry
+			lstate.GetArena().Reset();
+
+			sgl::geometry geom;
+			lstate.Deserialize(geom_data[geom_idx], geom);
+
+			if (!geom.has_m()) {
+				throw InvalidInputException("ST_LocateBetween: input geometry does not have M dimension");
+			}
+
+			sgl::geometry collection(sgl::geometry_type::GEOMETRY_COLLECTION, geom.has_z(), geom.has_m());
+			sgl::ops::locate_between(alloc, geom, lower_data[lower_idx], upper_data[upper_idx], offset_data[offset_idx],
+			                         collection);
+
+			if (collection.get_part_count() == 1) {
+				const auto part = collection.get_first_part();
+				result_data[out_idx] = lstate.Serialize(result, *part);
+			} else {
+				result_data[out_idx] = lstate.Serialize(result, collection);
+			}
+		}
+
+		if (row_count == 1) {
+			result.SetVectorType(VectorType::CONSTANT_VECTOR);
+		}
+	}
+
+	//------------------------------------------------------------------------------------------------------------------
+	// Documentation
+	//------------------------------------------------------------------------------------------------------------------
+	static constexpr auto DESCRIPTION = R"(
+		Returns a geometry or geometry collection created by filtering and interpolating vertices within a range of "M" values
+
+		Creates a geometry or geometry collection, containing the parts formed by vertices that have an "M" value within the "start_measure" and "end_measure" range
+
+		For LINESTRING or MULTILINESTRING, if a line segment would cross either the upper or lower bound, a vertex is added by interpolating the coordinates at the "intersection"
+		For a POINT and MULTIPOINT, the point is added to the collection if its vertex has an "M" value within the range, otherwise it is skipped
+		For a POLYGON, only the exterior ring is considered, and treated like a LINESTRING
+
+		If offset is provided, the resulting vertices are offset by the given amount perpendicular to the line direction.
+	)";
+	static constexpr auto EXAMPLE = "";
+
+	//------------------------------------------------------------------------------------------------------------------
+	// Register
+	//------------------------------------------------------------------------------------------------------------------
+	static void Register(ExtensionLoader &loader) {
+		FunctionBuilder::RegisterScalar(loader, "ST_LocateBetween", [](ScalarFunctionBuilder &func) {
+			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("line", GeoTypes::GEOMETRY());
+				variant.AddParameter("start_measure", LogicalType::DOUBLE);
+				variant.AddParameter("end_measure", LogicalType::DOUBLE);
+				variant.AddParameter("offset", LogicalType::DOUBLE);
+				variant.SetReturnType(GeoTypes::GEOMETRY());
+
+				variant.SetBind(Bind);
+				variant.SetInit(LocalState::Init);
+				variant.SetFunction(ExecuteGeometry);
+			});
+
+			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("line", GeoTypes::GEOMETRY());
+				variant.AddParameter("start_measure", LogicalType::DOUBLE);
+				variant.AddParameter("end_measure", LogicalType::DOUBLE);
+				variant.SetReturnType(GeoTypes::GEOMETRY());
+
+				variant.SetBind(Bind);
+				variant.SetInit(LocalState::Init);
+				variant.SetFunction(ExecuteGeometry);
+			});
+
+			func.SetDescription(DESCRIPTION);
+			func.SetExample(EXAMPLE);
 			func.SetTag("ext", "spatial");
 			func.SetTag("category", "referencing");
 		});
@@ -9000,8 +9234,10 @@ void RegisterSpatialScalarFunctions(ExtensionLoader &loader) {
 	ST_HasM::Register(loader);
 	ST_LineInterpolatePoint::Register(loader);
 	ST_LineInterpolatePoints::Register(loader);
+	ST_LineLocatePoint::Register(loader);
 	ST_LineSubstring::Register(loader);
 	ST_LocateAlong::Register(loader);
+	ST_LocateBetween::Register(loader);
 	ST_ZMFlag::Register(loader);
 	ST_Distance_Sphere::Register(loader);
 	ST_Hilbert::Register(loader);

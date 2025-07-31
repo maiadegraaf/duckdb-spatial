@@ -700,6 +700,8 @@ void extract_linestrings(geometry &geom, geometry &result);
 void extract_polygons(geometry &geom, geometry &result);
 
 void locate_along(allocator &alloc, const geometry &linear_geom, double measure, double offset, geometry &out_geom);
+void locate_between(allocator &alloc, const geometry &linear_geom, double measure_beg, double measure_end,
+                    double offset, geometry &out_geom);
 
 } // namespace ops
 
@@ -714,6 +716,10 @@ void substring(allocator &alloc, const geometry &geom, double beg_frac, double e
 
 bool interpolate_point(const geometry &linear_geom, const geometry &point_geom, double &out_measure);
 void locate_along(allocator &alloc, const geometry &linear_geom, double measure, double offset, geometry &out_geom);
+void locate_between(allocator &alloc, const geometry &linear_geom, double measure_beg, double measure_end,
+                    double offset, geometry &out_geom);
+
+double line_locate_point(const geometry &line_geom, const geometry &point_geom);
 
 } // namespace linestring
 

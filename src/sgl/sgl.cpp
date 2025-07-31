@@ -9,6 +9,194 @@
 #include <string> // TODO: Remove this, it is only used for error messages in WKT reader
 
 //======================================================================================================================
+// Helpers
+//======================================================================================================================
+namespace sgl {
+
+namespace {
+
+// TODO: Make robust
+// Returns the orientation of the triplet (p, q, r)
+// 0 if collinear, >0 if clockwise, <0 if counter-clockwise
+int orient2d_fast(const vertex_xy &p, const vertex_xy &q, const vertex_xy &r) {
+	const auto det_l = (p.x - r.x) * (q.y - r.y);
+	const auto det_r = (p.y - r.y) * (q.x - r.x);
+	const auto det = det_l - det_r;
+	return (det > 0) - (det < 0);
+}
+
+enum class raycast_result { NONE = 0, CROSS, BOUNDARY };
+
+// TODO: Make robust
+raycast_result raycast_fast(const vertex_xy &prev, const vertex_xy &next, const vertex_xy &vert) {
+	if (prev.x < vert.x && next.x < vert.x) {
+		// The segment is to the left of the point
+		return raycast_result::NONE;
+	}
+
+	if (next.x == vert.x && next.y == vert.y) {
+		// The point is on the segment, they share a vertex
+		return raycast_result::BOUNDARY;
+	}
+
+	if (prev.y == vert.y && next.y == vert.y) {
+		// The segment is horizontal, check if the point is within the min/max x
+		double minx = prev.x;
+		double maxx = next.x;
+
+		if (minx > maxx) {
+			minx = next.x;
+			maxx = prev.x;
+		}
+
+		if (vert.x >= minx && vert.x <= maxx) {
+			// if its inside, then its on the boundary
+			return raycast_result::BOUNDARY;
+		}
+
+		// otherwise it has no impact on the result
+		return raycast_result::NONE;
+	}
+
+	if ((prev.y > vert.y && next.y <= vert.y) || (next.y > vert.y && prev.y <= vert.y)) {
+		int sign = orient2d_fast(prev, next, vert);
+		if (sign == 0) {
+			return raycast_result::BOUNDARY;
+		}
+
+		if (next.y < prev.y) {
+			sign = -sign;
+		}
+
+		if (sign > 0) {
+			return raycast_result::CROSS;
+		}
+	}
+
+	return raycast_result::NONE;
+}
+
+// TODO: Make robust
+point_in_polygon_result vertex_in_ring(const vertex_xy &vert, const geometry &ring) {
+	SGL_ASSERT(ring.get_type() == geometry_type::LINESTRING);
+
+	if (ring.get_vertex_count() < 3) {
+		// Degenerate case, should not happen
+		// TODO: Return something better?
+		return point_in_polygon_result::INVALID;
+	}
+
+	if (ring.is_prepared()) {
+		auto &prep = static_cast<const prepared_geometry &>(ring);
+		return prep.contains(vert);
+	}
+
+	const auto vertex_array = ring.get_vertex_array();
+	const auto vertex_width = ring.get_vertex_width();
+	const auto vertex_count = ring.get_vertex_count();
+
+	uint32_t crossings = 0;
+
+	vertex_xy prev;
+	memcpy(&prev, vertex_array, sizeof(vertex_xy));
+	for (uint32_t i = 1; i < vertex_count; i++) {
+
+		vertex_xy next;
+		memcpy(&next, vertex_array + i * vertex_width, sizeof(vertex_xy));
+
+		switch (raycast_fast(prev, next, vert)) {
+		case raycast_result::NONE:
+			// No intersection
+			break;
+		case raycast_result::CROSS:
+			// The ray crosses the segment, so we count it
+			crossings++;
+			break;
+		case raycast_result::BOUNDARY:
+			// The point is on the boundary, so we return BOUNDARY
+			return point_in_polygon_result::BOUNDARY;
+		}
+
+		prev = next;
+	}
+
+	// Even number of crossings means the point is outside the polygon
+	return crossings % 2 == 0 ? point_in_polygon_result::EXTERIOR : point_in_polygon_result::INTERIOR;
+}
+
+double vertex_distance_squared(const vertex_xy &lhs, const vertex_xy &rhs) {
+	return std::pow(lhs.x - rhs.x, 2) + std::pow(lhs.y - rhs.y, 2);
+}
+
+double vertex_distance(const vertex_xy &lhs, const vertex_xy &rhs) {
+	const auto dx = lhs.x - rhs.x;
+	const auto dy = lhs.y - rhs.y;
+	return std::sqrt(dx * dx + dy * dy);
+}
+
+double vertex_segment_distance(const vertex_xy &p, const vertex_xy &v, const vertex_xy &w) {
+	const auto l2 = vertex_distance_squared(v, w);
+	if (l2 == 0) {
+		// is not better to just compare if w == v?
+		return vertex_distance(p, v);
+	}
+
+	const auto t = ((p.x - v.x) * (w.x - v.x) + (p.y - v.y) * (w.y - v.y)) / l2;
+	const auto t_clamped = math::max(0.0, math::min(1.0, t));
+	const auto x = v.x + t_clamped * (w.x - v.x);
+	const auto y = v.y + t_clamped * (w.y - v.y);
+
+	const vertex_xy intersection {x, y};
+
+	return vertex_distance(p, intersection);
+}
+
+// TODO: Make robust
+double segment_segment_distance(const vertex_xy &a, const vertex_xy &b, const vertex_xy &c, const vertex_xy &d) {
+	// Degenerate cases
+
+	// TODO: Robust comparisons
+	if (a.x == b.x && a.y == b.y) {
+		return vertex_segment_distance(a, c, d);
+	}
+	if (c.x == d.x && c.y == d.y) {
+		return vertex_segment_distance(c, a, b);
+	}
+
+	const auto denominator = ((b.x - a.x) * (d.y - c.y)) - ((b.y - a.y) * (d.x - c.x));
+	if (denominator == 0) {
+		// The segments are parallel, return the distance between the closest endpoints
+		const auto dist_a = vertex_segment_distance(a, c, d);
+		const auto dist_b = vertex_segment_distance(b, c, d);
+		const auto dist_c = vertex_segment_distance(c, a, b);
+		const auto dist_d = vertex_segment_distance(d, a, b);
+		return math::min(math::min(dist_a, dist_b), math::min(dist_c, dist_d));
+	}
+
+	const auto r = ((a.y - c.y) * (d.x - c.x)) - ((a.x - c.x) * (d.y - c.y));
+	const auto s = ((a.y - c.y) * (b.x - a.x)) - ((a.x - c.x) * (b.y - a.y));
+
+	const auto r_norm = r / denominator;
+	const auto s_norm = s / denominator;
+
+	if (r_norm < 0 || r_norm > 1 || s_norm < 0 || s_norm > 1) {
+		// The segments do not intersect, return the distance between the closest endpoints
+		const auto dist_a = vertex_segment_distance(a, c, d);
+		const auto dist_b = vertex_segment_distance(b, c, d);
+		const auto dist_c = vertex_segment_distance(c, a, b);
+		const auto dist_d = vertex_segment_distance(d, a, b);
+		return math::min(math::min(dist_a, dist_b), math::min(dist_c, dist_d));
+	}
+
+	// Intersection, so no distance!
+	return 0.0;
+}
+
+} // namespace
+
+} // namespace sgl
+
+//======================================================================================================================
 // Internal Algorithms
 //======================================================================================================================
 
@@ -866,44 +1054,377 @@ void linestring::locate_along(allocator &alloc, const geometry &linear_geom, dou
 			continue; // Skip zero-length segments
 		}
 
-		const double t = (measure - prev[m_offset]) / (next[m_offset] - prev[m_offset]);
-		if (t < 0 || t > 1) {
-			prev = next;
-			continue; // Measure is outside the segment
+		const auto prev_m = prev[m_offset];
+		const auto next_m = next[m_offset];
+
+		if (measure == prev_m) {
+			// If the measure matches the previous point, just use it
+			vertex_xyzm point = prev;
+			if (offset != 0.0) {
+				const double offset_x = offset * dy / segment_length;  // Perpendicular offset
+				const double offset_y = -offset * dx / segment_length; // Perpendicular offset
+				point.x += offset_x;
+				point.y += offset_y;
+			}
+
+			// Allocate memory for the point vertex
+			const auto mem = static_cast<char *>(alloc.alloc(vertex_width));
+			memcpy(mem, &point, vertex_width);
+
+			// Allocate memory for the point geometry
+			const auto point_mem = alloc.alloc(sizeof(sgl::geometry));
+			const auto point_ptr = new (point_mem) sgl::geometry(geometry_type::POINT, has_z, has_m);
+
+			point_ptr->set_vertex_array(mem, 1);
+
+			// Append the point to the output geometry
+			out_geom.append_part(point_ptr);
+
+			prev = next; // Move to the next segment
+			continue;
 		}
 
-		vertex_xyzm point = {};
-		point.x = prev.x + t * dx;
-		point.y = prev.y + t * dy;
-		point[m_offset] = measure; // Set the "m" value to the measure
+		// If the measure is on the segment, interpolate the point
+		if (prev_m < measure && next_m > measure) {
+			const auto t = (measure - prev_m) / (next_m - prev_m);
 
-		// If the geometry has Z values, interpolate them as well
-		if (has_z) {
-			point[z_offset] = prev[z_offset] + t * (next[z_offset] - prev[z_offset]);
+			vertex_xyzm point = {};
+			point.x = prev.x + t * dx;
+			point.y = prev.y + t * dy;
+			point[m_offset] = measure; // Set the "m" value to the measure
+
+			// If the geometry has Z values, interpolate them as well
+			if (has_z) {
+				point[z_offset] = prev[z_offset] + t * (next[z_offset] - prev[z_offset]);
+			}
+
+			if (offset != 0.0) {
+				const double offset_x = offset * dy / segment_length;  // Perpendicular offset
+				const double offset_y = -offset * dx / segment_length; // Perpendicular offset
+				point.x += offset_x;
+				point.y += offset_y;
+			}
+
+			// Allocate memory for the point vertex
+			const auto mem = static_cast<char *>(alloc.alloc(vertex_width));
+			memcpy(mem, &point, vertex_width);
+
+			// Allocate memory for the point geometry
+			const auto point_mem = alloc.alloc(sizeof(sgl::geometry));
+			const auto point_ptr = new (point_mem) sgl::geometry(geometry_type::POINT, has_z, has_m);
+
+			point_ptr->set_vertex_array(mem, 1);
+
+			// Append the point to the output geometry
+			out_geom.append_part(point_ptr);
+
+			prev = next; // Move to the next segment
+			continue;
 		}
 
-		if (offset != 0.0) {
-			const double offset_x = offset * dy / segment_length;  // Perpendicular offset
-			const double offset_y = -offset * dx / segment_length; // Perpendicular offset
-			point.x += offset_x;
-			point.y += offset_y;
+		// Else, if this is the last segment and the next point has the same "m" value, include it too
+		if (i == vertex_count - 1 && next_m == measure) {
+			vertex_xyzm point = next;
+			if (offset != 0.0) {
+				const double offset_x = offset * dy / segment_length;  // Perpendicular offset
+				const double offset_y = -offset * dx / segment_length; // Perpendicular offset
+				point.x += offset_x;
+				point.y += offset_y;
+			}
+			// Allocate memory for the point vertex
+			const auto mem = static_cast<char *>(alloc.alloc(vertex_width));
+			memcpy(mem, &point, vertex_width);
+
+			// Allocate memory for the point geometry
+			const auto point_mem = alloc.alloc(sizeof(sgl::geometry));
+			const auto point_ptr = new (point_mem) sgl::geometry(geometry_type::POINT, has_z, has_m);
+
+			point_ptr->set_vertex_array(mem, 1);
+
+			// Append the point to the output geometry
+			out_geom.append_part(point_ptr);
 		}
-
-		// Allocate memory for the point vertex
-		const auto mem = static_cast<char *>(alloc.alloc(vertex_width));
-		memcpy(mem, &point, vertex_width);
-
-		// Allocate memory for the point geometry
-		const auto point_mem = alloc.alloc(sizeof(sgl::geometry));
-		auto point_ptr = new (point_mem) sgl::geometry(geometry_type::POINT, has_z, has_m);
-
-		point_ptr->set_vertex_array(mem, 1);
-
-		// Append the point to the output geometry
-		out_geom.append_part(point_ptr);
-
-		prev = next; // Move to the next segment
 	}
+}
+
+class vertex_vec {
+public:
+	vertex_vec(allocator &alloc, uint32_t vertex_width)
+	    : alloc(alloc), vertex_width(vertex_width), vertex_count(0), vertex_total(0), vertex_array(nullptr) {
+	}
+
+	void push_back(const vertex_xyzm &v) {
+		reserve(vertex_count + 1);
+		memcpy(vertex_array + vertex_count * vertex_width, &v, vertex_width);
+		vertex_count++;
+	}
+
+	void push_back(const vertex_xy &v) {
+		vertex_xyzm v_xyzm = {v.x, v.y, 0.0, 0.0};
+		push_back(v_xyzm);
+	}
+
+	void reserve(uint32_t new_size) {
+		if (new_size > vertex_total) {
+			if (vertex_array == nullptr) {
+				const auto new_total = std::max(new_size, static_cast<uint32_t>(4));
+				vertex_array = static_cast<char *>(alloc.alloc(new_total * vertex_width));
+				vertex_total = new_total;
+			} else {
+				const auto new_total = std::max(new_size, vertex_total * 2);
+				vertex_array = static_cast<char *>(
+				    alloc.realloc(vertex_array, vertex_total * vertex_width, new_total * vertex_width));
+				vertex_total = new_total;
+			}
+		}
+	}
+
+	uint32_t size() const {
+		return vertex_count;
+	}
+
+	void assign_and_give_ownership(geometry &geom) {
+		SGL_ASSERT(geom.get_type() == geometry_type::LINESTRING || geom.get_type() == geometry_type::POINT);
+		SGL_ASSERT(geom.get_vertex_width() == vertex_width);
+
+		geom.set_vertex_array(vertex_array, vertex_count);
+		vertex_array = nullptr; // Transfer ownership to the geometry
+		vertex_count = 0;       // Reset the count since the geometry now owns the data
+		vertex_total = 0;       // Reset the total size since the geometry now owns the data
+	}
+
+private:
+	allocator &alloc;
+	uint32_t vertex_width;
+	uint32_t vertex_count;
+	uint32_t vertex_total;
+	char *vertex_array;
+};
+
+void linestring::locate_between(allocator &alloc, const geometry &linear_geom, double measure_lower,
+                                double measure_upper, double offset, geometry &out_geom) {
+	if (linear_geom.get_type() != geometry_type::LINESTRING) {
+		return;
+	}
+	if (linear_geom.is_empty()) {
+		return;
+	}
+	if (!linear_geom.has_m()) {
+		return; // No "m" values to locate along
+	}
+	if (measure_lower > measure_upper) {
+		return; // Invalid range
+	}
+
+	const auto vertex_width = linear_geom.get_vertex_width();
+	const auto vertex_array = linear_geom.get_vertex_array();
+	const auto vertex_count = linear_geom.get_vertex_count();
+
+	if (vertex_count < 2) {
+		return; // Not enough points to locate along
+	}
+
+	const auto has_z = linear_geom.has_z();
+	const auto has_m = linear_geom.has_m();
+
+	const auto m_offset = has_z ? 3 : 2;
+	const auto z_offset = has_z ? 2 : 3;
+
+	vertex_xyzm prev = {0, 0, 0, 0};
+	vertex_xyzm next = {0, 0, 0, 0};
+
+	// The goal: collect all the vertices that are between the measures. Interpolate them if necessary.
+	vertex_vec filtered_vertices(alloc, vertex_width);
+
+	memcpy(&prev, vertex_array, vertex_width);
+
+	// Loop over the segments of the line
+	for (uint32_t i = 1; i < vertex_count; i++) {
+		memcpy(&next, vertex_array + i * vertex_width, vertex_width);
+
+		const auto dx = next.x - prev.x;
+		const auto dy = next.y - prev.y;
+
+		const auto segment_length = std::sqrt(dx * dx + dy * dy);
+		if (segment_length == 0) {
+			prev = next;
+			continue; // Skip zero-length segments
+		}
+
+		const auto prev_m = prev[m_offset];
+		const auto next_m = next[m_offset];
+
+		// TODO: Check that they cant be equal
+		if (prev_m < measure_lower && next_m > measure_lower) {
+			// Segment intersects with lower bound
+			// This is the start of a new line, so we need to add the start point
+			const double t_beg = (measure_lower - prev_m) / (next_m - prev_m);
+			vertex_xyzm beg_point = {};
+			beg_point.x = prev.x + t_beg * dx;
+			beg_point.y = prev.y + t_beg * dy;
+			beg_point[m_offset] = measure_lower;
+			if (has_z) {
+				beg_point[z_offset] = prev[z_offset] + t_beg * (next[z_offset] - prev[z_offset]);
+			}
+
+			if (offset != 0.0) {
+				const double offset_x = offset * dy / segment_length;  // Perpendicular offset
+				const double offset_y = -offset * dx / segment_length; // Perpendicular offset
+				beg_point.x += offset_x;
+				beg_point.y += offset_y;
+			}
+
+			// Add the start point to the line
+			filtered_vertices.push_back(beg_point);
+		}
+
+		if (prev_m >= measure_lower && prev_m <= measure_upper) {
+			// The previous vertex is inside the range
+
+			if (offset != 0.0) {
+				// Apply the offset to the previous vertex
+				const double offset_x = offset * dy / segment_length;  // Perpendicular offset
+				const double offset_y = -offset * dx / segment_length; // Perpendicular offset
+
+				vertex_xyzm offset_vertex = prev;
+				offset_vertex.x += offset_x;
+				offset_vertex.y += offset_y;
+				filtered_vertices.push_back(offset_vertex);
+
+			} else {
+				filtered_vertices.push_back(prev);
+			}
+		}
+
+		if (prev_m < measure_upper && next_m > measure_upper) {
+			// Segment intersects with upper bound
+			// This is the end of the current line, so we need to add the end point
+
+			const double t_end = (measure_upper - prev_m) / (next_m - prev_m);
+			vertex_xyzm end_point = {};
+			end_point.x = prev.x + t_end * dx;
+			end_point.y = prev.y + t_end * dy;
+			end_point[m_offset] = measure_upper;
+			if (has_z) {
+				end_point[z_offset] = prev[z_offset] + t_end * (next[z_offset] - prev[z_offset]);
+			}
+
+			if (offset != 0.0) {
+				const double offset_x = offset * dy / segment_length;  // Perpendicular offset
+				const double offset_y = -offset * dx / segment_length; // Perpendicular offset
+				end_point.x += offset_x;
+				end_point.y += offset_y;
+			}
+
+			// Add the end point to the line
+			filtered_vertices.push_back(end_point);
+
+			// Now we can create a new geometry from the collected points
+			const auto part_type = filtered_vertices.size() == 1 ? geometry_type::POINT : geometry_type::LINESTRING;
+			const auto part_mem = static_cast<char *>(alloc.alloc(sizeof(geometry)));
+			const auto part_ptr = new (part_mem) geometry(part_type, has_z, has_m);
+
+			// Assign the collected vertices to the part
+			filtered_vertices.assign_and_give_ownership(*part_ptr);
+
+			// Append the part to the output geometry
+			out_geom.append_part(part_ptr);
+		} else if (i == vertex_count - 1) {
+			// If we are at the last vertex and it is inside the range, we need to add it
+			if (next_m >= measure_lower && next_m <= measure_upper) {
+				if (offset != 0.0) {
+					// Apply the offset to the last vertex
+					const double offset_x = offset * dy / segment_length;  // Perpendicular offset
+					const double offset_y = -offset * dx / segment_length; // Perpendicular offset
+
+					vertex_xyzm offset_vertex = next;
+					offset_vertex.x += offset_x;
+					offset_vertex.y += offset_y;
+					filtered_vertices.push_back(offset_vertex);
+				} else {
+					filtered_vertices.push_back(next);
+				}
+			}
+		}
+
+		prev = next;
+	}
+
+	// Push whatever is left in the last segment
+	if (filtered_vertices.size() > 0) {
+
+		const auto part_type = filtered_vertices.size() == 1 ? geometry_type::POINT : geometry_type::LINESTRING;
+		const auto part_mem = static_cast<char *>(alloc.alloc(sizeof(geometry)));
+		const auto part_ptr = new (part_mem) geometry(part_type, has_z, has_m);
+
+		// Assign the collected vertices to the part
+		filtered_vertices.assign_and_give_ownership(*part_ptr);
+
+		// Append the part to the output geometry
+		out_geom.append_part(part_ptr);
+	}
+}
+
+// TODO: Make use of prepared geometry to accelerate this operation
+double linestring::line_locate_point(const geometry &line_geom, const geometry &point_geom) {
+	SGL_ASSERT(line_geom.get_type() == geometry_type::LINESTRING);
+	SGL_ASSERT(point_geom.get_type() == geometry_type::POINT);
+	SGL_ASSERT(!line_geom.is_empty() && !point_geom.is_empty());
+
+	const auto point = point_geom.get_vertex_xy(0);
+
+	const auto vertex_width = line_geom.get_vertex_width();
+	const auto vertex_array = line_geom.get_vertex_array();
+	const auto vertex_count = line_geom.get_vertex_count();
+
+	vertex_xy prev = {0, 0};
+	vertex_xy next = {0, 0};
+
+	memcpy(&prev, vertex_array, vertex_width);
+
+	double length = 0.0;
+	double closest_sqdist = std::numeric_limits<double>::max();
+	double closest_length = 0.0;
+
+	for (uint32_t i = 1; i < vertex_count; i++) {
+		memcpy(&next, vertex_array + i * vertex_width, vertex_width);
+
+		const auto segment_length_squared = vertex_distance_squared(prev, next);
+		if (segment_length_squared == 0) {
+			// Compute the distance to the previous point
+			// This is a zero-length segment, so we can just check the distance to the previous point
+			const auto sqdist = vertex_distance_squared(prev, point);
+			if (sqdist < closest_sqdist) {
+				closest_length = length;
+				closest_sqdist = sqdist;
+			}
+			prev = next;
+			continue;
+		}
+
+		// Otherwise, compute the projection of the point onto the segment
+		const double t =
+		    ((point.x - prev.x) * (next.x - prev.x) + (point.y - prev.y) * (next.y - prev.y)) / segment_length_squared;
+		const double clamped_t = math::clamp(t, 0.0, 1.0);
+		const double closest_x = prev.x + clamped_t * (next.x - prev.x);
+		const double closest_y = prev.y + clamped_t * (next.y - prev.y);
+		const double sqdist =
+		    (closest_x - point.x) * (closest_x - point.x) + (closest_y - point.y) * (closest_y - point.y);
+
+		const auto segment_length = std::sqrt(segment_length_squared);
+		if (sqdist < closest_sqdist) {
+			closest_sqdist = sqdist;
+			closest_length = length + clamped_t * segment_length;
+		}
+
+		length += segment_length;
+		prev = next;
+	}
+
+	if (closest_length == 0 || length == 0) {
+		return 0.0; // The point is at the start of the line
+	}
+	return closest_length / length;
 }
 
 void linestring::substring(allocator &alloc, const geometry &geom, double beg_frac, double end_frac, geometry &result) {
@@ -1077,7 +1598,7 @@ void ops::locate_along(allocator &alloc, const geometry &geom, double measure, d
 
 	const auto has_z = geom.has_z();
 
-	visit_leaf_geometries(geom, [&alloc, &out_geom, &measure, &offset, &has_z](const geometry &part) {
+	visit_leaf_geometries(geom, [&](const geometry &part) {
 		if (part.is_empty()) {
 			return; // Skip empty geometries
 		}
@@ -1089,10 +1610,13 @@ void ops::locate_along(allocator &alloc, const geometry &geom, double measure, d
 
 				// Make a new point geometry
 				const auto point_mem = alloc.alloc(sizeof(sgl::geometry));
-				auto point_ptr = new (point_mem) sgl::geometry(geometry_type::POINT, has_z, part.has_m());
+				const auto point_ptr = new (point_mem) sgl::geometry(geometry_type::POINT, has_z, part.has_m());
 
 				// Make the point reference the same vertex
 				point_ptr->set_vertex_array(part.get_vertex_array(), 1);
+
+				// Push the point to the output geometry
+				out_geom.append_part(point_ptr);
 			}
 		} break;
 		case geometry_type::LINESTRING: {
@@ -1102,6 +1626,51 @@ void ops::locate_along(allocator &alloc, const geometry &geom, double measure, d
 			// Only consider the outer ring of the polygon
 			const auto shell = part.get_first_part();
 			linestring::locate_along(alloc, *shell, measure, offset, out_geom);
+		} break;
+		default:
+			// Unsupported geometry type
+			SGL_ASSERT(false);
+			return;
+		}
+	});
+}
+
+void ops::locate_between(allocator &alloc, const geometry &geom, double measure_lower, double measure_upper,
+                         double offset, geometry &out_geom) {
+	if (!geom.has_m()) {
+		return; // No "m" values to locate along
+	}
+
+	const auto has_z = geom.has_z();
+
+	visit_leaf_geometries(geom, [&](const geometry &part) {
+		if (part.is_empty()) {
+			return; // Skip empty geometries
+		}
+		switch (part.get_type()) {
+		case geometry_type::POINT: {
+			const auto vertex = part.get_vertex_xyzm(0);
+			if ((has_z && vertex.m >= measure_lower && vertex.m <= measure_upper) ||
+			    (!has_z && vertex.z >= measure_lower && vertex.z <= measure_upper)) {
+
+				// Make a new point geometry
+				const auto point_mem = alloc.alloc(sizeof(sgl::geometry));
+				const auto point_ptr = new (point_mem) sgl::geometry(geometry_type::POINT, has_z, part.has_m());
+
+				// Make the point reference the same vertex
+				point_ptr->set_vertex_array(part.get_vertex_array(), 1);
+
+				// Push the point to the output geometry
+				out_geom.append_part(point_ptr);
+			}
+		} break;
+		case geometry_type::LINESTRING: {
+			linestring::locate_between(alloc, part, measure_lower, measure_upper, offset, out_geom);
+		} break;
+		case geometry_type::POLYGON: {
+			// Only consider the outer ring of the polygon
+			const auto shell = part.get_first_part();
+			linestring::locate_between(alloc, *shell, measure_lower, measure_upper, offset, out_geom);
 		} break;
 		default:
 			// Unsupported geometry type
@@ -1446,183 +2015,6 @@ void ops::extract_polygons(geometry &geom, geometry &result) {
 namespace sgl {
 
 namespace {
-
-// TODO: Make robust
-// Returns the orientation of the triplet (p, q, r)
-// 0 if collinear, >0 if clockwise, <0 if counter-clockwise
-int orient2d_fast(const vertex_xy &p, const vertex_xy &q, const vertex_xy &r) {
-	const auto det_l = (p.x - r.x) * (q.y - r.y);
-	const auto det_r = (p.y - r.y) * (q.x - r.x);
-	const auto det = det_l - det_r;
-	return (det > 0) - (det < 0);
-}
-
-enum class raycast_result { NONE = 0, CROSS, BOUNDARY };
-
-// TODO: Make robust
-raycast_result raycast_fast(const vertex_xy &prev, const vertex_xy &next, const vertex_xy &vert) {
-	if (prev.x < vert.x && next.x < vert.x) {
-		// The segment is to the left of the point
-		return raycast_result::NONE;
-	}
-
-	if (next.x == vert.x && next.y == vert.y) {
-		// The point is on the segment, they share a vertex
-		return raycast_result::BOUNDARY;
-	}
-
-	if (prev.y == vert.y && next.y == vert.y) {
-		// The segment is horizontal, check if the point is within the min/max x
-		double minx = prev.x;
-		double maxx = next.x;
-
-		if (minx > maxx) {
-			minx = next.x;
-			maxx = prev.x;
-		}
-
-		if (vert.x >= minx && vert.x <= maxx) {
-			// if its inside, then its on the boundary
-			return raycast_result::BOUNDARY;
-		}
-
-		// otherwise it has no impact on the result
-		return raycast_result::NONE;
-	}
-
-	if ((prev.y > vert.y && next.y <= vert.y) || (next.y > vert.y && prev.y <= vert.y)) {
-		int sign = orient2d_fast(prev, next, vert);
-		if (sign == 0) {
-			return raycast_result::BOUNDARY;
-		}
-
-		if (next.y < prev.y) {
-			sign = -sign;
-		}
-
-		if (sign > 0) {
-			return raycast_result::CROSS;
-		}
-	}
-
-	return raycast_result::NONE;
-}
-
-// TODO: Make robust
-point_in_polygon_result vertex_in_ring(const vertex_xy &vert, const geometry &ring) {
-	SGL_ASSERT(ring.get_type() == geometry_type::LINESTRING);
-
-	if (ring.get_vertex_count() < 3) {
-		// Degenerate case, should not happen
-		// TODO: Return something better?
-		return point_in_polygon_result::INVALID;
-	}
-
-	if (ring.is_prepared()) {
-		auto &prep = static_cast<const prepared_geometry &>(ring);
-		return prep.contains(vert);
-	}
-
-	const auto vertex_array = ring.get_vertex_array();
-	const auto vertex_width = ring.get_vertex_width();
-	const auto vertex_count = ring.get_vertex_count();
-
-	uint32_t crossings = 0;
-
-	vertex_xy prev;
-	memcpy(&prev, vertex_array, sizeof(vertex_xy));
-	for (uint32_t i = 1; i < vertex_count; i++) {
-
-		vertex_xy next;
-		memcpy(&next, vertex_array + i * vertex_width, sizeof(vertex_xy));
-
-		switch (raycast_fast(prev, next, vert)) {
-		case raycast_result::NONE:
-			// No intersection
-			break;
-		case raycast_result::CROSS:
-			// The ray crosses the segment, so we count it
-			crossings++;
-			break;
-		case raycast_result::BOUNDARY:
-			// The point is on the boundary, so we return BOUNDARY
-			return point_in_polygon_result::BOUNDARY;
-		}
-
-		prev = next;
-	}
-
-	// Even number of crossings means the point is outside the polygon
-	return crossings % 2 == 0 ? point_in_polygon_result::EXTERIOR : point_in_polygon_result::INTERIOR;
-}
-
-double vertex_distance_squared(const vertex_xy &lhs, const vertex_xy &rhs) {
-	return std::pow(lhs.x - rhs.x, 2) + std::pow(lhs.y - rhs.y, 2);
-}
-
-double vertex_distance(const vertex_xy &lhs, const vertex_xy &rhs) {
-	const auto dx = lhs.x - rhs.x;
-	const auto dy = lhs.y - rhs.y;
-	return std::sqrt(dx * dx + dy * dy);
-}
-
-double vertex_segment_distance(const vertex_xy &p, const vertex_xy &v, const vertex_xy &w) {
-	const auto l2 = vertex_distance_squared(v, w);
-	if (l2 == 0) {
-		// is not better to just compare if w == v?
-		return vertex_distance(p, v);
-	}
-
-	const auto t = ((p.x - v.x) * (w.x - v.x) + (p.y - v.y) * (w.y - v.y)) / l2;
-	const auto t_clamped = math::max(0.0, math::min(1.0, t));
-	const auto x = v.x + t_clamped * (w.x - v.x);
-	const auto y = v.y + t_clamped * (w.y - v.y);
-
-	const vertex_xy intersection {x, y};
-
-	return vertex_distance(p, intersection);
-}
-
-// TODO: Make robust
-double segment_segment_distance(const vertex_xy &a, const vertex_xy &b, const vertex_xy &c, const vertex_xy &d) {
-	// Degenerate cases
-
-	// TODO: Robust comparisons
-	if (a.x == b.x && a.y == b.y) {
-		return vertex_segment_distance(a, c, d);
-	}
-	if (c.x == d.x && c.y == d.y) {
-		return vertex_segment_distance(c, a, b);
-	}
-
-	const auto denominator = ((b.x - a.x) * (d.y - c.y)) - ((b.y - a.y) * (d.x - c.x));
-	if (denominator == 0) {
-		// The segments are parallel, return the distance between the closest endpoints
-		const auto dist_a = vertex_segment_distance(a, c, d);
-		const auto dist_b = vertex_segment_distance(b, c, d);
-		const auto dist_c = vertex_segment_distance(c, a, b);
-		const auto dist_d = vertex_segment_distance(d, a, b);
-		return math::min(math::min(dist_a, dist_b), math::min(dist_c, dist_d));
-	}
-
-	const auto r = ((a.y - c.y) * (d.x - c.x)) - ((a.x - c.x) * (d.y - c.y));
-	const auto s = ((a.y - c.y) * (b.x - a.x)) - ((a.x - c.x) * (b.y - a.y));
-
-	const auto r_norm = r / denominator;
-	const auto s_norm = s / denominator;
-
-	if (r_norm < 0 || r_norm > 1 || s_norm < 0 || s_norm > 1) {
-		// The segments do not intersect, return the distance between the closest endpoints
-		const auto dist_a = vertex_segment_distance(a, c, d);
-		const auto dist_b = vertex_segment_distance(b, c, d);
-		const auto dist_c = vertex_segment_distance(c, a, b);
-		const auto dist_d = vertex_segment_distance(d, a, b);
-		return math::min(math::min(dist_a, dist_b), math::min(dist_c, dist_d));
-	}
-
-	// Intersection, so no distance!
-	return 0.0;
-}
 
 //----------------------------------------------------------------------------------------------------------------------
 // Distance Cases
