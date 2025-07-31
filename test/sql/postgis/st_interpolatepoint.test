@@ -1,3 +1,6 @@
+# name: test/sql/postgis/st_interpolatepoint.test
+# group: [postgis]
+
 # Example taken from the PostGIS manual @ http://postgis.net, licensed under the Creative Commons Attribution-Share Alike 3.0 License.
 
 require spatial
