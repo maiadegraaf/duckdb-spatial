@@ -1,0 +1,13 @@
+# Example taken from the PostGIS manual @ http://postgis.net, licensed under the Creative Commons Attribution-Share Alike 3.0 License.
+
+require spatial
+
+query I
+SELECT ST_InterpolatePoint('LINESTRING M (0 0 0, 10 0 20)', 'POINT(5 5)');
+----
+10
+
+query I
+SELECT ST_InterpolatePoint('LINESTRING ZM (0 0 0 0, 10 0 0 20)', 'POINT(5 5)')
+----
+10
