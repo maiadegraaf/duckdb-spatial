@@ -33,7 +33,8 @@ namespace {
 //######################################################################################################################
 // DuckDB GDAL VFS
 //######################################################################################################################
-// This implements a GDAL "VFS" (Virtual File System) that allows GDAL to read and write files from DuckDB's file system
+// This implements a GDAL "VFS" (Virtual File System) that allows GDAL to read and write files from DuckDB's file
+// system
 // TODO: Make another pass at this, we should be able to clean it up a bit more.
 
 class DuckDBFileHandle final : public VSIVirtualHandle {

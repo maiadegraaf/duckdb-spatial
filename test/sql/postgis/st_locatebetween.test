@@ -1,0 +1,14 @@
+# name: test/sql/postgis/st_locatebetween.test
+# group: [postgis]
+
+# Example taken from the PostGIS manual @ http://postgis.net, licensed under the Creative Commons Attribution-Share Alike 3.0 License.
+
+require spatial
+
+query I
+SELECT ST_AsText(
+  ST_LocateBetween(
+       'MULTILINESTRING M ((1 2 3, 3 4 2, 9 4 3),(1 2 3, 5 4 5))':: geometry,
+       1.5, 3 ));
+----
+GEOMETRYCOLLECTION M (LINESTRING M (1 2 3, 3 4 2, 9 4 3), POINT M (1 2 3))
