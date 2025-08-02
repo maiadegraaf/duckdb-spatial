@@ -2018,11 +2018,11 @@ struct ST_CollectionExtract {
 struct ST_Contains {
 
 	//------------------------------------------------------------------------------------------------------------------
-	// POINT_2D -> POLYGON_2D
+	// POLYGON_2D -> POINT_2D
 	//------------------------------------------------------------------------------------------------------------------
 	// TODO: This should probably be revised. Im not sure if the current implementation is entirely accurate
 
-	static void Operation(Vector &in_point, Vector &in_polygon, Vector &result, idx_t count) {
+	static void Operation(Vector &in_polygon, Vector &in_point, Vector &result, idx_t count) {
 		enum class Side { LEFT, RIGHT, ON };
 
 		in_polygon.Flatten(count);
@@ -2043,7 +2043,6 @@ struct ST_Contains {
 		auto y_data = FlatVector::GetData<double>(*coord_children[1]);
 
 		auto result_data = FlatVector::GetData<bool>(result);
-
 		for (idx_t polygon_idx = 0; polygon_idx < count; polygon_idx++) {
 			auto polygon = polygon_entries[polygon_idx];
 			auto polygon_offset = polygon.offset;
@@ -8702,7 +8701,7 @@ struct ST_Within {
 		auto &polygon_in = args.data[1];
 
 		// Just execute ST_Contains, but reversed
-		ST_Contains::Operation(point_in, polygon_in, result, args.size());
+		ST_Contains::Operation(polygon_in, point_in, result, args.size());
 	}
 
 	//------------------------------------------------------------------------------------------------------------------
