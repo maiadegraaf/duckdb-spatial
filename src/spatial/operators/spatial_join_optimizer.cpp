@@ -7,16 +7,17 @@
 #include "duckdb/planner/operator/logical_any_join.hpp"
 #include "duckdb/catalog/catalog_entry/scalar_function_catalog_entry.hpp"
 #include "duckdb/planner/operator/logical_filter.hpp"
+#include "spatial/spatial_types.hpp"
 
 namespace duckdb {
 
 // All of these imply bounding box intersection
-static case_insensitive_set_t spatial_predicate_map = {
+static const case_insensitive_set_t spatial_predicate_map = {
     "ST_Equals",   "ST_Intersects", "ST_Touches",   "ST_Crosses",          "ST_Within",         "ST_Contains",
     "ST_Overlaps", "ST_Covers",     "ST_CoveredBy", "ST_ContainsProperly", "ST_WithinProperly", "ST_DWithin",
 };
 
-static case_insensitive_map_t<string> spatial_predicate_inverse_map = {
+static const case_insensitive_map_t<string> spatial_predicate_inverse_map = {
     {"ST_Equals", "ST_Equals"},
     {"ST_Intersects", "ST_Intersects"},           // Symmetric
     {"ST_Touches", "ST_Touches"},                 // Symmetric
@@ -135,6 +136,13 @@ static void InsertSpatialJoin(OptimizerExtensionInput &input, unique_ptr<Logical
 
 		// The function must be a binary predicate
 		if (func.children.size() != 2) {
+			extra_predicates.push_back(std::move(expr));
+			continue;
+		}
+
+		// The function must operate on two GEOMETRY types
+		if (func.children[0]->return_type != GeoTypes::GEOMETRY() ||
+		    func.children[1]->return_type != GeoTypes::GEOMETRY()) {
 			extra_predicates.push_back(std::move(expr));
 			continue;
 		}
