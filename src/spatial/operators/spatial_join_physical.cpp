@@ -452,6 +452,8 @@ public:
 
 	// This is initialized in the finalize state
 	unique_ptr<FlatRTree> rtree = nullptr;
+
+	mutex combine_lock;
 };
 
 unique_ptr<GlobalSinkState> PhysicalSpatialJoin::GetGlobalSinkState(ClientContext &context) const {
@@ -580,6 +582,7 @@ SinkCombineResultType PhysicalSpatialJoin::Combine(ExecutionContext &context, Op
 	lstate.collection->FinalizePinState(lstate.append_state.pin_state);
 
 	// Append the local collection to the global collection
+	lock_guard<mutex> lock(gstate.combine_lock);
 	gstate.collection->Combine(*lstate.collection);
 
 	// Merge the non-null and non-empty count
@@ -1019,14 +1022,13 @@ public:
 		column_ids.push_back(op.build_side_key_types.size() + op.build_side_payload_types.size());
 
 		// We dont need to keep the tuples aroun after scanning
-		state.collection->InitializeScan(scan_state, std::move(column_ids), TupleDataPinProperties::DESTROY_AFTER_DONE);
+		state.collection->InitializeScan(scan_state, std::move(column_ids), TupleDataPinProperties::KEEP_EVERYTHING_PINNED);
 
 		tuples_maximum = state.collection->Count();
 	}
 
 	const PhysicalSpatialJoin &op;
 	TupleDataParallelScanState scan_state;
-
 	// How many tuples we have scanned so far
 	idx_t tuples_maximum = 0;
 	atomic<idx_t> tuples_scanned = {0};
@@ -1056,7 +1058,7 @@ public:
 		column_ids.push_back(op.build_side_key_types.size() + op.build_side_payload_types.size());
 
 		// We dont need to keep the tuples aroun after scanning
-		state.collection->InitializeScan(scan_state, std::move(column_ids), TupleDataPinProperties::DESTROY_AFTER_DONE);
+		state.collection->InitializeScan(scan_state, std::move(column_ids));
 		state.collection->InitializeScanChunk(scan_state, scan_chunk);
 	}
 

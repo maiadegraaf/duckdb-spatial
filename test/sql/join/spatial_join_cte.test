@@ -1,0 +1,29 @@
+# name: test/sql/join/spatial_join_cte.test
+# group: [join]
+
+require spatial
+
+query IIII
+with bigger as (
+select 'a' as region, ST_GeomFromText('POLYGON ((0 0, 0 10, 10 10, 10 0 , 0 0 ))') as geom
+      union all
+select 'b' as region, ST_GeomFromText('POLYGON ((50 50, 50 60, 60 60, 60 50 , 50 50 ))') as geom
+      union all
+select 'c' as region, ST_GeomFromText('POLYGON ((50 50, 50 60, 60 60, 60 50 , 50 50 ))') as geom
+      union all
+select 'd' as region, ST_GeomFromText('POLYGON ((50 50, 50 60, 60 60, 60 50 , 50 50 ))') as geom
+      union all
+select 'e' as region, ST_GeomFromText('POLYGON ((50 50, 50 60, 60 60, 60 50 , 50 50 ))') as geom
+      union all
+select 'f' as region, ST_GeomFromText('POLYGON ((50 50, 50 60, 60 60, 60 50 , 50 50 ))') as geom
+      union all
+select 'g' as region, ST_GeomFromText('POLYGON ((50 50, 50 60, 60 60, 60 50 , 50 50 ))') as geom
+), smaller as  (
+  select '1' as region, ST_GeomFromText('POLYGON ((2 2, 2 8, 8 8, 8 2 , 2 2 ))') as geom
+  union all
+  select '2' as region, ST_GeomFromText('POLYGON ((3 3, 3 5, 5 5, 5 3 , 3 3 ))') as geom
+)
+select * from smaller left join bigger on st_intersects(bigger.geom, smaller.geom) order by all;
+----
+1	POLYGON ((2 2, 2 8, 8 8, 8 2, 2 2))	a	POLYGON ((0 0, 0 10, 10 10, 10 0, 0 0))
+2	POLYGON ((3 3, 3 5, 5 5, 5 3, 3 3))	a	POLYGON ((0 0, 0 10, 10 10, 10 0, 0 0))
