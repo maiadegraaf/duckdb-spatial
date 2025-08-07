@@ -330,6 +330,61 @@ struct PointCasts {
 	}
 
 	//------------------------------------------------------------------------------------------------------------------
+	// POINT_4D -> VARCHAR
+	//------------------------------------------------------------------------------------------------------------------
+	static bool ToVarcharCast4D(Vector &source, Vector &result, idx_t count, CastParameters &parameters) {
+		CoreVectorOperations::Point4DToVarchar(source, result, count);
+		return true;
+	}
+
+	//------------------------------------------------------------------------------------------------------------------
+	// POINT_4D -> GEOMETRY
+	//------------------------------------------------------------------------------------------------------------------
+	static bool ToGeometryCast4D(Vector &source, Vector &result, idx_t count, CastParameters &parameters) {
+		using POINT_TYPE = StructTypeQuaternary<double, double, double, double>;
+		using GEOMETRY_TYPE = PrimitiveType<string_t>;
+
+		auto &lstate = LocalState::ResetAndGet(parameters);
+
+		GenericExecutor::ExecuteUnary<POINT_TYPE, GEOMETRY_TYPE>(source, result, count, [&](const POINT_TYPE &point) {
+			const double buffer[4] = {point.a_val, point.b_val, point.c_val, point.d_val};
+			sgl::geometry geom(sgl::geometry_type::POINT, true, true);
+			geom.set_vertex_array(buffer, 1);
+
+			return lstate.Serialize(result, geom);
+		});
+		return true;
+	}
+
+	//------------------------------------------------------------------------------------------------------------------
+	// GEOMETRY -> POINT_4D
+	//------------------------------------------------------------------------------------------------------------------
+	static bool FromGeometryCast4D(Vector &source, Vector &result, idx_t count, CastParameters &parameters) {
+		using POINT_TYPE = StructTypeQuaternary<double, double, double, double>;
+		using GEOMETRY_TYPE = PrimitiveType<string_t>;
+
+		auto &lstate = LocalState::ResetAndGet(parameters);
+
+		GenericExecutor::ExecuteUnary<GEOMETRY_TYPE, POINT_TYPE>(source, result, count, [&](const GEOMETRY_TYPE &blob) {
+			sgl::geometry geom;
+			lstate.Deserialize(blob.val, geom);
+
+			if (geom.get_type() != sgl::geometry_type::POINT) {
+				throw ConversionException("Cannot cast non-point GEOMETRY to POINT_4D");
+			}
+			if (geom.is_empty()) {
+				// TODO: Maybe make this return NULL instead
+				throw ConversionException("Cannot cast empty point GEOMETRY to POINT_4D");
+			}
+			const auto vertex = geom.get_vertex_xyzm(0);
+			return POINT_TYPE {vertex.x, vertex.y, vertex.z, vertex.m};
+		});
+
+		return true;
+	}
+
+
+	//------------------------------------------------------------------------------------------------------------------
 	// Register
 	//------------------------------------------------------------------------------------------------------------------
 	static void Register(ExtensionLoader &loader) {
@@ -351,8 +406,17 @@ struct PointCasts {
 		                            BoundCastInfo(FromGeometryCast3D, nullptr, LocalState::InitCast), 1);
 		// POINT_3D -> POINT_2D
 		loader.RegisterCastFunction(GeoTypes::POINT_3D(), GeoTypes::POINT_2D(), ToPoint2DCast, 1);
+
+		// POINT_4D -> VARCHAR
+		loader.RegisterCastFunction(GeoTypes::POINT_4D(), LogicalType::VARCHAR, BoundCastInfo(ToVarcharCast4D), 1);
 		// POINT_4D -> POINT_2D
 		loader.RegisterCastFunction(GeoTypes::POINT_4D(), GeoTypes::POINT_2D(), ToPoint2DCast, 1);
+		// POINT_4D -> GEOMETRY
+		loader.RegisterCastFunction(GeoTypes::POINT_4D(), GeoTypes::GEOMETRY(),
+		                            BoundCastInfo(ToGeometryCast4D, nullptr, LocalState::InitCast), 1);
+		// GEOMETRY -> POINT_4D
+		loader.RegisterCastFunction(GeoTypes::GEOMETRY(), GeoTypes::POINT_4D(),
+		                            BoundCastInfo(FromGeometryCast4D, nullptr, LocalState::InitCast), 1);
 	}
 };
 
@@ -944,6 +1008,27 @@ void CoreVectorOperations::Point3DToVarchar(Vector &source, Vector &result, idx_
 		}
 
 		return StringVector::AddString(result, StringUtil::Format("POINT Z (%s)", MathUtil::format_coord(x, y, z)));
+	});
+}
+
+//------------------------------------------------------------------------------
+// POINT_4D -> VARCHAR
+//------------------------------------------------------------------------------
+void CoreVectorOperations::Point4DToVarchar(Vector &source, Vector &result, idx_t count) {
+	using POINT_TYPE = StructTypeQuaternary<double, double, double, double>;
+	using VARCHAR_TYPE = PrimitiveType<string_t>;
+
+	GenericExecutor::ExecuteUnary<POINT_TYPE, VARCHAR_TYPE>(source, result, count, [&](POINT_TYPE &point) {
+		auto x = point.a_val;
+		auto y = point.b_val;
+		auto z = point.c_val;
+		auto m = point.d_val;
+
+		if (std::isnan(x) || std::isnan(y) || std::isnan(z) || std::isnan(m)) {
+			return StringVector::AddString(result, "POINT EMPTY");
+		}
+
+		return StringVector::AddString(result, StringUtil::Format("POINT ZM (%s)", MathUtil::format_coord(x, y, z, m)));
 	});
 }
 

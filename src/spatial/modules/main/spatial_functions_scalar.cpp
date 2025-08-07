@@ -7732,8 +7732,23 @@ struct ST_Point {
 		Creates a GEOMETRY point
 	)";
 
+	static constexpr auto DESCRIPTION_MAKE_POINT = R"(
+		Creates a GEOMETRY point from an pair of floating point numbers.
+
+		For geodetic coordinate systems, x is typically the longitude value and y is the latitude value.
+
+		Note that ST_Point is equivalent. ST_MakePoint is provided for PostGIS compatibility.
+	)";
+
 	// TODO: example
 	static constexpr auto EXAMPLE = "";
+
+	// TODO: example
+	static constexpr auto EXAMPLE_MAKE_POINT = R"(
+	SELECT ST_AsText(ST_MakePoint(143.3, -24.2));
+	----
+	POINT (143.3 -24.2)
+	)";
 
 	//------------------------------------------------------------------------------------------------------------------
 	// Register
@@ -7770,6 +7785,23 @@ struct ST_Point {
 			func.SetTag("category", "construction");
 		});
 
+		FunctionBuilder::RegisterScalar(loader, "ST_MakePoint", [](ScalarFunctionBuilder &func) {
+			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("x", LogicalType::DOUBLE);
+				variant.AddParameter("y", LogicalType::DOUBLE);
+				variant.SetReturnType(GeoTypes::POINT_2D());
+
+				variant.SetFunction(ExecutePoint2D);
+				variant.SetInit(LocalState::Init);
+			});
+
+			func.SetDescription(DESCRIPTION_MAKE_POINT);
+			func.SetExample(EXAMPLE_MAKE_POINT);
+
+			func.SetTag("ext", "spatial");
+			func.SetTag("category", "construction");
+		});
+
 		FunctionBuilder::RegisterScalar(loader, "ST_Point3D", [](ScalarFunctionBuilder &func) {
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("x", LogicalType::DOUBLE);
@@ -7779,6 +7811,22 @@ struct ST_Point {
 				variant.SetFunction(ExecutePoint3D);
 
 				variant.SetDescription("Creates a POINT_3D");
+			});
+
+			func.SetTag("ext", "spatial");
+			func.SetTag("category", "construction");
+		});
+
+
+		FunctionBuilder::RegisterScalar(loader, "ST_MakePoint", [](ScalarFunctionBuilder &func) {
+			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("x", LogicalType::DOUBLE);
+				variant.AddParameter("y", LogicalType::DOUBLE);
+				variant.AddParameter("z", LogicalType::DOUBLE);
+				variant.SetReturnType(GeoTypes::POINT_3D());
+				variant.SetFunction(ExecutePoint3D);
+
+				variant.SetDescription("Creates a POINT_3D.");
 			});
 
 			func.SetTag("ext", "spatial");
@@ -7795,6 +7843,22 @@ struct ST_Point {
 				variant.SetFunction(ExecutePoint4D);
 
 				variant.SetDescription("Creates a POINT_4D");
+			});
+
+			func.SetTag("ext", "spatial");
+			func.SetTag("category", "construction");
+		});
+
+		FunctionBuilder::RegisterScalar(loader, "ST_MakePoint", [](ScalarFunctionBuilder &func) {
+			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("x", LogicalType::DOUBLE);
+				variant.AddParameter("y", LogicalType::DOUBLE);
+				variant.AddParameter("z", LogicalType::DOUBLE);
+				variant.AddParameter("m", LogicalType::DOUBLE);
+				variant.SetReturnType(GeoTypes::POINT_4D());
+				variant.SetFunction(ExecutePoint4D);
+
+				variant.SetDescription("Creates a POINT_4D.");
 			});
 
 			func.SetTag("ext", "spatial");
