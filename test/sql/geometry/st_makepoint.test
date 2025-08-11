@@ -1,0 +1,26 @@
+require spatial
+
+query I
+SELECT ST_AsText(ST_MakePoint(143.3, -24.2)::GEOMETRY);
+----
+POINT (143.3 -24.2)
+
+query I
+SELECT ST_AsText(ST_MakePoint(143.3, -24.2, 2445.2)::GEOMETRY);
+----
+POINT Z (143.3 -24.2 2445.2)
+
+query I
+SELECT ST_AsText(ST_MakePoint(143.3, -24.2, 365.2, 1.6)::GEOMETRY);
+----
+POINT ZM (143.3 -24.2 365.2 1.6)
+
+query I
+SELECT ST_M(ST_MakePoint(143.3, -24.2, 365.2, 1.6));
+----
+1.6
+
+query I
+SELECT ST_Z(ST_MakePoint(143.3, -24.2, 365.2, 1.6));
+----
+365.2
