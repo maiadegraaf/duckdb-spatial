@@ -2295,7 +2295,10 @@ void prepared_geometry::build(allocator &allocator) {
 		box = extent_xy::smallest();
 
 		const auto beg = i * NODE_SIZE;
-		const auto end = math::min(beg + NODE_SIZE, vertex_count);
+
+		// We add +1 to the node size here, to get not just the start point of the segment, but also the end point,
+		// which may be in the next node. This ensures there is no gaps between node bounding boxes.
+		const auto end = math::min(beg + NODE_SIZE + 1, vertex_count);
 
 		for (uint32_t j = beg; j < end; j++) {
 			vertex_xy curr = {0, 0};
@@ -2359,6 +2362,8 @@ point_in_polygon_result prepared_geometry::contains(const vertex_xy &vert) const
 		const auto &box = level.entry_array[entry];
 
 		// Check if the vertex is in the box y-slice
+		D_ASSERT(box.min.y <= box.max.y);
+
 		if(box.min.y <= vert.y && box.max.y >= vert.y) {
 			if (depth != index.level_count - 1) {
 				// We are not at a leaf, so go downwards
@@ -2660,10 +2665,10 @@ static bool try_get_prepared_distance_lines(const prepared_geometry &lhs, const 
 		if (lhs_is_leaf && rhs_is_leaf) {
 
 			const auto lhs_beg_idx = pair.lhs_entry * NODE_SIZE;
-			const auto lhs_end_idx = math::min(lhs_beg_idx + NODE_SIZE, lhs.index.items_count);
+			const auto lhs_end_idx = math::min(lhs_beg_idx + NODE_SIZE + 1, lhs.index.items_count);
 
 			const auto rhs_beg_idx = pair.rhs_entry * NODE_SIZE;
-			const auto rhs_end_idx = math::min(rhs_beg_idx + NODE_SIZE, rhs.index.items_count);
+			const auto rhs_end_idx = math::min(rhs_beg_idx + NODE_SIZE + 1, rhs.index.items_count);
 
 			if (lhs_beg_idx >= lhs_end_idx || rhs_beg_idx >= rhs_end_idx) {
 				continue; // No segments to check
@@ -2680,9 +2685,14 @@ static bool try_get_prepared_distance_lines(const prepared_geometry &lhs, const 
 			for (uint32_t i = lhs_beg_idx + 1; i < lhs_end_idx; i++) {
 				memcpy(&lhs_next, lhs_vertex_array + i * lhs_vertex_width, sizeof(vertex_xy));
 
-				// Quick check. If the distance between the segment and the box (all the segments)
+				// Quick check: If the distance between the segment and the box (all the segments)
 				// is greater than min_dist, we can skip the exact distance check
-				extent_xy lhs_seg = { lhs_prev, lhs_next };
+				extent_xy lhs_seg;
+				lhs_seg.min.x = std::min(lhs_prev.x, lhs_next.x);
+				lhs_seg.min.y = std::min(lhs_prev.y, lhs_next.y);
+				lhs_seg.max.x = std::max(lhs_prev.x, lhs_next.x);
+				lhs_seg.max.y = std::max(lhs_prev.y, lhs_next.y);
+
 				if (lhs_seg.distance_to_sq(rhs_box) > min_dist) {
 					lhs_prev = lhs_next;
 					continue;
@@ -2692,18 +2702,21 @@ static bool try_get_prepared_distance_lines(const prepared_geometry &lhs, const 
 				for (uint32_t j = rhs_beg_idx + 1; j < rhs_end_idx; j++) {
 					memcpy(&rhs_next, rhs_vertex_array + j * rhs_vertex_width, sizeof(vertex_xy));
 
-					extent_xy rhs_seg =  {rhs_prev, rhs_next };
-
-					// Quick check. If the distance between the segment bounds are greater than min_dist,
+					// Quick check: If the distance between the segment bounds are greater than min_dist,
 					// we can skip the exact distance check
-					if (lhs_seg.distance_to_sq(rhs_seg) > min_dist) {
+					extent_xy rhs_seg;
+					rhs_seg.min.x = std::min(rhs_prev.x, rhs_next.x);
+					rhs_seg.min.y = std::min(rhs_prev.y, rhs_next.y);
+					rhs_seg.max.x = std::max(rhs_prev.x, rhs_next.x);
+					rhs_seg.max.y = std::max(rhs_prev.y, rhs_next.y);
+
+					if (rhs_seg.distance_to_sq(lhs_seg) > min_dist) {
 						rhs_prev = rhs_next;
 						continue;
 					}
 
-
 					const auto dist = segment_segment_dist_sq(lhs_prev, lhs_next, rhs_prev, rhs_next);
-					if (dist <= min_dist) {
+					if (dist < min_dist) {
 						min_dist = dist;
 						found_any = true;
 					}
@@ -2783,7 +2796,7 @@ static bool try_get_prepared_distance_lines(const prepared_geometry &lhs, const 
 	}
 
 	if (found_any) {
-		distance = std::sqrt(min_dist);
+		distance = std::sqrt(min_dist); // Convert squared distance to actual distance
 		return true; // We found a distance
 	}
 	return false; // No distance found
