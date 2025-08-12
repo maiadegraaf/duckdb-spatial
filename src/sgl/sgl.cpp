@@ -2812,6 +2812,7 @@ bool prepared_geometry::try_get_distance(const prepared_geometry &other, double 
 // WKT Parsing
 //======================================================================================================================
 
+
 namespace sgl {
 
 namespace {
