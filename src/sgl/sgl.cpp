@@ -2410,7 +2410,7 @@ point_in_polygon_result prepared_geometry::contains(const vertex_xy &vert) const
 			}
 
 			// The end of this node is either the end of the current node, or the end of the level
-			const auto node_end = (stack[depth - 1] + 1) * NODE_SIZE;
+			const auto node_end = ((stack[depth - 1] + 1) * NODE_SIZE) - 1;
 			const auto levl_end = index.level_array[depth].entry_count - 1;
 
 			const auto end = math::min(node_end, levl_end);
