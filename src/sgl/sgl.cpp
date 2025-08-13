@@ -2409,7 +2409,13 @@ point_in_polygon_result prepared_geometry::contains(const vertex_xy &vert) const
 				return crossings % 2 == 0 ? point_in_polygon_result::EXTERIOR : point_in_polygon_result::INTERIOR;
 			}
 
-			if(stack[depth] != index.level_array[depth].entry_count - 1) {
+			// The end of this node is either the end of the current node, or the end of the level
+			const auto node_end = (stack[depth - 1] + 1) * NODE_SIZE;
+			const auto levl_end = index.level_array[depth].entry_count - 1;
+
+			const auto end = math::min(node_end, levl_end);
+
+			if(stack[depth] != end) {
 				// Go sideways!
 				stack[depth]++;
 				break;
