@@ -613,8 +613,10 @@ SinkFinalizeType PhysicalSpatialJoin::Finalize(Pipeline &pipeline, Event &event,
 
 	auto &sel = *FlatVector::IncrementalSelectionVector();
 	Vector geom_vec(GeoTypes::GEOMETRY());
+	auto &validity = FlatVector::Validity(geom_vec);
 
 	do {
+		validity.Reset();
 		const auto row_count = iterator.GetCurrentChunkCount();
 
 		// We only need to fetch the build-side key column to build the rtree.
@@ -628,7 +630,7 @@ SinkFinalizeType PhysicalSpatialJoin::Finalize(Pipeline &pipeline, Event &event,
 		const auto geom_ptr = FlatVector::GetData<geometry_t>(geom_vec);
 		// Push the bounding boxes into the R-Tree
 		for (idx_t row_idx = 0; row_idx < row_count; row_idx++) {
-			if (FlatVector::IsNull(geom_vec, row_idx)) {
+			if (!validity.RowIsValid(row_idx)) {
 				// Skip null geometries
 				continue;
 			}
