@@ -1,10 +1,10 @@
 #include "spatial_join_optimizer.hpp"
+#include "spatial_join_logical.hpp"
+#include "spatial/util/distance_extract.hpp"
 
 #include "duckdb/main/database.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
 #include "duckdb/planner/operator/logical_any_join.hpp"
-#include "spatial_join_logical.hpp"
-
 #include "duckdb/catalog/catalog_entry/scalar_function_catalog_entry.hpp"
 #include "duckdb/planner/operator/logical_filter.hpp"
 
@@ -12,8 +12,9 @@ namespace duckdb {
 
 // All of these imply bounding box intersection
 static case_insensitive_set_t spatial_predicate_map = {
-    "ST_Equals",   "ST_Intersects", "ST_Touches",   "ST_Crosses",          "ST_Within",        "ST_Contains",
-    "ST_Overlaps", "ST_Covers",     "ST_CoveredBy", "ST_ContainsProperly", "ST_WithinProperly"};
+    "ST_Equals",   "ST_Intersects", "ST_Touches",   "ST_Crosses",          "ST_Within",         "ST_Contains",
+    "ST_Overlaps", "ST_Covers",     "ST_CoveredBy", "ST_ContainsProperly", "ST_WithinProperly", "ST_DWithin",
+};
 
 static case_insensitive_map_t<string> spatial_predicate_inverse_map = {
     {"ST_Equals", "ST_Equals"},
@@ -26,7 +27,9 @@ static case_insensitive_map_t<string> spatial_predicate_inverse_map = {
     {"ST_Covers", "ST_CoveredBy"},                // Inverse
     {"ST_CoveredBy", "ST_Covers"},                // Inverse
     {"ST_WithinProperly", "ST_ContainsProperly"}, // Inverse
-    {"ST_ContainsProperly", "ST_WithinProperly"}  // Inverse
+    {"ST_ContainsProperly", "ST_WithinProperly"}, // Inverse
+    {"ST_DWithin", "ST_DWithin"},                 // Symmetric (when distance is constant)
+
 };
 
 unique_ptr<Expression> TryGetInversePredicate(ClientContext &context, unique_ptr<Expression> expr) {
@@ -130,6 +133,12 @@ static void InsertSpatialJoin(OptimizerExtensionInput &input, unique_ptr<Logical
 
 		auto &func = expr->Cast<BoundFunctionExpression>();
 
+		// The function must be a binary predicate
+		if (func.children.size() != 2) {
+			extra_predicates.push_back(std::move(expr));
+			continue;
+		}
+
 		// The function must be a recognized spatial predicate
 		if (spatial_predicate_map.count(func.function.name) == 0) {
 			extra_predicates.push_back(std::move(expr));
@@ -178,6 +187,14 @@ static void InsertSpatialJoin(OptimizerExtensionInput &input, unique_ptr<Logical
 	spatial_join->mark_index = any_join.mark_index;
 	spatial_join->has_estimated_cardinality = any_join.has_estimated_cardinality;
 	spatial_join->estimated_cardinality = any_join.estimated_cardinality;
+
+	// If this is ST_DWithin, try to extract the constant distance value
+	const auto &pred_func = spatial_join->spatial_predicate->Cast<BoundFunctionExpression>();
+	if (pred_func.function.name == "ST_DWithin") {
+		// Try to get the constant distance value from the bind data;
+		spatial_join->has_const_distance =
+		    ST_DWithinHelper::TryGetConstDistance(pred_func.bind_info, spatial_join->const_distance);
+	}
 
 	// Replace the operator
 	plan = std::move(spatial_join);

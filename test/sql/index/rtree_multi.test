@@ -1,0 +1,25 @@
+require spatial
+
+statement ok
+PRAGMA enable_verification;
+
+statement ok
+CREATE TABLE t1 (id INT, g1 GEOMETRY, g2 GEOMETRY);
+
+statement ok
+INSERT INTO t1 VALUES
+    (1, 'POINT(0 0)'::GEOMETRY, 'POINT(0 0)'::GEOMETRY),
+    (2, 'POINT(40 40)'::GEOMETRY, 'POINT(40 40)'::GEOMETRY),
+    (3, 'POINT(2 2)'::GEOMETRY, 'POINT(2 2)'::GEOMETRY);
+
+statement ok
+CREATE INDEX my_idx_1 ON t1 USING RTREE (g2);
+
+statement ok
+CREATE INDEX my_idx_2 ON t1 USING RTREE (g1);
+
+# Check that we get the index scan plan
+query II
+EXPLAIN SELECT g1, id FROM t1 WHERE st_contains('POINT (1 2)'::GEOMETRY, g2);
+----
+physical_plan	<REGEX>:.*RTREE_INDEX_SCAN.*

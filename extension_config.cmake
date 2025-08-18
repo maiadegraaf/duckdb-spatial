@@ -13,5 +13,4 @@ duckdb_extension_load(spatial
         SOURCE_DIR ${CMAKE_CURRENT_LIST_DIR}
         INCLUDE_DIR ${CMAKE_CURRENT_LIST_DIR}/src/spatial
         ${DO_TESTS}
-        LINKED_LIBS "../../vcpkg_installed/wasm32-emscripten/lib/*.a ../../deps/local/lib/*.a"
 )

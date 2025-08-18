@@ -1,0 +1,73 @@
+# ST_Azimuth tests
+
+require spatial
+
+query I
+SELECT Degrees(ST_Azimuth(ST_Point(0, 0), ST_Point(1, 0)));
+----
+90.0
+
+query I
+SELECT Degrees(ST_Azimuth(ST_Point(0, 0), ST_Point(0, 1)));
+----
+0.0
+
+query I
+SELECT Degrees(ST_Azimuth(ST_Point(0, 0), ST_Point(-1, 0)));
+----
+270.0
+
+query I
+SELECT Degrees(ST_Azimuth(ST_Point(1, 1), ST_Point(2, 2)));
+----
+45.0
+
+# Coincident points should return NULL
+query I
+SELECT ST_Azimuth(ST_Point(1, 1), ST_Point(1, 1)) IS NULL;
+----
+true
+
+# NULL handling - NULLs should return NULL
+query I
+SELECT ST_Azimuth(NULL, ST_Point(1, 1)) IS NULL;
+----
+true
+
+query I
+SELECT ST_Azimuth(ST_Point(1, 1), NULL) IS NULL;
+----
+true
+
+query I
+SELECT ST_Azimuth(NULL, NULL) IS NULL;
+----
+true
+
+# POINT_2D type
+query I
+SELECT Degrees(ST_Azimuth(ST_Point2D(0, 0), ST_Point2D(1, 0)));
+----
+90.0
+
+# Empty geometries should return NULL
+query I
+SELECT ST_Azimuth('POINT EMPTY'::geometry, 'POINT(1 1)'::geometry) IS NULL;
+----
+true
+
+query I
+SELECT ST_Azimuth('POINT(1 1)'::geometry, 'POINT EMPTY'::geometry) IS NULL;
+----
+true
+
+# Non-point geometries should error
+statement error
+SELECT ST_Azimuth('LINESTRING(0 0, 1 1)'::geometry, 'POINT(1 1)'::geometry);
+----
+Invalid Input Error: ST_Azimuth only accepts POINT geometries
+
+statement error
+SELECT ST_Azimuth('POINT(0 0)'::geometry, 'POLYGON((0 0, 1 0, 1 1, 0 1, 0 0))'::geometry);
+----
+Invalid Input Error: ST_Azimuth only accepts POINT geometries

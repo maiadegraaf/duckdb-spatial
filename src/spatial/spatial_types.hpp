@@ -13,7 +13,9 @@ struct GeoTypes {
 	static LogicalType POINT_3D();
 	static LogicalType POINT_4D();
 	static LogicalType LINESTRING_2D();
+	static LogicalType LINESTRING_3D();
 	static LogicalType POLYGON_2D();
+	static LogicalType POLYGON_3D();
 	static LogicalType BOX_2D();
 	static LogicalType BOX_2DF();
 	static LogicalType GEOMETRY();

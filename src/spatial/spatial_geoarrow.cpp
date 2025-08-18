@@ -76,32 +76,25 @@ struct GeoArrowWKB {
 		ArenaAllocator arena(Allocator::Get(context));
 		GeometryAllocator alloc(arena);
 
-		constexpr auto MAX_STACK_DEPTH = 128;
-		uint32_t recursion_stack[MAX_STACK_DEPTH];
-
-		sgl::ops::wkb_reader reader = {};
-		reader.copy_vertices = false;
-		reader.alloc = &alloc;
-		reader.allow_mixed_zm = true;
-		reader.nan_as_empty = true;
-
-		reader.stack_buf = recursion_stack;
-		reader.stack_cap = MAX_STACK_DEPTH;
+		sgl::wkb_reader reader(alloc);
+		reader.set_allow_mixed_zm(true);
+		reader.set_nan_as_empty(true);
 
 		UnaryExecutor::ExecuteWithNulls<string_t, string_t>(
 		    source, result, count, [&](const string_t &wkb, ValidityMask &mask, idx_t idx) {
-			    reader.buf = wkb.GetDataUnsafe();
-			    reader.end = reader.buf + wkb.GetSize();
+			    const auto wkb_ptr = wkb.GetDataUnsafe();
+			    const auto wkb_len = wkb.GetSize();
 
-			    sgl::geometry geom(sgl::geometry_type::INVALID);
-			    if (!sgl::ops::wkb_reader_try_parse(&reader, &geom)) {
-				    const auto error = sgl::ops::wkb_reader_get_error_message(&reader);
+			    sgl::geometry geom;
+
+			    if (!reader.try_parse(geom, wkb_ptr, wkb_len)) {
+				    const auto error = reader.get_error_message();
 				    throw InvalidInputException("Could not parse WKB input: %s", error);
 			    }
 
 			    // We're a bit lenient and allow mixed ZM, but correct it here.
-			    if (reader.has_mixed_zm) {
-				    sgl::ops::force_zm(alloc, &geom, reader.has_any_z, reader.has_any_m, 0, 0);
+			    if (reader.parsed_mixed_zm()) {
+				    sgl::ops::force_zm(alloc, geom, reader.parsed_any_z(), reader.parsed_any_m(), 0, 0);
 			    }
 
 			    // Serialize the geometry to the result blob
