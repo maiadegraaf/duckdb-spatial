@@ -7,61 +7,59 @@ namespace duckdb {
 // We've got this exposed upstream, we just need to wait for the next release
 extern "C" int geos_d2sfixed_buffered_n(double f, uint32_t precision, char *result);
 
-void MathUtil::format_coord(double x, double y, vector<char> &buffer, int32_t precision) {
+template<class T>
+static void FormatDouble(T &buffer, double d, int32_t precision) {
 	D_ASSERT(precision >= 0 && precision <= 15);
-
-	char buf[51];
-	auto res_x = geos_d2sfixed_buffered_n(x, 15, buf);
-	buf[res_x++] = ' ';
-	auto res_y = geos_d2sfixed_buffered_n(y, 15, buf + res_x);
-	buffer.insert(buffer.end(), buf, buf + res_x + res_y);
-}
-
-void MathUtil::format_coord(double d, vector<char> &buffer, int32_t precision) {
-	D_ASSERT(precision >= 0 && precision <= 15);
-	char buf[25];
+	char buf[512];
 	auto len = geos_d2sfixed_buffered_n(d, 15, buf);
 	buffer.insert(buffer.end(), buf, buf + len);
 }
 
+void MathUtil::format_coord(double x, double y, vector<char> &buffer, int32_t precision) {
+	D_ASSERT(precision >= 0 && precision <= 15);
+	FormatDouble(buffer, x, precision);
+	buffer.push_back(' ');
+	FormatDouble(buffer, y, precision);
+}
+
+void MathUtil::format_coord(double d, vector<char> &buffer, int32_t precision) {
+	FormatDouble(buffer, d, precision);
+}
+
 string MathUtil::format_coord(double d) {
-	char buf[25];
-	auto len = geos_d2sfixed_buffered_n(d, 15, buf);
-	buf[len] = '\0';
-	return string {buf};
+	string result;
+	FormatDouble(result, d, 15);
+	return result;
 }
 
 string MathUtil::format_coord(double x, double y) {
-	char buf[51];
-	auto res_x = geos_d2sfixed_buffered_n(x, 15, buf);
-	buf[res_x++] = ' ';
-	auto res_y = geos_d2sfixed_buffered_n(y, 15, buf + res_x);
-	buf[res_x + res_y] = '\0';
-	return string {buf};
+	string result;
+	FormatDouble(result, x, 15);
+	result.push_back(' ');
+	FormatDouble(result, y, 15);
+	return result;
 }
 
 string MathUtil::format_coord(double x, double y, double zm) {
-	char buf[76];
-	auto res_x = geos_d2sfixed_buffered_n(x, 15, buf);
-	buf[res_x++] = ' ';
-	auto res_y = geos_d2sfixed_buffered_n(y, 15, buf + res_x);
-	buf[res_x + res_y++] = ' ';
-	auto res_zm = geos_d2sfixed_buffered_n(zm, 15, buf + res_x + res_y);
-	buf[res_x + res_y + res_zm] = '\0';
-	return string {buf};
+	string result;
+	FormatDouble(result, x, 15);
+	result.push_back(' ');
+	FormatDouble(result, y, 15);
+	result.push_back(' ');
+	FormatDouble(result, zm, 15);
+	return result;
 }
 
 string MathUtil::format_coord(double x, double y, double z, double m) {
-	char buf[101];
-	auto res_x = geos_d2sfixed_buffered_n(x, 15, buf);
-	buf[res_x++] = ' ';
-	auto res_y = geos_d2sfixed_buffered_n(y, 15, buf + res_x);
-	buf[res_x + res_y++] = ' ';
-	auto res_z = geos_d2sfixed_buffered_n(z, 15, buf + res_x + res_y);
-	buf[res_x + res_y + res_z++] = ' ';
-	auto res_m = geos_d2sfixed_buffered_n(m, 15, buf + res_x + res_y + res_z);
-	buf[res_x + res_y + res_z + res_m] = '\0';
-	return string {buf};
+	string result;
+	FormatDouble(result, x, 15);
+	result.push_back(' ');
+	FormatDouble(result, y, 15);
+	result.push_back(' ');
+	FormatDouble(result, z, 15);
+	result.push_back(' ');
+	FormatDouble(result, m, 15);
+	return result;
 }
 
 #else
