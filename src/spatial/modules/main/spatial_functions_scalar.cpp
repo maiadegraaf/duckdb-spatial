@@ -3003,6 +3003,83 @@ struct ST_Dump {
 	}
 };
 
+
+//======================================================================================================================
+// ST_Expand
+//======================================================================================================================
+
+struct ST_Expand {
+
+	//------------------------------------------------------------------------------------------------------------------
+	// GEOMETRY
+	//------------------------------------------------------------------------------------------------------------------
+	static void Execute(DataChunk &args, ExpressionState &state, Vector &result) {
+		auto &lstate = LocalState::ResetAndGet(state);
+
+		BinaryExecutor::Execute<string_t, double, string_t>(args.data[0], args.data[1], result, args.size(), [&](const string_t &blob, double distance) {
+			sgl::geometry geom;
+			lstate.Deserialize(blob, geom);
+			auto bbox = sgl::extent_xy::smallest();
+
+			if (sgl::ops::get_total_extent_xy(geom, bbox) == 0) {
+				const sgl::geometry empty(sgl::geometry_type::GEOMETRY_COLLECTION, false, false);
+				return lstate.Serialize(result, empty);
+			} else {
+				sgl::geometry expanded(sgl::geometry_type::POLYGON, false, false);
+				const auto min_x = bbox.min.x - distance;
+			    const auto min_y = bbox.min.y - distance;
+			    const auto max_x = bbox.max.x + distance;
+			    const auto max_y = bbox.max.y + distance;
+			    const double buffer[10] = {min_x, min_y, min_x, max_y, max_x, max_y, max_x, min_y, min_x, min_y};
+
+			    sgl::geometry ring(sgl::geometry_type::LINESTRING, false, false);
+			    ring.set_vertex_array(buffer, 5);
+				expanded.append_part(&ring);
+				return lstate.Serialize(result, expanded);
+			}
+		});
+	}
+
+	//------------------------------------------------------------------------------------------------------------------
+	// Documentation
+	//------------------------------------------------------------------------------------------------------------------
+	static constexpr auto DESCRIPTION = R"(
+	    Expand the input geometry by the specified distance, returning a polygon.
+
+	    `geom` is the input geometry.
+
+	    `distance` is the target distance for the expansion, using the same units as the input geometry.
+
+	    This is a planar operation and will not take into account the curvature of the earth.
+	)";
+	static constexpr auto EXAMPLE = R"(
+		SELECT ST_AsText(ST_Expand(ST_GeomFromText('POINT(20 30)'), 0.1));
+	)";
+
+	//------------------------------------------------------------------------------------------------------------------
+	// Register
+	//------------------------------------------------------------------------------------------------------------------
+	static void Register(ExtensionLoader &loader) {
+		FunctionBuilder::RegisterScalar(loader, "ST_Expand", [](ScalarFunctionBuilder &func) {
+			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("geom", GeoTypes::GEOMETRY());
+				variant.AddParameter("distance", LogicalType::DOUBLE);
+				variant.SetReturnType(GeoTypes::GEOMETRY());
+
+				variant.SetInit(LocalState::Init);
+				variant.SetFunction(Execute);
+			});
+
+			func.SetDescription(DESCRIPTION);
+			func.SetExample(EXAMPLE);
+
+			func.SetTag("ext", "spatial");
+			func.SetTag("category", "property");
+		});
+	}
+};
+
+
 //======================================================================================================================
 // ST_Extent
 //======================================================================================================================
@@ -9279,6 +9356,7 @@ void RegisterSpatialScalarFunctions(ExtensionLoader &loader) {
 	ST_DistanceWithin::Register(loader);
 	ST_Dump::Register(loader);
 	ST_EndPoint::Register(loader);
+	ST_Expand::Register(loader);
 	ST_Extent::Register(loader);
 	ST_Extent_Approx::Register(loader);
 	// Op_IntersectApprox::Register(loader);
