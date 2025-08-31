@@ -5251,7 +5251,7 @@ struct ST_LineInterpolatePoint {
 		auto &lstate = LocalState::ResetAndGet(state);
 
 		BinaryExecutor::Execute<string_t, double, string_t>(
-		    args.data[0], args.data[1], result, args.size(), [&](const string_t &blob, const double faction) {
+		    args.data[0], args.data[1], result, args.size(), [&](const string_t &blob, const double fraction) {
 			    sgl::geometry geom;
 			    lstate.Deserialize(blob, geom);
 
@@ -5260,7 +5260,7 @@ struct ST_LineInterpolatePoint {
 			    }
 
 			    sgl::vertex_xyzm out_vertex = {0, 0, 0, 0};
-			    if (sgl::linestring::interpolate(geom, faction, out_vertex)) {
+			    if (sgl::linestring::interpolate(geom, fraction, out_vertex)) {
 				    sgl::geometry point(sgl::geometry_type::POINT, geom.has_z(), geom.has_m());
 				    point.set_vertex_array(&out_vertex, 1);
 				    return lstate.Serialize(result, point);
