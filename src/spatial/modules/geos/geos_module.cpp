@@ -7,6 +7,7 @@
 #include "duckdb/common/vector_operations/senary_executor.hpp"
 #include "duckdb/common/vector_operations/generic_executor.hpp"
 #include "duckdb/planner/expression/bound_constant_expression.hpp"
+#include "duckdb/planner/expression/bound_function_expression.hpp"
 
 namespace duckdb {
 
@@ -191,6 +192,230 @@ public:
 //------------------------------------------------------------------------------
 
 namespace {
+
+//======================================================================================================================
+// ST_AsMVTGeom
+//======================================================================================================================
+
+struct ST_AsMVTGeom {
+
+	//------------------------------------------------------------------------------------------------------------------
+	// Bind
+	//------------------------------------------------------------------------------------------------------------------
+	struct BindData final : FunctionData {
+		int32_t extent = 4096;
+		int32_t buffer = 256;
+		bool clip = true;
+
+		unique_ptr<FunctionData> Copy() const override {
+			auto result = make_uniq<BindData>();
+			result->extent = extent;
+			result->buffer = buffer;
+			result->clip = clip;
+			return std::move(result);
+		}
+		bool Equals(const FunctionData &other_p) const override {
+			auto &other = other_p.Cast<BindData>();
+			return extent == other.extent && buffer == other.buffer && clip == other.clip;
+		}
+	};
+
+	static unique_ptr<FunctionData> Bind(ClientContext &context, ScalarFunction &bound_function,
+	                                     vector<unique_ptr<Expression>> &arguments) {
+		auto result = make_uniq<BindData>();
+
+		// Extract parameters
+		auto folded_extent = false;
+		auto folded_buffer = false;
+		auto folded_clip = false;
+
+		if (arguments.size() >= 3) {
+			auto &extent_expr = arguments[2];
+			if (extent_expr->IsFoldable()) {
+				auto extent_val = ExpressionExecutor::EvaluateScalar(context, *extent_expr);
+				result->extent = extent_val.GetValue<int32_t>();
+				folded_extent = true;
+			} else {
+				throw InvalidInputException("ST_AsMVTGeom: \"tile_extent\" must be a constant");
+			}
+		}
+		if (arguments.size() >= 4) {
+			auto &buffer_expr = arguments[3];
+			if (buffer_expr->IsFoldable()) {
+				auto buffer_val = ExpressionExecutor::EvaluateScalar(context, *buffer_expr);
+				result->buffer = buffer_val.GetValue<int32_t>();
+				folded_buffer = true;
+			} else {
+				throw InvalidInputException("ST_AsMVTGeom: \"buffer\" must be a constant");
+			}
+		}
+		if (arguments.size() == 5) {
+			auto &clip_geom_expr = arguments[4];
+			if (clip_geom_expr->IsFoldable()) {
+				auto clip_geom_val = ExpressionExecutor::EvaluateScalar(context, *clip_geom_expr);
+				result->clip = clip_geom_val.GetValue<bool>();
+				folded_clip = true;
+			} else {
+				throw InvalidInputException("ST_AsMVTGeom: \"clip_geom\" must be a constant");
+			}
+		}
+
+		// Erase back to front
+		if (folded_clip) {
+			Function::EraseArgument(bound_function, arguments, 4);
+		}
+		if (folded_buffer) {
+			Function::EraseArgument(bound_function, arguments, 3);
+		}
+		if (folded_extent) {
+			Function::EraseArgument(bound_function, arguments, 2);
+		}
+
+		return std::move(result);
+	}
+
+	//------------------------------------------------------------------------------------------------------------------
+	// Execute
+	//------------------------------------------------------------------------------------------------------------------
+	static void Execute(DataChunk &args, ExpressionState &state, Vector &result) {
+
+		// Bind data
+		const auto &func_expr = state.expr.Cast<BoundFunctionExpression>();
+		const auto &bind_data = func_expr.bind_info->Cast<BindData>();
+
+		// Local state
+		auto &lstate = LocalState::ResetAndGet(state);
+
+		UnifiedVectorFormat geom_format;
+		UnifiedVectorFormat bbox_format;
+		UnifiedVectorFormat minx_format;
+		UnifiedVectorFormat miny_format;
+		UnifiedVectorFormat maxx_format;
+		UnifiedVectorFormat maxy_format;
+
+		args.data[0].ToUnifiedFormat(args.size(), geom_format);
+		args.data[1].ToUnifiedFormat(args.size(), bbox_format);
+
+		const auto &bbox_parts = StructVector::GetEntries(args.data[1]);
+		bbox_parts[0]->ToUnifiedFormat(args.size(), minx_format);
+		bbox_parts[1]->ToUnifiedFormat(args.size(), miny_format);
+		bbox_parts[2]->ToUnifiedFormat(args.size(), maxx_format);
+		bbox_parts[3]->ToUnifiedFormat(args.size(), maxy_format);
+
+		const auto geom_data = UnifiedVectorFormat::GetData<string_t>(geom_format);
+		const auto minx_data = UnifiedVectorFormat::GetData<double>(minx_format);
+		const auto miny_data = UnifiedVectorFormat::GetData<double>(miny_format);
+		const auto maxx_data = UnifiedVectorFormat::GetData<double>(maxx_format);
+		const auto maxy_data = UnifiedVectorFormat::GetData<double>(maxy_format);
+
+		const auto res_data = FlatVector::GetData<string_t>(result);
+
+		for (idx_t out_idx = 0; out_idx < args.size(); out_idx++) {
+			const auto geom_idx = geom_format.sel->get_index(out_idx);
+			const auto bbox_idx = bbox_format.sel->get_index(out_idx);
+			const auto minx_idx = minx_format.sel->get_index(bbox_idx);
+			const auto miny_idx = miny_format.sel->get_index(bbox_idx);
+			const auto maxx_idx = maxx_format.sel->get_index(bbox_idx);
+			const auto maxy_idx = maxy_format.sel->get_index(bbox_idx);
+
+			if (!geom_format.validity.RowIsValid(geom_idx) || !bbox_format.validity.RowIsValid(bbox_idx) ||
+			    !minx_format.validity.RowIsValid(minx_idx) || !miny_format.validity.RowIsValid(miny_idx) ||
+			    !maxx_format.validity.RowIsValid(maxx_idx) || !maxy_format.validity.RowIsValid(maxy_idx)) {
+				FlatVector::SetNull(result, out_idx, true);
+			}
+
+			const auto &blob = geom_data[geom_idx];
+			auto geom = lstate.Deserialize(blob);
+
+			// Orient polygons in place
+			geom.orient_polygons(true);
+
+			// Compute bounds
+			const auto extent = bind_data.extent;
+
+			const auto minx = minx_data[minx_idx];
+			const auto miny = miny_data[miny_idx];
+			const auto maxx = maxx_data[maxx_idx];
+			const auto maxy = maxy_data[maxy_idx];
+
+			const auto tile_w = maxx - minx;
+			const auto tile_h = maxy - miny;
+
+			if (tile_w <= 0 || tile_h <= 0) {
+				throw InvalidInputException("ST_AsMVTGeom: tile width and height must be positive");
+			}
+
+			// Note: Y-axis is flipped in MVT coordinate system
+			const auto scale_x = extent / tile_w;
+			const auto scale_y = -(extent / tile_h);
+
+			// Create transformation: translate to origin, then scale to tile extent
+			const double affine_matrix[6] = {
+			    scale_x,         // a: x scale
+			    0.0,             // b: x skew
+			    0.0,             // c: y skew
+			    scale_y,         // d: y scale (negative for flip)
+			    -minx * scale_x, // e: x translation
+			    -maxy * scale_y  // f: y translation (with flip adjustment)
+			};
+
+			// Apply transformation
+			const auto transformed = geom.get_transformed(affine_matrix);
+
+			// Snap to grid (round coordinates to integers)
+			const auto snapped = transformed.get_gridded(1.0);
+
+			// Should we clip? if not, return the snapped geometry
+			if (!bind_data.clip) {
+				res_data[out_idx] = lstate.Serialize(result, snapped);
+				continue;
+			}
+
+			// Apply buffer and clip if specified
+			const auto clip_minx = -bind_data.buffer;
+			const auto clip_miny = -bind_data.buffer;
+			const auto clip_maxx = extent + bind_data.buffer;
+			const auto clip_maxy = extent + bind_data.buffer;
+
+			const auto clipped = snapped.get_clipped(clip_minx, clip_miny, clip_maxx, clip_maxy);
+
+			if (clipped.is_empty()) {
+				FlatVector::SetNull(result, out_idx, true);
+				continue;
+			}
+
+			// Snap again to clean up any potential issues from clipping
+			const auto cleaned_clipped = clipped.get_gridded(1.0);
+
+			res_data[out_idx] = lstate.Serialize(result, cleaned_clipped);
+		}
+	}
+
+	//------------------------------------------------------------------------------------------------------------------
+	// Register
+	//------------------------------------------------------------------------------------------------------------------
+	static void Register(ExtensionLoader &loader) {
+		FunctionBuilder::RegisterScalar(loader, "ST_AsMVTGeom", [](ScalarFunctionBuilder &func) {
+			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("geom", GeoTypes::GEOMETRY());
+				variant.AddParameter("bounds", GeoTypes::BOX_2D());
+				variant.AddParameter("extent", LogicalType::BIGINT);
+				variant.AddParameter("buffer", LogicalType::BIGINT);
+				variant.AddParameter("clip_geom", LogicalType::BOOLEAN);
+				variant.SetReturnType(GeoTypes::GEOMETRY());
+
+				variant.SetInit(LocalState::Init);
+				variant.SetFunction(Execute);
+				variant.SetBind(Bind);
+			});
+
+			func.SetDescription(R"(Returns a geometry transformed and clipped to fit within a tile boundary.
+				The geometry should be in the same SRS as the tile coordinates.)");
+			func.SetTag("ext", "spatial");
+			func.SetTag("category", "construction");
+		});
+	}
+};
 
 struct ST_Boundary {
 	static void Execute(DataChunk &args, ExpressionState &state, Vector &result) {
@@ -2717,6 +2942,7 @@ struct ST_CoverageInvalidEdges_Agg : GEOSCoverageAggFunction {
 void RegisterGEOSModule(ExtensionLoader &loader) {
 
 	// Scalar Functions
+	ST_AsMVTGeom::Register(loader);
 	ST_Boundary::Register(loader);
 	ST_Buffer::Register(loader);
 	ST_BuildArea::Register(loader);
