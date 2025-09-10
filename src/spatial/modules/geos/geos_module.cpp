@@ -439,8 +439,9 @@ struct ST_AsMVTGeom {
 				variant.SetBind(Bind);
 			});
 
-			func.SetDescription(R"(Returns a geometry transformed and clipped to fit within a tile boundary.
-				The geometry should be in the same SRS as the tile coordinates.)");
+			func.SetDescription(R"(Transform and clip geometry to a tile boundary
+
+				- See "ST_AsMVT" for more details)");
 			func.SetTag("ext", "spatial");
 			func.SetTag("category", "construction");
 		});

@@ -4527,7 +4527,8 @@ struct ST_GeomFromGeoJSON {
 
 			const auto root = yyjson_doc_get_root(doc);
 			if (!yyjson_is_obj(root)) {
-				throw InvalidInputException("Could not parse GeoJSON input: Not a valid JSON object, (%s)", input.GetString());
+				throw InvalidInputException("Could not parse GeoJSON input: Not a valid JSON object, (%s)",
+				                            input.GetString());
 			}
 
 			bool has_z = false;
@@ -7816,7 +7817,6 @@ struct ST_Point {
 			func.SetTag("ext", "spatial");
 			func.SetTag("category", "construction");
 		});
-
 
 		FunctionBuilder::RegisterScalar(loader, "ST_MakePoint", [](ScalarFunctionBuilder &func) {
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
