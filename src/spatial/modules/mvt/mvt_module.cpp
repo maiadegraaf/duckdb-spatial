@@ -173,19 +173,21 @@ struct ST_TileEnvelope {
 // ST_AsMVT
 //======================================================================================================================
 enum class MVTValueType : uint32_t {
-	INT = 1,
+	STRING = 1,
 	FLOAT = 2,
-	STRING = 3,
-	BOOL = 4,
+	DOUBLE = 3,
+	INT = 4,
+	BOOL = 7,
 };
 
 struct MVTValue {
 	MVTValueType type;
 	uint32_t size;
 	union {
-		int64_t int_value;
-		double double_value;
 		const char *string_value;
+		float float_value;
+		double double_value;
+		int64_t int_value;
 		bool bool_value;
 	};
 };
@@ -196,12 +198,14 @@ struct MVTValueEq {
 			return false;
 		}
 		switch (a.type) {
-		case MVTValueType::INT:
-			return a.int_value == b.int_value;
-		case MVTValueType::FLOAT:
-			return a.double_value == b.double_value;
 		case MVTValueType::STRING:
 			return (a.size == b.size) && (strncmp(a.string_value, b.string_value, a.size) == 0);
+		case MVTValueType::FLOAT:
+			return a.float_value == b.float_value;
+		case MVTValueType::DOUBLE:
+			return a.double_value == b.double_value;
+		case MVTValueType::INT:
+			return a.int_value == b.int_value;
 		case MVTValueType::BOOL:
 			return a.bool_value == b.bool_value;
 		}
@@ -215,14 +219,17 @@ struct MVTValueHash {
 		size_t h1 = duckdb::Hash(static_cast<uint32_t>(val.type));
 		size_t h2 = 0;
 		switch (val.type) {
-		case MVTValueType::INT:
-			h2 = duckdb::Hash(val.int_value);
-			break;
-		case MVTValueType::FLOAT:
-			h2 = duckdb::Hash(val.double_value);
-			break;
 		case MVTValueType::STRING:
 			h2 = duckdb::Hash(val.string_value, val.size);
+			break;
+		case MVTValueType::FLOAT:
+			h2 = duckdb::Hash(val.float_value);
+			break;
+		case MVTValueType::DOUBLE:
+			h2 = duckdb::Hash(val.double_value);
+			break;
+		case MVTValueType::INT:
+			h2 = duckdb::Hash(val.int_value);
 			break;
 		case MVTValueType::BOOL:
 			h2 = duckdb::Hash(val.bool_value);
@@ -232,11 +239,34 @@ struct MVTValueHash {
 	}
 };
 
-using MVTValueDictionary = unordered_map<MVTValue, uint32_t, MVTValueHash, MVTValueEq>;
+class MVTValueSet {
+public:
+	void Clear() {
+		map.clear();
+		vec.clear();
+	}
+	uint32_t Insert(const MVTValue &val) {
+		const auto it = map.insert(make_pair(val, static_cast<uint32_t>(map.size())));
+		if (it.second) {
+			// New entry, add it to the order vector
+			vec.emplace_back(it.first->first);
+		}
+		return it.first->second;
+	}
+
+	vector<reference<const MVTValue>> &GetOrderedValues() {
+		return vec;
+	}
+
+private:
+	// Unordered map is pointer-stable, so we can store references in the order vector
+	unordered_map<MVTValue, uint32_t, MVTValueHash, MVTValueEq> map;
+	vector<reference<const MVTValue>> vec;
+};
 
 struct MVTFeature {
 	MVTFeature *next;
-	uint32_t id;
+	int32_t id; // Optional feature id, -1 if not set
 	uint32_t type;
 	uint32_t geom_array_size;
 	uint32_t tags_array_size;
@@ -289,7 +319,7 @@ struct MVTLayer {
 
 	// Write the layer to the buffer
 	void Finalize(const uint32_t extent, const vector<string> &tag_names, const string &layer_name,
-	              vector<char> &buffer, MVTValueDictionary &tag_dict) {
+	              vector<char> &buffer, MVTValueSet &tag_dict) {
 
 		protozero::basic_pbf_writer<std::vector<char>> tile_writer {buffer};
 		protozero::basic_pbf_writer<std::vector<char>> layer_writer {tile_writer, 3}; // layers = 3
@@ -300,18 +330,16 @@ struct MVTLayer {
 		// Layer name = 1
 		layer_writer.add_string(1, layer_name);
 
-		// Add layer name
-		//layer_writer.add_string(1, bdata.layer_name);
-
-		uint64_t fid = 0;
-
 		auto feature = features_head;
 		while (feature) {
 
 			protozero::basic_pbf_writer<std::vector<char>> feature_writer {layer_writer, 2}; // features = 2
 
 			// Id = 1
-			feature_writer.add_uint64(1, fid++);
+			if (feature->id >= 0) {
+				// Only write if the id is set (not negative)
+				feature_writer.add_uint64(1, feature->id);
+			}
 
 			// Tags = 2
 			{
@@ -323,8 +351,7 @@ struct MVTLayer {
 					// Try to find the value in the dictionary
 					// If it exists, we use the existing index
 					// If it does not exist, we add it to the dictionary and use the newly added index
-					const auto val_idx =
-					    tag_dict.insert(make_pair(val, static_cast<uint32_t>(tag_dict.size()))).first->second;
+					const auto val_idx = tag_dict.Insert(val);
 
 					tags_writer.add_element(key_idx);
 					tags_writer.add_element(val_idx);
@@ -346,19 +373,25 @@ struct MVTLayer {
 			layer_writer.add_string(3, key);
 		}
 
-		for (const auto &tag : tag_dict) {
-			auto &val = tag.first;
+		for (const auto &tag : tag_dict.GetOrderedValues()) {
+			auto &val = tag.get();
 			protozero::basic_pbf_writer<std::vector<char>> val_writer {layer_writer, 4}; // values = 4
 			switch (val.type) {
-			case MVTValueType::INT: {
+			case MVTValueType::STRING:
+				val_writer.add_string(1, val.string_value, val.size);
+				break;
+			case MVTValueType::FLOAT:
+				val_writer.add_float(2, val.float_value);
+				break;
+			case MVTValueType::DOUBLE:
+				val_writer.add_double(3, val.double_value);
+				break;
+			case MVTValueType::INT:
 				val_writer.add_int64(4, val.int_value);
-			} break;
-			case MVTValueType::FLOAT: {
-				layer_writer.add_double(3, val.double_value);
-			} break;
-			case MVTValueType::STRING: {
-				layer_writer.add_string(1, val.string_value, val.size);
-			} break;
+				break;
+			case MVTValueType::BOOL:
+				val_writer.add_bool(7, val.bool_value);
+				break;
 			default:
 				throw InternalException("ST_AsMVT: Unsupported MVT value type");
 			}
@@ -372,10 +405,14 @@ struct MVTLayer {
 class MVTFeatureBuilder {
 public:
 	void Reset() {
-		id = 0;
+		id = -1;
 		geometry_type = 0;
 		geometry.clear();
 		tags.clear();
+	}
+
+	void SetId(int32_t value) {
+		id = value;
 	}
 
 	void SetGeometry(const string_t &geom_blob) {
@@ -647,17 +684,49 @@ public:
 				}
 			}
 		} break;
+		case sgl::geometry_type::GEOMETRY_COLLECTION: {
+			throw InvalidInputException("ST_AsMVT: Geometries of type \"GEOMETRYCOLLECTION\" are not supported");
+		} break;
 		default:
 			throw InvalidInputException("ST_AsMVT: unsupported geometry type %d", static_cast<int>(type));
 		}
 	}
 
-	void AddProperty(uint32_t key, const string_t &value) {
+	void AddProperty(idx_t key, const string_t &value, ArenaAllocator &allocator) {
+		// We need to copy the string into the arena, as the input string might be temporary
 
 		MVTValue v;
 		v.type = MVTValueType::STRING;
 		v.size = static_cast<uint32_t>(value.GetSize());
-		v.string_value = value.GetData();
+
+		if (value.GetSize() != 0) {
+			const auto str_mem = allocator.Allocate(value.GetSize());
+			memcpy(str_mem, value.GetData(), value.GetSize());
+			v.string_value = const_char_ptr_cast(str_mem);
+		}
+
+		tags.emplace_back(static_cast<uint32_t>(key), v);
+	}
+
+	void AddProperty(uint32_t key, float value) {
+		MVTValue v;
+		v.type = MVTValueType::FLOAT;
+		v.float_value = value;
+
+		tags.emplace_back(key, v);
+	}
+
+	void AddProperty(uint32_t key, double value) {
+		MVTValue v;
+		v.type = MVTValueType::DOUBLE;
+		v.double_value = value;
+		tags.emplace_back(key, v);
+	}
+
+	void AddProperty(uint32_t key, bool value) {
+		MVTValue v;
+		v.type = MVTValueType::BOOL;
+		v.bool_value = value;
 
 		tags.emplace_back(key, v);
 	}
@@ -665,10 +734,13 @@ public:
 	void AddProperty(uint32_t key, int64_t value) {
 		MVTValue v;
 		v.type = MVTValueType::INT;
-		v.size = sizeof(int64_t);
 		v.int_value = value;
 
 		tags.emplace_back(key, v);
+	}
+
+	void AddProperty(uint32_t key, int32_t value) {
+		AddProperty(key, static_cast<int64_t>(value));
 	}
 
 	bool IsEmpty() const {
@@ -728,7 +800,7 @@ private:
 		return static_cast<int32_t>(d);
 	}
 
-	uint32_t id = 0;
+	int32_t id = -1;
 	uint32_t geometry_type = 0;
 	vector<uint32_t> geometry;
 	vector<pair<uint32_t, MVTValue>> tags;
@@ -743,18 +815,25 @@ struct ST_AsMVT {
 
 		idx_t geometry_column_idx = 0;
 		string layer_name = "layer";
-		uint32_t extent = 4096;
+		int32_t extent = 4096;
 		vector<string> tag_names;
+		optional_idx feature_id_column_idx = optional_idx::Invalid();
 
 		unique_ptr<FunctionData> Copy() const override {
 			auto result = make_uniq<BindData>();
 			result->geometry_column_idx = geometry_column_idx;
+			result->layer_name = layer_name;
+			result->extent = extent;
+			result->tag_names = tag_names;
+			result->feature_id_column_idx = feature_id_column_idx;
 			return std::move(result);
 		}
 
 		bool Equals(const FunctionData &other_p) const override {
 			auto &other = other_p.Cast<BindData>();
-			return geometry_column_idx == other.geometry_column_idx;
+			return geometry_column_idx == other.geometry_column_idx && layer_name == other.layer_name &&
+			       extent == other.extent && tag_names == other.tag_names &&
+			       feature_id_column_idx == other.feature_id_column_idx;
 		}
 	};
 
@@ -762,16 +841,86 @@ struct ST_AsMVT {
 	                                     vector<unique_ptr<Expression>> &arguments) {
 		auto result = make_uniq<BindData>();
 
-		string geom_name;
-
 		// Figure part of the row is the geometry column
 		const auto &row_type = arguments[0]->return_type;
 		if (row_type.id() != LogicalTypeId::STRUCT) {
 			throw InvalidInputException("ST_AsMVT: first argument must be a STRUCT (i.e. a row type)");
 		}
 
-		optional_idx geom_idx = optional_idx::Invalid();
+		// Fold all the other parameters
+		auto folded_layer = false;
+		auto folded_extent = false;
+		auto folded_geom = false;
+		auto folded_feature = false;
 
+		if (arguments.size() >= 2) {
+			auto &layer_expr = arguments[1];
+			if (layer_expr->IsFoldable()) {
+				auto layer_val = ExpressionExecutor::EvaluateScalar(context, *layer_expr);
+				if (!layer_val.IsNull()) {
+					result->layer_name = StringValue::Get(layer_val);
+					if (result->layer_name.empty()) {
+						throw InvalidInputException("ST_AsMVT: layer name cannot be empty");
+					}
+				}
+				folded_layer = true;
+			} else {
+				throw InvalidInputException("ST_AsMVT: layer name must be a constant string");
+			}
+		}
+
+		if (arguments.size() >= 3) {
+			auto &extent_expr = arguments[2];
+			if (extent_expr->IsFoldable()) {
+				auto extent_val = ExpressionExecutor::EvaluateScalar(context, *extent_expr);
+				if (extent_val.IsNull()) {
+					throw InvalidInputException("ST_AsMVT: extent cannot be NULL");
+				}
+				result->extent = IntegerValue::Get(extent_val);
+				if (result->extent == 0) {
+					throw InvalidInputException("ST_AsMVT: extent must be greater than zero");
+				}
+				folded_extent = true;
+			} else {
+				throw InvalidInputException("ST_AsMVT: extent must be a constant integer");
+			}
+		}
+		string geom_name;
+		if (arguments.size() >= 4) {
+			auto &geom_expr = arguments[3];
+			if (geom_expr->IsFoldable()) {
+				auto geom_val = ExpressionExecutor::EvaluateScalar(context, *geom_expr);
+				if (!geom_val.IsNull()) {
+					geom_name = StringValue::Get(geom_val);
+					if (geom_name.empty()) {
+						throw InvalidInputException("ST_AsMVT: geometry column name cannot be empty");
+					}
+				}
+				folded_geom = true;
+			} else {
+				throw InvalidInputException("ST_AsMVT: geometry column name must be a constant string");
+			}
+		}
+
+		string feature_id_name;
+		if (arguments.size() >= 5) {
+			auto &feature_expr = arguments[4];
+			if (feature_expr->IsFoldable()) {
+				auto feature_val = ExpressionExecutor::EvaluateScalar(context, *feature_expr);
+				if (!feature_val.IsNull()) {
+					feature_id_name = StringValue::Get(feature_val);
+					if (feature_id_name.empty()) {
+						throw InvalidInputException("ST_AsMVT: feature id column name cannot be empty");
+					}
+				}
+				folded_feature = true;
+			} else {
+				throw InvalidInputException("ST_AsMVT: feature id column name must be a constant string");
+			}
+		}
+
+		// Fetch the geometry column index, either based on name or on position
+		optional_idx geom_idx = optional_idx::Invalid();
 		if (geom_name.empty()) {
 			// Look for the first geometry column
 			for (idx_t i = 0; i < StructType::GetChildCount(row_type); i++) {
@@ -802,6 +951,63 @@ struct ST_AsMVT {
 
 		result->geometry_column_idx = geom_idx.GetIndex();
 
+		// Fetch the feature id column index, based on name if provided
+		if (!feature_id_name.empty()) {
+			// Look for the feature id column by name
+			for (idx_t i = 0; i < StructType::GetChildCount(row_type); i++) {
+				auto &child_name = StructType::GetChildName(row_type, i);
+				if (child_name == feature_id_name) {
+					if (result->feature_id_column_idx.IsValid()) {
+						throw InvalidInputException("ST_AsMVT: only one feature id column is allowed in the input row");
+					}
+					auto &child_type = StructType::GetChildType(row_type, i);
+					if (child_type != LogicalTypeId::INTEGER && child_type != LogicalTypeId::BIGINT) {
+						throw InvalidInputException("ST_AsMVT: feature id column must be of type INTEGER or BIGINT");
+					}
+					result->feature_id_column_idx = i;
+				}
+			}
+			if (!result->feature_id_column_idx.IsValid()) {
+				throw InvalidInputException("ST_AsMVT: feature id column not found in input row");
+			}
+		}
+
+		unordered_set<LogicalTypeId> valid_property_types = {LogicalTypeId::VARCHAR, LogicalTypeId::FLOAT,
+		                                                     LogicalTypeId::DOUBLE,  LogicalTypeId::INTEGER,
+		                                                     LogicalTypeId::BIGINT,  LogicalTypeId::BOOLEAN};
+
+		// Collect tag names
+		for (idx_t i = 0; i < StructType::GetChildCount(row_type); i++) {
+			if (i != result->geometry_column_idx &&
+			    (!result->feature_id_column_idx.IsValid() || i != result->feature_id_column_idx.GetIndex())) {
+				auto &name = StructType::GetChildName(row_type, i);
+				auto &type = StructType::GetChildType(row_type, i);
+
+				if (valid_property_types.find(type.id()) == valid_property_types.end()) {
+					auto type_name = type.ToString();
+					throw InvalidInputException("ST_AsMVT: property column \"%s\" has unsupported type \"%s\"\n"
+					                            "Only the following property types are supported: VARCHAR, FLOAT, "
+					                            "DOUBLE, INTEGER, BIGINT, BOOLEAN",
+					                            name.c_str(), type_name.c_str());
+				}
+				result->tag_names.push_back(name);
+			}
+		}
+
+		// Erase arguments, back to front
+		if (folded_feature) {
+			Function::EraseArgument(function, arguments, 4);
+		}
+		if (folded_geom) {
+			Function::EraseArgument(function, arguments, 3);
+		}
+		if (folded_extent) {
+			Function::EraseArgument(function, arguments, 2);
+		}
+		if (folded_layer) {
+			Function::EraseArgument(function, arguments, 1);
+		}
+
 		return std::move(result);
 	}
 
@@ -829,6 +1035,9 @@ struct ST_AsMVT {
 
 		UnifiedVectorFormat state_format;
 		UnifiedVectorFormat geom_format;
+		UnifiedVectorFormat fid_format;
+		LogicalType fid_type;
+
 		vector<UnifiedVectorFormat> property_formats;
 		vector<LogicalType> property_types;
 
@@ -837,6 +1046,9 @@ struct ST_AsMVT {
 		for (idx_t col_idx = 0; col_idx < row_cols.size(); col_idx++) {
 			if (col_idx == bdata.geometry_column_idx) {
 				row_cols[col_idx]->ToUnifiedFormat(count, geom_format);
+			} else if (bdata.feature_id_column_idx.IsValid() && col_idx == bdata.feature_id_column_idx.GetIndex()) {
+				row_cols[col_idx]->ToUnifiedFormat(count, fid_format);
+				fid_type = row_cols[col_idx]->GetType();
 			} else {
 				property_formats.emplace_back();
 				row_cols[col_idx]->ToUnifiedFormat(count, property_formats.back());
@@ -865,6 +1077,43 @@ struct ST_AsMVT {
 			// Set geometry
 			feature.SetGeometry(geom_blob);
 
+			if (feature.IsEmpty()) {
+				// No geometry, skip
+				continue;
+			}
+
+			// Do we have a feature id?
+			if (bdata.feature_id_column_idx.IsValid()) {
+				const auto fid_idx = fid_format.sel->get_index(row_idx);
+				if (fid_format.validity.RowIsValid(fid_idx)) {
+					// Set the feature id
+					switch (fid_type.id()) {
+					case LogicalTypeId::TINYINT: {
+						auto &fid_val = UnifiedVectorFormat::GetData<int8_t>(fid_format)[fid_idx];
+						feature.SetId(fid_val);
+					} break;
+					case LogicalTypeId::SMALLINT: {
+						auto &fid_val = UnifiedVectorFormat::GetData<int16_t>(fid_format)[fid_idx];
+						feature.SetId(fid_val);
+					}
+					case LogicalTypeId::INTEGER: {
+						auto &fid_val = UnifiedVectorFormat::GetData<int32_t>(fid_format)[fid_idx];
+						feature.SetId(fid_val);
+					} break;
+					case LogicalTypeId::BIGINT: {
+						auto &fid_val = UnifiedVectorFormat::GetData<int64_t>(fid_format)[fid_idx];
+						if (fid_val < std::numeric_limits<int32_t>::min() ||
+						    fid_val > std::numeric_limits<int32_t>::max()) {
+							throw InvalidInputException("ST_AsMVT: feature id out of range for int32");
+						}
+						feature.SetId(static_cast<int32_t>(fid_val));
+					} break;
+					default:
+						throw InvalidInputException("ST_AsMVT: feature id column must be of type INTEGER or BIGINT");
+					}
+				}
+			}
+
 			// Add properties
 			for (idx_t prop_vec_idx = 0; prop_vec_idx < property_formats.size(); prop_vec_idx++) {
 				const auto &prop_format = property_formats[prop_vec_idx];
@@ -879,12 +1128,27 @@ struct ST_AsMVT {
 				switch (prop_type.id()) {
 				case LogicalTypeId::VARCHAR: {
 					auto &prop_val = UnifiedVectorFormat::GetData<string_t>(prop_format)[prop_row_idx];
-					feature.AddProperty(static_cast<uint32_t>(prop_vec_idx), prop_val);
+					feature.AddProperty(prop_vec_idx, prop_val, aggr.allocator);
+				} break;
+				case LogicalTypeId::FLOAT: {
+					auto &prop_val = UnifiedVectorFormat::GetData<float>(prop_format)[prop_row_idx];
+					feature.AddProperty(prop_vec_idx, prop_val);
+				} break;
+				case LogicalTypeId::DOUBLE: {
+					auto &prop_val = UnifiedVectorFormat::GetData<double>(prop_format)[prop_row_idx];
+					feature.AddProperty(prop_vec_idx, prop_val);
+				} break;
+				case LogicalTypeId::INTEGER: {
+					auto &prop_val = UnifiedVectorFormat::GetData<int32_t>(prop_format)[prop_row_idx];
+					feature.AddProperty(prop_vec_idx, prop_val);
 				} break;
 				case LogicalTypeId::BIGINT: {
 					auto &prop_val = UnifiedVectorFormat::GetData<int64_t>(prop_format)[prop_row_idx];
-					feature.AddProperty(static_cast<uint32_t>(prop_vec_idx), prop_val);
-
+					feature.AddProperty(prop_vec_idx, prop_val);
+				} break;
+				case LogicalTypeId::BOOLEAN: {
+					auto &prop_val = UnifiedVectorFormat::GetData<bool>(prop_format)[prop_row_idx];
+					feature.AddProperty(prop_vec_idx, prop_val);
 				} break;
 				default:
 					throw InvalidInputException("ST_AsMVT: unsupported property type: %s", prop_type.ToString());
@@ -930,14 +1194,14 @@ struct ST_AsMVT {
 		const auto state_ptr = UnifiedVectorFormat::GetData<State *>(state_format);
 
 		vector<char> buffer;
-		MVTValueDictionary tag_dict;
+		MVTValueSet tag_dict;
 
 		for (idx_t raw_idx = 0; raw_idx < count; raw_idx++) {
 			auto &state = *state_ptr[state_format.sel->get_index(raw_idx)];
 			const auto out_idx = raw_idx + offset;
 
 			buffer.clear();
-			tag_dict.clear();
+			tag_dict.Clear();
 
 			state.layer.Finalize(bdata.extent, bdata.tag_names, bdata.layer_name, buffer, tag_dict);
 
@@ -948,16 +1212,74 @@ struct ST_AsMVT {
 	}
 
 	//------------------------------------------------------------------------------------------------------------------
+	// Docs
+	//------------------------------------------------------------------------------------------------------------------
+	static constexpr auto DESCRIPTION = R"(
+		Make a Mapbox Vector Tile from a set of geometries and properties
+		The function takes as input a row type (STRUCT) containing a geometry column and any number of property columns.
+		It returns a single binary BLOB containing the Mapbox Vector Tile.
+
+		The function has the following signature:
+
+		`ST_AsMVT(row STRUCT, layer_name VARCHAR DEFAULT 'layer', extent INTEGER DEFAULT 4096, geom_column_name VARCHAR DEFAULT NULL, feature_id_column_name VARCHAR DEFAULT NULL) -> BLOB`
+
+		- The first argument is a struct containing the geometry and properties.
+		- The second argument is the name of the layer in the vector tile. This argument is optional and defaults to 'layer'.
+		- The third argument is the extent of the tile. This argument is optional and defaults to 4096.
+		- The fourth argument is the name of the geometry column in the input row. This argument is optional. If not provided, the first geometry column in the input row will be used. If multiple geometry columns are present, an error will be raised.
+		- The fifth argument is the name of the feature id column in the input row. This argument is optional. If provided, the values in this column will be used as feature ids in the vector tile. The column must be of type INTEGER or BIGINT. If set to negative or NULL, a feature id will not be assigned to the corresponding feature.
+
+		The input struct must contain exactly one geometry column of type GEOMETRY. It can contain any number of property columns of types VARCHAR, FLOAT, DOUBLE, INTEGER, BIGINT, or BOOLEAN.
+
+		Example:
+		```sql
+		SELECT ST_AsMVT({'geom': geom, 'id': id, 'name': name}, 'cities', 4096, 'geom', 'id') AS tile
+		FROM cities;
+		 ```
+
+		This example creates a vector tile named 'cities' with an extent of 4096 from the 'cities' table, using 'geom' as the geometry column and 'id' as the feature id column.
+
+		However, you probably want to use the ST_AsMVTGeom function to first transform and clip your geometries to the tile extent.
+		The following example assumes the geometry is in WebMercator ("EPSG:3857") coordinates.
+		Replace `{z}`, `{x}`, and `{y}` with the appropriate tile coordinates, `{your table}` with your table name, and `{tile_path}` with the path to write the tile to.
+
+		```sql
+		COPY (
+	        SELECT ST_AsMVT({{
+	            "geometry": ST_AsMVTGeom(
+	                geometry,
+	                ST_Extent(ST_TileEnvelope({z}, {x}, {y})),
+	                4096,
+	                256,
+	                false
+	            )
+	        }})
+	        FROM {your table} WHERE ST_Intersects(geometry, ST_TileEnvelope({z}, {x}, {y}))
+		) to {tile_path} (FORMAT 'BLOB');
+		```
+	)";
+
+	//------------------------------------------------------------------------------------------------------------------
 	// Register
 	//------------------------------------------------------------------------------------------------------------------
 	static void Register(ExtensionLoader &loader) {
-		AggregateFunction agg({LogicalTypeId::ANY}, LogicalType::BLOB, StateSize, Initialize, Update, Combine, Finalize,
-		                      nullptr, Bind);
 
 		FunctionBuilder::RegisterAggregate(loader, "ST_AsMVT", [&](AggregateFunctionBuilder &func) {
-			func.SetFunction(agg);
-			func.SetDescription("Makes a vector tile from a set of geometries");
+			// name, extent, layer_name, feature_id_name
+			const auto optional_args = {LogicalType::VARCHAR, LogicalType::INTEGER, LogicalType::VARCHAR,
+			                            LogicalType::VARCHAR};
+			AggregateFunction agg({LogicalTypeId::ANY}, LogicalType::BLOB, StateSize, Initialize, Update, Combine,
+			                      Finalize, nullptr, Bind);
 
+			// Push the variants∂
+			func.SetFunction(agg);
+			for (auto &arg_type : optional_args) {
+				// Register all the variants with optional arguments
+				agg.arguments.push_back(arg_type);
+				func.SetFunction(agg);
+			}
+
+			func.SetDescription(DESCRIPTION);
 			func.SetTag("ext", "spatial");
 			func.SetTag("category", "construction");
 		});

@@ -408,6 +408,36 @@ struct ST_AsMVTGeom {
 				variant.SetFunction(Execute);
 				variant.SetBind(Bind);
 			});
+			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("geom", GeoTypes::GEOMETRY());
+				variant.AddParameter("bounds", GeoTypes::BOX_2D());
+				variant.AddParameter("extent", LogicalType::BIGINT);
+				variant.AddParameter("buffer", LogicalType::BIGINT);
+				variant.SetReturnType(GeoTypes::GEOMETRY());
+
+				variant.SetInit(LocalState::Init);
+				variant.SetFunction(Execute);
+				variant.SetBind(Bind);
+			});
+			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("geom", GeoTypes::GEOMETRY());
+				variant.AddParameter("bounds", GeoTypes::BOX_2D());
+				variant.AddParameter("extent", LogicalType::BIGINT);
+				variant.SetReturnType(GeoTypes::GEOMETRY());
+
+				variant.SetInit(LocalState::Init);
+				variant.SetFunction(Execute);
+				variant.SetBind(Bind);
+			});
+			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("geom", GeoTypes::GEOMETRY());
+				variant.AddParameter("bounds", GeoTypes::BOX_2D());
+				variant.SetReturnType(GeoTypes::GEOMETRY());
+
+				variant.SetInit(LocalState::Init);
+				variant.SetFunction(Execute);
+				variant.SetBind(Bind);
+			});
 
 			func.SetDescription(R"(Returns a geometry transformed and clipped to fit within a tile boundary.
 				The geometry should be in the same SRS as the tile coordinates.)");
