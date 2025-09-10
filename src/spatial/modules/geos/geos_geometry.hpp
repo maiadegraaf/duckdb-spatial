@@ -51,6 +51,13 @@ public:
 	GeosGeometry get_voronoi_diagram() const;
 	GeosGeometry get_built_area() const;
 	GeosGeometry get_noded() const;
+	GeosGeometry get_clipped(double xmin, double ymin, double xmax, double ymax) const;
+
+	// matrix format: [a, b, c, d, e, f]
+	//	x' = a*x + b*y + e
+	//	y' = c*x + d*y + f
+	GeosGeometry get_transformed(const double matrix[6]) const;
+	GeosGeometry get_gridded(double grid_size) const;
 
 	bool contains(const GeosGeometry &other) const;
 	bool covers(const GeosGeometry &other) const;
@@ -67,6 +74,7 @@ public:
 	double distance_to(const GeosGeometry &other) const;
 
 	void normalize_in_place() const;
+	void orient_polygons(bool ext_cw);
 
 	GeosGeometry get_difference(const GeosGeometry &other) const;
 	GeosGeometry get_intersection(const GeosGeometry &other) const;
@@ -93,6 +101,10 @@ public:
 	GeosGeometry get_coverage_union() const;
 
 	PreparedGeosGeometry get_prepared() const;
+
+	void get_extent(double &xmin, double &ymin, double &xmax, double &ymax) const {
+		GEOSGeom_getExtent_r(handle, geom, &xmin, &ymin, &xmax, &ymax);
+	}
 
 private:
 	GEOSContextHandle_t handle;
@@ -332,6 +344,34 @@ inline GeosGeometry GeosGeometry::get_noded() const {
 	return GeosGeometry(handle, GEOSNode_r(handle, geom));
 }
 
+inline GeosGeometry GeosGeometry::get_clipped(double xmin, double ymin, double xmax, double ymax) const {
+	return GeosGeometry(handle, GEOSClipByRect_r(handle, geom, xmin, ymin, xmax, ymax));
+}
+
+inline GeosGeometry GeosGeometry::get_transformed(const double matrix[6]) const {
+	// x' = a*x + b*y + e
+	// y' = c*x + d*y + f
+	return GeosGeometry(handle, GEOSGeom_transformXY_r(
+	                                handle, geom,
+	                                [](double *x_ptr, double *y_ptr, void *data) -> int {
+		                                const auto m = static_cast<const double *>(data);
+		                                const auto &x = *x_ptr;
+		                                const auto &y = *y_ptr;
+
+		                                const auto new_x = m[0] * x + m[1] * y + m[4];
+		                                const auto new_y = m[2] * x + m[3] * y + m[5];
+
+		                                *x_ptr = new_x;
+		                                *y_ptr = new_y;
+		                                return 1;
+	                                },
+	                                const_cast<double *>(matrix)));
+}
+
+inline GeosGeometry GeosGeometry::get_gridded(double grid_size) const {
+	return GeosGeometry(handle, GEOSGeom_setPrecision_r(handle, geom, grid_size, GEOS_PREC_NO_TOPO));
+}
+
 inline GeosGeometry GeosGeometry::get_maximum_inscribed_circle() const {
 	double xmin = 0;
 	double ymin = 0;
@@ -409,6 +449,10 @@ inline double GeosGeometry::distance_to(const GeosGeometry &other) const {
 
 inline void GeosGeometry::normalize_in_place() const {
 	GEOSNormalize_r(handle, geom);
+}
+
+inline void GeosGeometry::orient_polygons(bool ext_cw) {
+	GEOSOrientPolygons_r(handle, geom, ext_cw ? 1 : 0);
 }
 
 inline GeosGeometry GeosGeometry::get_difference(const GeosGeometry &other) const {

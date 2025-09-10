@@ -2976,7 +2976,7 @@ point_in_polygon_result prepared_geometry::contains(const vertex_xy &vert) const
 
 			const auto end = math::min(node_end, levl_end);
 
-			if(stack[depth] != end) {
+			if (stack[depth] != end) {
 				// Go sideways!
 				stack[depth]++;
 				break;
@@ -3367,7 +3367,7 @@ static bool try_get_prepared_distance_lines(const prepared_geometry &lhs, const 
 
 	if (found_any) {
 		distance = std::sqrt(min_dist); // Convert squared distance to actual distance
-		return true; // We found a distance
+		return true;                    // We found a distance
 	}
 	return false; // No distance found
 }
@@ -3380,7 +3380,6 @@ bool prepared_geometry::try_get_distance(const prepared_geometry &other, double 
 //======================================================================================================================
 // WKT Parsing
 //======================================================================================================================
-
 
 namespace sgl {
 

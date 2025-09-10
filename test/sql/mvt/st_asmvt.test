@@ -1,0 +1,119 @@
+# name: test/sql/mvt/st_asmvt.test
+# group: [mvt]
+
+require spatial
+
+# With default args
+statement ok
+COPY (
+	SELECT st_asmvt(
+		{"geom": geom},
+		'my_layer'
+	) as mvt
+	FROM (
+		SELECT
+			row_number() over () as id,
+			st_point(x, y) as geom
+		FROM range(0, 100) as r(x),
+			 range(0, 100) as rr(y)
+	)
+) TO '__TEST_DIR__/test_default_args.mvt' (FORMAT BLOB);
+
+query IIII
+select unnest(layers, recursive := true) from st_read_meta('__TEST_DIR__/test_default_args.mvt');
+----
+my_layer	10000	[{'name': geom, 'type': Point, 'nullable': true, 'crs': NULL}]	[{'name': mvt_id, 'type': Integer64, 'subtype': None, 'nullable': true, 'unique': false, 'width': 0, 'precision': 0}]
+
+# Simple test
+statement ok
+COPY (
+	SELECT st_asmvt(
+		{"geom": geom, "fid": id},
+		'my_layer',
+		4096,
+		'geom',
+		'fid'
+	) as mvt
+	FROM (
+		SELECT
+			row_number() over () as id,
+			st_point(x, y) as geom
+		FROM range(0, 100) as r(x),
+			 range(0, 100) as rr(y)
+	)
+) TO '__TEST_DIR__/test.mvt' (FORMAT BLOB);
+
+query IIII
+select unnest(layers, recursive := true) from st_read_meta('__TEST_DIR__/test.mvt');
+----
+my_layer	10000	[{'name': geom, 'type': Point, 'nullable': true, 'crs': NULL}]	[{'name': mvt_id, 'type': Integer64, 'subtype': None, 'nullable': true, 'unique': false, 'width': 0, 'precision': 0}]
+
+
+query I
+select mvt_id from st_read('__TEST_DIR__/test.mvt') limit 3;
+----
+1
+2
+3
+
+# Advanced test
+statement ok
+COPY (
+	SELECT st_asmvt(
+		{
+			"fid": -1,
+			"int_field": id::INTEGER,
+			"bigint_field": id::BIGINT,
+			"float_field": id::FLOAT,
+			"double_field": id::DOUBLE,
+			"string_field": id::VARCHAR,
+			"geom": geom,
+		},
+		'my_layer',
+		4096,
+		'geom',
+		'fid'
+	) as mvt
+	FROM (
+		SELECT
+			row_number() over () as id,
+			ST_Buffer(st_point(x, y), 5) as geom
+		FROM range(0, 100) as r(x),
+			 range(0, 100) as rr(y)
+	)
+) TO '__TEST_DIR__/test2.mvt' (FORMAT BLOB);
+
+query IIII
+select unnest(layers, recursive := true) from st_read_meta('__TEST_DIR__/test2.mvt');
+----
+my_layer	10000	[{'name': geom, 'type': Polygon, 'nullable': true, 'crs': NULL}]	[{'name': mvt_id, 'type': Integer64, 'subtype': None, 'nullable': true, 'unique': false, 'width': 0, 'precision': 0}, {'name': int_field, 'type': Integer, 'subtype': None, 'nullable': true, 'unique': false, 'width': 0, 'precision': 0}, {'name': bigint_field, 'type': Integer, 'subtype': None, 'nullable': true, 'unique': false, 'width': 0, 'precision': 0}, {'name': float_field, 'type': Real, 'subtype': Float32, 'nullable': true, 'unique': false, 'width': 0, 'precision': 0}, {'name': double_field, 'type': Real, 'subtype': None, 'nullable': true, 'unique': false, 'width': 0, 'precision': 0}, {'name': string_field, 'type': String, 'subtype': None, 'nullable': true, 'unique': false, 'width': 0, 'precision': 0}]
+
+query IIIIII
+select mvt_id, int_field, bigint_field, float_field, double_field, string_field from st_read('__TEST_DIR__/test2.mvt') LIMIT 3;
+----
+NULL	1	1	1.0	1.0	1
+NULL	2	2	2.0	2.0	2
+NULL	3	3	3.0	3.0	3
+
+
+# Check unsupported types
+statement error
+COPY (
+	SELECT st_asmvt(
+		{"geom": geom, "fid": id, "other_field": st_point(1,2)},
+		'my_layer',
+		4096,
+		'geom',
+		'fid'
+	) as mvt
+	FROM (
+		SELECT
+			row_number() over () as id,
+			st_point(x, y) as geom
+		FROM range(0, 100) as r(x),
+			 range(0, 100) as rr(y)
+	)
+) TO '__TEST_DIR__/test3.mvt' (FORMAT BLOB);
+----
+Invalid Input Error: ST_AsMVT: property column "other_field" has unsupported type "GEOMETRY"
+Only the following property types are supported: VARCHAR, FLOAT, DOUBLE, INTEGER, BIGINT, BOOLEAN

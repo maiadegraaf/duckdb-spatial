@@ -7,7 +7,7 @@ namespace duckdb {
 // We've got this exposed upstream, we just need to wait for the next release
 extern "C" int geos_d2sfixed_buffered_n(double f, uint32_t precision, char *result);
 
-template<class T>
+template <class T>
 static void FormatDouble(T &buffer, double d, int32_t precision) {
 	D_ASSERT(precision >= 0 && precision <= 15);
 	char buf[512];
