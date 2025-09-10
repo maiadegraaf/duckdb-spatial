@@ -439,9 +439,11 @@ struct ST_AsMVTGeom {
 				variant.SetBind(Bind);
 			});
 
-			func.SetDescription(R"(Transform and clip geometry to a tile boundary
+			func.SetDescription(R"(
+			Transform and clip geometry to a tile boundary
 
-				- See "ST_AsMVT" for more details)");
+			See "ST_AsMVT" for more details)");
+
 			func.SetTag("ext", "spatial");
 			func.SetTag("category", "construction");
 		});
