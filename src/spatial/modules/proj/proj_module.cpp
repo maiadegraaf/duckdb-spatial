@@ -1160,7 +1160,7 @@ struct DuckDB_Proj_Compiled_Version {
 	}
 
 	static constexpr auto DESCRIPTION = R"(
-		Returns a text description of the PROJ library version that that this instance of DuckDB was compiled against.
+		Returns a text description of the PROJ library version that this instance of DuckDB was compiled against.
 	)";
 
 	static constexpr auto EXAMPLE = R"(
