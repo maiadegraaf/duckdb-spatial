@@ -1960,9 +1960,9 @@ struct ST_CollectionExtract {
 		Extracts geometries from a GeometryCollection into a typed multi geometry.
 
 		If the input geometry is a GeometryCollection, the function will return a multi geometry, determined by the `type` parameter.
-		- if `type` = 1, returns a MultiPoint containg all the Points in the collection
-		- if `type` = 2, returns a MultiLineString containg all the LineStrings in the collection
-		- if `type` = 3, returns a MultiPolygon containg all the Polygons in the collection
+		- if `type` = 1, returns a MultiPoint containing all the Points in the collection
+		- if `type` = 2, returns a MultiLineString containing all the LineStrings in the collection
+		- if `type` = 3, returns a MultiPolygon containing all the Polygons in the collection
 
 		If no `type` parameters is provided, the function will return a multi geometry matching the highest "surface dimension"
 		of the contained geometries. E.g. if the collection contains only Points, a MultiPoint will be returned. But if the
