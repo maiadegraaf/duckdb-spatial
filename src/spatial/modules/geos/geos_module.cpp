@@ -620,7 +620,7 @@ struct ST_BuildArea {
 	}
 
 	static constexpr auto DESCRIPTION = R"(
-		Creates a polygonal geometry by attemtping to "fill in" the input geometry.
+		Creates a polygonal geometry by attempting to "fill in" the input geometry.
 
 		Unlike ST_Polygonize, this function does not fill in holes.)";
 
