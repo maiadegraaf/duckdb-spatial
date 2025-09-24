@@ -524,7 +524,7 @@ struct ST_Area {
 	)";
 
 	static constexpr const char *EXAMPLE = R"(
-    select ST_Area('POLYGON((0 0, 0 1, 1 1, 1 0, 0 0))'::geometry);
+    SELECT ST_Area('POLYGON((0 0, 0 1, 1 1, 1 0, 0 0))'::GEOMETRY);
 	-- 1.0
 	)";
 
@@ -850,20 +850,20 @@ struct ST_AsGeoJSON {
 	)";
 
 	static constexpr auto EXAMPLE = R"(
-		select ST_AsGeoJSON('POLYGON((0 0, 0 1, 1 1, 1 0, 0 0))'::geometry);
+		SELECT ST_AsGeoJSON('POLYGON((0 0, 0 1, 1 1, 1 0, 0 0))'::GEOMETRY);
 		----
-		{"type":"Polygon","coordinates":[[[0.0,0.0],[0.0,1.0],[1.0,1.0],[1.0,0.0],[0.0,0.0]]]}
+		{"type":"Polygon","coordinates":[[[0.0, 0.0], [0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]]]}
 
 		-- Convert a geometry into a full GeoJSON feature (requires the JSON extension to be loaded)
 		SELECT CAST({
 			type: 'Feature',
-			geometry: ST_AsGeoJSON(ST_Point(1,2)),
+			geometry: ST_AsGeoJSON(ST_Point(1, 2)),
 			properties: {
 				name: 'my_point'
 			}
 		} AS JSON);
 		----
-		{"type":"Feature","geometry":{"type":"Point","coordinates":[1.0,2.0]},"properties":{"name":"my_point"}}
+		{"type":"Feature","geometry":{"type":"Point","coordinates":[1.0, 2.0]},"properties":{"name":"my_point"}}
 	)";
 
 	//------------------------------------------------------------------------------------------------------------------
@@ -955,7 +955,7 @@ struct ST_AsText {
 	)";
 
 	static constexpr const char *EXAMPLE = R"(
-		SELECT ST_MakeEnvelope(0,0,1,1);
+		SELECT ST_MakeEnvelope(0, 0, 1, 1);
 		----
 		POLYGON ((0 0, 0 1, 1 1, 1 0, 0 0))
 	)";
@@ -1096,7 +1096,7 @@ struct ST_AsHEXWKB {
 	)";
 
 	static constexpr const char *EXAMPLE = R"(
-		SELECT ST_AsHexWKB('POLYGON((0 0, 0 1, 1 1, 1 0, 0 0))'::geometry);
+		SELECT ST_AsHexWKB('POLYGON((0 0, 0 1, 1 1, 1 0, 0 0))'::GEOMETRY);
 		----
 		01030000000100000005000000000000000000000000000...
 	)";
@@ -1975,7 +1975,7 @@ struct ST_CollectionExtract {
 	)";
 
 	static constexpr auto EXAMPLE = R"(
-		select st_collectionextract('MULTIPOINT(1 2,3 4)'::geometry, 1);
+		SELECT ST_CollectionExtract('MULTIPOINT(1 2, 3 4)'::GEOMETRY, 1);
 		-- MULTIPOINT (1 2, 3 4)
 	)";
 
@@ -2204,7 +2204,7 @@ struct ST_Dimension {
 	)";
 
 	static constexpr auto EXAMPLE = R"(
-	select st_dimension('POLYGON((0 0, 0 1, 1 1, 1 0, 0 0))'::geometry);
+	SELECT ST_Dimension('POLYGON((0 0, 0 1, 1 1, 1 0, 0 0))'::GEOMETRY);
 	----
 	2
 	)";
@@ -2960,15 +2960,15 @@ struct ST_Dump {
 	static constexpr auto DESCRIPTION = R"(
 	Dumps a geometry into a list of sub-geometries and their "path" in the original geometry.
 
-	You can use the `UNNEST(res, recursive := true)` function to explode  resulting list of structs into multiple rows.
+	You can use the `unnest(res, recursive := true)` function to explode the resulting list of structs into multiple rows.
 	)";
 
 	static constexpr auto EXAMPLE = R"(
-	select st_dump('MULTIPOINT(1 2,3 4)'::geometry);
+	SELECT ST_Dump('MULTIPOINT(1 2, 3 4)'::GEOMETRY);
 	----
 	[{'geom': 'POINT(1 2)', 'path': [0]}, {'geom': 'POINT(3 4)', 'path': [1]}]
 
-	select unnest(st_dump('MULTIPOINT(1 2,3 4)'::geometry), recursive := true);
+	SELECT unnest(ST_Dump('MULTIPOINT(1 2, 3 4)'::GEOMETRY), recursive := true);
 	-- ┌─────────────┬─────────┐
 	-- │    geom     │  path   │
 	-- │  geometry   │ int32[] │
@@ -4554,7 +4554,7 @@ struct ST_GeomFromGeoJSON {
 	)";
 
 	static constexpr auto EXAMPLE = R"(
-		SELECT ST_GeomFromGeoJSON('{"type":"Point","coordinates":[1.0,2.0]}');
+		SELECT ST_GeomFromGeoJSON('{"type": "Point", "coordinates": [1.0, 2.0]}');
 		----
 		POINT (1 2)
 	)";
@@ -7592,11 +7592,11 @@ struct ST_Points {
 	)";
 
 	static constexpr auto EXAMPLE = R"(
-		select st_points('LINESTRING(1 1, 2 2)'::geometry);
+		SELECT ST_Points('LINESTRING(1 1, 2 2)'::GEOMETRY);
 		----
 		MULTIPOINT (1 1, 2 2)
 
-		select st_points('MULTIPOLYGON Z EMPTY'::geometry);
+		SELECT ST_Points('MULTIPOLYGON Z EMPTY'::GEOMETRY);
 		----
 		MULTIPOINT Z EMPTY
 	)";
@@ -7724,7 +7724,7 @@ struct ST_QuadKey {
 	)";
 
 	static constexpr auto EXAMPLE = R"(
-		SELECT ST_QuadKey(st_point(11.08, 49.45), 10);
+		SELECT ST_QuadKey(ST_Point(11.08, 49.45), 10);
 		----
 		1333203202
 	)";
