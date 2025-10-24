@@ -23,12 +23,33 @@ namespace {
 // GDAL READ
 //======================================================================================================================
 namespace gdal_read {
+
+class StringList {
+public:
+	void Add(const string &item) {
+		const auto cstr = new char[item.size() + 1];
+		strcpy(cstr, item.c_str());
+		items.insert(items.end() - 1, cstr);
+	}
+
+	char** Get() { return items.data(); }
+
+	~StringList() {
+		for (const auto &item : items) {
+			delete[] item;
+		}
+	}
+private:
+	vector<char*> items = { nullptr };
+};
+
 //----------------------------------------------------------------------------------------------------------------------
 // BIND
 //----------------------------------------------------------------------------------------------------------------------
 class BindData final : public TableFunctionData {
 public:
 	string file_path;
+	StringList layer_options;
 };
 
 auto Bind(ClientContext &ctx, TableFunctionBindInput &input, vector<LogicalType> &col_types, vector<string> &col_names)
@@ -37,6 +58,10 @@ auto Bind(ClientContext &ctx, TableFunctionBindInput &input, vector<LogicalType>
 	auto result = make_uniq<BindData>();
 
 	result->file_path = input.inputs[0].GetValue<string>();
+
+	// Set GDAL Arrow layer options
+	result->layer_options.Add(StringUtil::Format("MAX_FEATURES_IN_BATCH=%d", STANDARD_VECTOR_SIZE));
+	result->layer_options.Add("GEOMETRY_METADATA_ENCODING=GEOARROW");
 
 	const auto dataset = GDALOpenEx(result->file_path.c_str(), GDAL_OF_VECTOR | GDAL_OF_READONLY, nullptr, nullptr, nullptr);
 	if (!dataset) {
@@ -56,7 +81,7 @@ auto Bind(ClientContext &ctx, TableFunctionBindInput &input, vector<LogicalType>
 	}
 
 	ArrowArrayStream stream;
-	if (!OGR_L_GetArrowStream(layer, &stream, nullptr)) {
+	if (!OGR_L_GetArrowStream(layer, &stream, result->layer_options.Get())) {
 		GDALClose(dataset);
 		throw IOException("Could not get GDAL Arrow stream at: %s", result->file_path);
 	}
@@ -80,7 +105,6 @@ auto Bind(ClientContext &ctx, TableFunctionBindInput &input, vector<LogicalType>
 	schema.release(&schema);
 	stream.release(&stream);
 	GDALClose(dataset);
-
 
 	return std::move(result);
 }
@@ -106,9 +130,9 @@ public:
 };
 
 auto InitGlobal(ClientContext &context, TableFunctionInitInput &input) -> unique_ptr<GlobalTableFunctionState> {
-	auto &data = input.bind_data->Cast<BindData>();
+	auto &bdata = input.bind_data->Cast<BindData>();
 
-	const auto dataset = GDALOpenEx(data.file_path.c_str(), GDAL_OF_VECTOR | GDAL_OF_READONLY, nullptr, nullptr, nullptr);
+	const auto dataset = GDALOpenEx(bdata.file_path.c_str(), GDAL_OF_VECTOR | GDAL_OF_READONLY, nullptr, nullptr, nullptr);
 	if (!dataset) {
 		throw IOException("Could not open GDAL dataset at: foo");
 	}
@@ -119,17 +143,12 @@ auto InitGlobal(ClientContext &context, TableFunctionInitInput &input) -> unique
 	// Get the first layer
 	result->layer = GDALDatasetGetLayer(dataset, 0);
 
-
-	string str = "MAX_FEATURES_IN_BATCH=2048";
-	vector<char> buf;
-	buf.insert(buf.end(), str.begin(), str.end());
-	buf.push_back('\0');
-	vector<char*> layer_options;
-	layer_options.push_back(buf.data());
-	layer_options.push_back(nullptr);
+	StringList layer_options;
+	layer_options.Add(StringUtil::Format("MAX_FEATURES_IN_BATCH=%d", STANDARD_VECTOR_SIZE));
+	layer_options.Add("GEOMETRY_METADATA_ENCODING=GEOARROW");
 
 	// Open the Arrow stream
-	if (!OGR_L_GetArrowStream(result->layer, &result->stream, layer_options.data())) {
+	if (!OGR_L_GetArrowStream(result->layer, &result->stream, layer_options.Get())) {
 		GDALClose(dataset);
 		throw IOException("Could not get GDAL Arrow stream at: foo");
 	}
