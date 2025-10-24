@@ -26,3 +26,15 @@ SELECT ST_Distance(
 ----
 5
 
+
+# This test also comes from a bug report, where ST_Distance would incorrectly handle line segments with zero length.
+# The issue is that we were not properly considering segments where both endpoints are the same point, and conclude
+# that a zero length segment always intersects with any other segment, which is not correct. We now skip zero-length
+# segments when performing intersection tests between indexed polygon rings, and also handle zero-length segments as
+# points when performing regular segment-segment intersection tests.
+
+query I
+select st_distance('POLYGON((0 0, 1 1, 1 1, 10 10, 0 0))'::GEOMETRY, 'POLYGON((4 0, 4 1, 5 1, 5 0, 4 0))'::GEOMETRY) != 0;
+----
+true
+
