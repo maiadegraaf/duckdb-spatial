@@ -1290,7 +1290,7 @@ struct ST_DistanceWithin {
 			});
 
 			func.SetDescription(R"(
-				Returns if two geometries are within a target distance of each-other
+				Returns true if two geometries are within a target distance of each-other
 			)");
 
 			func.SetTag("ext", "spatial");
