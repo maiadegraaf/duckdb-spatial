@@ -327,9 +327,6 @@ struct ST_AsMVTGeom {
 			const auto &blob = geom_data[geom_idx];
 			auto geom = lstate.Deserialize(blob);
 
-			// Orient polygons in place
-			geom.orient_polygons(true);
-
 			// Compute bounds
 			const auto extent = bind_data.extent;
 
@@ -363,10 +360,14 @@ struct ST_AsMVTGeom {
 			const auto transformed = geom.get_transformed(affine_matrix);
 
 			// Snap to grid (round coordinates to integers)
-			const auto snapped = transformed.get_gridded(1.0);
+			auto snapped = transformed.get_gridded(1.0);
 
 			// Should we clip? if not, return the snapped geometry
 			if (!bind_data.clip) {
+
+				// But first orient in place
+				snapped.orient_polygons(true);
+
 				res_data[out_idx] = lstate.Serialize(result, snapped);
 				continue;
 			}
@@ -385,7 +386,10 @@ struct ST_AsMVTGeom {
 			}
 
 			// Snap again to clean up any potential issues from clipping
-			const auto cleaned_clipped = clipped.get_gridded(1.0);
+			auto cleaned_clipped = clipped.get_gridded(1.0);
+
+			// Also orient the polygons in place
+			cleaned_clipped.orient_polygons(true);
 
 			res_data[out_idx] = lstate.Serialize(result, cleaned_clipped);
 		}
