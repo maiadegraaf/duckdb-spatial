@@ -4804,7 +4804,7 @@ struct ST_GeomFromWKB {
 			y_data[i] = vertex.y;
 		}
 
-		if (args.AllConstant()) {
+		if (args.AllConstant() || args.size() == 1) {
 			result.SetVectorType(VectorType::CONSTANT_VECTOR);
 		}
 	}
@@ -4872,7 +4872,7 @@ struct ST_GeomFromWKB {
 
 		ListVector::SetListSize(result, total_size);
 
-		if (args.AllConstant()) {
+		if (args.AllConstant() || args.size() == 1) {
 			result.SetVectorType(VectorType::CONSTANT_VECTOR);
 		}
 	}
@@ -4967,7 +4967,7 @@ struct ST_GeomFromWKB {
 		ListVector::SetListSize(result, total_ring_count);
 		ListVector::SetListSize(ring_vec, total_point_count);
 
-		if (count == 1) {
+		if (args.AllConstant() || args.size() == 1) {
 			result.SetVectorType(VectorType::CONSTANT_VECTOR);
 		}
 	}
@@ -4986,8 +4986,16 @@ struct ST_GeomFromWKB {
 	static void Register(ExtensionLoader &loader) {
 		FunctionBuilder::RegisterScalar(loader, "ST_Point2DFromWKB", [](ScalarFunctionBuilder &builder) {
 			builder.AddVariant([](ScalarFunctionVariantBuilder &variant) {
-				variant.AddParameter("point", GeoTypes::POINT_2D());
-				variant.SetReturnType(GeoTypes::GEOMETRY());
+				variant.AddParameter("wkb", GeoTypes::WKB_BLOB());
+				variant.SetReturnType(GeoTypes::POINT_2D());
+
+				variant.SetInit(LocalState::Init);
+				variant.SetFunction(ExecutePoint);
+			});
+
+			builder.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("blob", LogicalType::BLOB);
+				variant.SetReturnType(GeoTypes::POINT_2D());
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(ExecutePoint);
@@ -5001,8 +5009,16 @@ struct ST_GeomFromWKB {
 
 		FunctionBuilder::RegisterScalar(loader, "ST_LineString2DFromWKB", [](ScalarFunctionBuilder &builder) {
 			builder.AddVariant([](ScalarFunctionVariantBuilder &variant) {
-				variant.AddParameter("linestring", GeoTypes::LINESTRING_2D());
-				variant.SetReturnType(GeoTypes::GEOMETRY());
+				variant.AddParameter("wkb", GeoTypes::WKB_BLOB());
+				variant.SetReturnType(GeoTypes::LINESTRING_2D());
+
+				variant.SetInit(LocalState::Init);
+				variant.SetFunction(ExecuteLineString);
+			});
+
+			builder.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("blob", LogicalType::BLOB);
+				variant.SetReturnType(GeoTypes::LINESTRING_2D());
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(ExecuteLineString);
@@ -5016,8 +5032,15 @@ struct ST_GeomFromWKB {
 
 		FunctionBuilder::RegisterScalar(loader, "ST_Polygon2DFromWKB", [](ScalarFunctionBuilder &builder) {
 			builder.AddVariant([](ScalarFunctionVariantBuilder &variant) {
-				variant.AddParameter("polygon", GeoTypes::POLYGON_2D());
-				variant.SetReturnType(GeoTypes::GEOMETRY());
+				variant.AddParameter("wkb", GeoTypes::WKB_BLOB());
+				variant.SetReturnType(GeoTypes::POLYGON_2D());
+
+				variant.SetInit(LocalState::Init);
+				variant.SetFunction(ExecutePolygon);
+			});
+			builder.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("blob", LogicalType::BLOB);
+				variant.SetReturnType(GeoTypes::POLYGON_2D());
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(ExecutePolygon);
@@ -5252,7 +5275,7 @@ struct ST_LineInterpolatePoint {
 		auto &lstate = LocalState::ResetAndGet(state);
 
 		BinaryExecutor::Execute<string_t, double, string_t>(
-		    args.data[0], args.data[1], result, args.size(), [&](const string_t &blob, const double faction) {
+		    args.data[0], args.data[1], result, args.size(), [&](const string_t &blob, const double fraction) {
 			    sgl::geometry geom;
 			    lstate.Deserialize(blob, geom);
 
@@ -5261,7 +5284,7 @@ struct ST_LineInterpolatePoint {
 			    }
 
 			    sgl::vertex_xyzm out_vertex = {0, 0, 0, 0};
-			    if (sgl::linestring::interpolate(geom, faction, out_vertex)) {
+			    if (sgl::linestring::interpolate(geom, fraction, out_vertex)) {
 				    sgl::geometry point(sgl::geometry_type::POINT, geom.has_z(), geom.has_m());
 				    point.set_vertex_array(&out_vertex, 1);
 				    return lstate.Serialize(result, point);
@@ -6092,7 +6115,7 @@ struct ST_Hilbert {
 	static constexpr auto DESCRIPTION = R"(
 		Encodes the X and Y values as the hilbert curve index for a curve covering the given bounding box.
 		If a geometry is provided, the center of the approximate bounding box is used as the point to encode.
-		If no bounding box is provided, the hilbert curve index is mapped to the full range of a single-presicion float.
+		If no bounding box is provided, the hilbert curve index is mapped to the full range of a single-precision float.
 		For the BOX_2D and BOX_2DF variants, the center of the box is used as the point to encode.
 	)";
 

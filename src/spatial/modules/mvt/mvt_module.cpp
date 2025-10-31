@@ -613,7 +613,7 @@ public:
 						geometry.push_back((1 & 0x7) | (1 << 3)); // MoveTo, 1 part
 						geometry.push_back(protozero::encode_zigzag32(x - cursor_x));
 						geometry.push_back(protozero::encode_zigzag32(y - cursor_y));
-						geometry.push_back((2 & 0x7) | ((vertex_count - 2) << 3)); // LineTo, part count
+						geometry.push_back((2 & 0x7) | ((vertex_count - 1) << 3)); // LineTo, part count
 					} else {
 						geometry.push_back(protozero::encode_zigzag32(x - cursor_x));
 						geometry.push_back(protozero::encode_zigzag32(y - cursor_y));
