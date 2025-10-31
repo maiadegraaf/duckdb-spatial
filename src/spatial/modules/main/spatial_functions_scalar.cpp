@@ -4804,7 +4804,7 @@ struct ST_GeomFromWKB {
 			y_data[i] = vertex.y;
 		}
 
-		if (args.AllConstant()) {
+		if (args.AllConstant() || args.size() == 1) {
 			result.SetVectorType(VectorType::CONSTANT_VECTOR);
 		}
 	}
@@ -4872,7 +4872,7 @@ struct ST_GeomFromWKB {
 
 		ListVector::SetListSize(result, total_size);
 
-		if (args.AllConstant()) {
+		if (args.AllConstant() || args.size() == 1) {
 			result.SetVectorType(VectorType::CONSTANT_VECTOR);
 		}
 	}
@@ -4967,7 +4967,7 @@ struct ST_GeomFromWKB {
 		ListVector::SetListSize(result, total_ring_count);
 		ListVector::SetListSize(ring_vec, total_point_count);
 
-		if (count == 1) {
+		if (args.AllConstant() || args.size() == 1) {
 			result.SetVectorType(VectorType::CONSTANT_VECTOR);
 		}
 	}
@@ -4986,8 +4986,16 @@ struct ST_GeomFromWKB {
 	static void Register(ExtensionLoader &loader) {
 		FunctionBuilder::RegisterScalar(loader, "ST_Point2DFromWKB", [](ScalarFunctionBuilder &builder) {
 			builder.AddVariant([](ScalarFunctionVariantBuilder &variant) {
-				variant.AddParameter("point", GeoTypes::POINT_2D());
-				variant.SetReturnType(GeoTypes::GEOMETRY());
+				variant.AddParameter("wkb", GeoTypes::WKB_BLOB());
+				variant.SetReturnType(GeoTypes::POINT_2D());
+
+				variant.SetInit(LocalState::Init);
+				variant.SetFunction(ExecutePoint);
+			});
+
+			builder.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("blob", LogicalType::BLOB);
+				variant.SetReturnType(GeoTypes::POINT_2D());
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(ExecutePoint);
@@ -5001,8 +5009,16 @@ struct ST_GeomFromWKB {
 
 		FunctionBuilder::RegisterScalar(loader, "ST_LineString2DFromWKB", [](ScalarFunctionBuilder &builder) {
 			builder.AddVariant([](ScalarFunctionVariantBuilder &variant) {
-				variant.AddParameter("linestring", GeoTypes::LINESTRING_2D());
-				variant.SetReturnType(GeoTypes::GEOMETRY());
+				variant.AddParameter("wkb", GeoTypes::WKB_BLOB());
+				variant.SetReturnType(GeoTypes::LINESTRING_2D());
+
+				variant.SetInit(LocalState::Init);
+				variant.SetFunction(ExecuteLineString);
+			});
+
+			builder.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("blob", LogicalType::BLOB);
+				variant.SetReturnType(GeoTypes::LINESTRING_2D());
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(ExecuteLineString);
@@ -5016,8 +5032,15 @@ struct ST_GeomFromWKB {
 
 		FunctionBuilder::RegisterScalar(loader, "ST_Polygon2DFromWKB", [](ScalarFunctionBuilder &builder) {
 			builder.AddVariant([](ScalarFunctionVariantBuilder &variant) {
-				variant.AddParameter("polygon", GeoTypes::POLYGON_2D());
-				variant.SetReturnType(GeoTypes::GEOMETRY());
+				variant.AddParameter("wkb", GeoTypes::WKB_BLOB());
+				variant.SetReturnType(GeoTypes::POLYGON_2D());
+
+				variant.SetInit(LocalState::Init);
+				variant.SetFunction(ExecutePolygon);
+			});
+			builder.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+				variant.AddParameter("blob", LogicalType::BLOB);
+				variant.SetReturnType(GeoTypes::POLYGON_2D());
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(ExecutePolygon);
