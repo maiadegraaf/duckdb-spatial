@@ -3003,7 +3003,6 @@ struct ST_Dump {
 	}
 };
 
-
 //======================================================================================================================
 // ST_Expand
 //======================================================================================================================
@@ -3016,28 +3015,29 @@ struct ST_Expand {
 	static void Execute(DataChunk &args, ExpressionState &state, Vector &result) {
 		auto &lstate = LocalState::ResetAndGet(state);
 
-		BinaryExecutor::Execute<string_t, double, string_t>(args.data[0], args.data[1], result, args.size(), [&](const string_t &blob, double distance) {
-			sgl::geometry geom;
-			lstate.Deserialize(blob, geom);
-			auto bbox = sgl::extent_xy::smallest();
+		BinaryExecutor::Execute<string_t, double, string_t>(
+		    args.data[0], args.data[1], result, args.size(), [&](const string_t &blob, double distance) {
+			    sgl::geometry geom;
+			    lstate.Deserialize(blob, geom);
+			    auto bbox = sgl::extent_xy::smallest();
 
-			if (sgl::ops::get_total_extent_xy(geom, bbox) == 0) {
-				const sgl::geometry empty(sgl::geometry_type::GEOMETRY_COLLECTION, false, false);
-				return lstate.Serialize(result, empty);
-			} else {
-				sgl::geometry expanded(sgl::geometry_type::POLYGON, false, false);
-				const auto min_x = bbox.min.x - distance;
-			    const auto min_y = bbox.min.y - distance;
-			    const auto max_x = bbox.max.x + distance;
-			    const auto max_y = bbox.max.y + distance;
-			    const double buffer[10] = {min_x, min_y, min_x, max_y, max_x, max_y, max_x, min_y, min_x, min_y};
+			    if (sgl::ops::get_total_extent_xy(geom, bbox) == 0) {
+				    const sgl::geometry empty(sgl::geometry_type::GEOMETRY_COLLECTION, false, false);
+				    return lstate.Serialize(result, empty);
+			    } else {
+				    sgl::geometry expanded(sgl::geometry_type::POLYGON, false, false);
+				    const auto min_x = bbox.min.x - distance;
+				    const auto min_y = bbox.min.y - distance;
+				    const auto max_x = bbox.max.x + distance;
+				    const auto max_y = bbox.max.y + distance;
+				    const double buffer[10] = {min_x, min_y, min_x, max_y, max_x, max_y, max_x, min_y, min_x, min_y};
 
-			    sgl::geometry ring(sgl::geometry_type::LINESTRING, false, false);
-			    ring.set_vertex_array(buffer, 5);
-				expanded.append_part(&ring);
-				return lstate.Serialize(result, expanded);
-			}
-		});
+				    sgl::geometry ring(sgl::geometry_type::LINESTRING, false, false);
+				    ring.set_vertex_array(buffer, 5);
+				    expanded.append_part(&ring);
+				    return lstate.Serialize(result, expanded);
+			    }
+		    });
 	}
 
 	//------------------------------------------------------------------------------------------------------------------
@@ -3078,7 +3078,6 @@ struct ST_Expand {
 		});
 	}
 };
-
 
 //======================================================================================================================
 // ST_Extent
