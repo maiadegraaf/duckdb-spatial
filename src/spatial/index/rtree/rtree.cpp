@@ -31,6 +31,11 @@ RTreePointer RTree::MakePage(RTreeNodeType type) const {
 	auto &alloc = type == RTreeNodeType::LEAF_PAGE ? *leaf_allocator : *node_allocator;
 	pointer = alloc.New();
 	pointer.SetMetadata(static_cast<uint8_t>(type));
+
+	// zero-initialize the node count
+	auto &node = RefMutable(pointer);
+	node.Clear();
+
 	return pointer;
 }
 
