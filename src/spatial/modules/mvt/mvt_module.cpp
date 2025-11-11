@@ -155,7 +155,7 @@ struct ST_TileEnvelope {
 				variant.AddParameter("tile_zoom", LogicalType::INTEGER);
 				variant.AddParameter("tile_x", LogicalType::INTEGER);
 				variant.AddParameter("tile_y", LogicalType::INTEGER);
-				variant.SetReturnType(GeoTypes::GEOMETRY());
+				variant.SetReturnType(LogicalType::GEOMETRY());
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(ExecuteWebMercator);
 			});
@@ -925,7 +925,7 @@ struct ST_AsMVT {
 			// Look for the first geometry column
 			for (idx_t i = 0; i < StructType::GetChildCount(row_type); i++) {
 				auto &child = StructType::GetChildType(row_type, i);
-				if (child == GeoTypes::GEOMETRY()) {
+				if (child == LogicalType::GEOMETRY()) {
 					if (geom_idx != optional_idx::Invalid()) {
 						throw InvalidInputException("ST_AsMVT: only one geometry column is allowed in the input row");
 					}
@@ -937,7 +937,7 @@ struct ST_AsMVT {
 			for (idx_t i = 0; i < StructType::GetChildCount(row_type); i++) {
 				auto &child = StructType::GetChildType(row_type, i);
 				auto &child_name = StructType::GetChildName(row_type, i);
-				if (child == GeoTypes::GEOMETRY() && child_name == geom_name) {
+				if (child == LogicalType::GEOMETRY() && child_name == geom_name) {
 					if (geom_idx != optional_idx::Invalid()) {
 						throw InvalidInputException("ST_AsMVT: only one geometry column is allowed in the input row");
 					}

@@ -70,7 +70,7 @@ LogicalType GeoTypes::POLYGON_3D() {
 	return type;
 }
 
-LogicalType GeoTypes::GEOMETRY() {
+LogicalType GeoTypes::LEGACY_GEOMETRY() {
 	auto blob_type = LogicalType(LogicalTypeId::BLOB);
 	blob_type.SetAlias("GEOMETRY");
 	return blob_type;
@@ -124,7 +124,7 @@ void GeoTypes::Register(ExtensionLoader &loader) {
 	loader.RegisterType("BOX_2DF", GeoTypes::BOX_2DF());
 
 	// GEOMETRY
-	loader.RegisterType("GEOMETRY", GeoTypes::GEOMETRY());
+	loader.RegisterType("GEOMETRY", GeoTypes::LEGACY_GEOMETRY());
 
 	// WKB_BLOB
 	loader.RegisterType("WKB_BLOB", GeoTypes::WKB_BLOB());

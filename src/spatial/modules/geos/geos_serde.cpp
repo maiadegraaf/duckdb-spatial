@@ -470,13 +470,13 @@ private:
 	GEOSGeometry *ProcessCollection(CollectionState &state) override {
 		GEOSGeomTypes collection_type = GEOS_GEOMETRYCOLLECTION;
 		switch (CurrentType()) {
-		case GeometryType::MULTIPOINT:
+		case LegacyGeometryType::MULTIPOINT:
 			collection_type = GEOS_MULTIPOINT;
 			break;
-		case GeometryType::MULTILINESTRING:
+		case LegacyGeometryType::MULTILINESTRING:
 			collection_type = GEOS_MULTILINESTRING;
 			break;
-		case GeometryType::MULTIPOLYGON:
+		case LegacyGeometryType::MULTIPOLYGON:
 			collection_type = GEOS_MULTIPOLYGON;
 			break;
 		default:

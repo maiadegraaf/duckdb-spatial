@@ -99,11 +99,11 @@ public:
 			// We can only optimize if there are two children
 			return false;
 		}
-		if (function.arguments[0] != GeoTypes::GEOMETRY()) {
+		if (function.arguments[0] != LogicalType::GEOMETRY()) {
 			// We can only optimize if the first child is a GEOMETRY
 			return false;
 		}
-		if (function.arguments[1] != GeoTypes::GEOMETRY()) {
+		if (function.arguments[1] != LogicalType::GEOMETRY()) {
 			// We can only optimize if the second child is a GEOMETRY
 			return false;
 		}

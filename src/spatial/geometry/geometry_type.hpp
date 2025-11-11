@@ -11,7 +11,7 @@
 
 namespace duckdb {
 
-enum class GeometryType : uint8_t {
+enum class LegacyGeometryType : uint8_t {
 	POINT = 0,
 	LINESTRING,
 	POLYGON,
@@ -21,37 +21,37 @@ enum class GeometryType : uint8_t {
 	GEOMETRYCOLLECTION
 };
 
-struct GeometryTypes {
-	static bool IsSinglePart(GeometryType type) {
-		return type == GeometryType::POINT || type == GeometryType::LINESTRING;
+struct LegacyGeometryTypes {
+	static bool IsSinglePart(LegacyGeometryType type) {
+		return type == LegacyGeometryType::POINT || type == LegacyGeometryType::LINESTRING;
 	}
 
-	static bool IsMultiPart(GeometryType type) {
-		return type == GeometryType::POLYGON || type == GeometryType::MULTIPOINT ||
-		       type == GeometryType::MULTILINESTRING || type == GeometryType::MULTIPOLYGON ||
-		       type == GeometryType::GEOMETRYCOLLECTION;
+	static bool IsMultiPart(LegacyGeometryType type) {
+		return type == LegacyGeometryType::POLYGON || type == LegacyGeometryType::MULTIPOINT ||
+		       type == LegacyGeometryType::MULTILINESTRING || type == LegacyGeometryType::MULTIPOLYGON ||
+		       type == LegacyGeometryType::GEOMETRYCOLLECTION;
 	}
 
-	static bool IsCollection(GeometryType type) {
-		return type == GeometryType::MULTIPOINT || type == GeometryType::MULTILINESTRING ||
-		       type == GeometryType::MULTIPOLYGON || type == GeometryType::GEOMETRYCOLLECTION;
+	static bool IsCollection(LegacyGeometryType type) {
+		return type == LegacyGeometryType::MULTIPOINT || type == LegacyGeometryType::MULTILINESTRING ||
+		       type == LegacyGeometryType::MULTIPOLYGON || type == LegacyGeometryType::GEOMETRYCOLLECTION;
 	}
 
-	static string ToString(GeometryType type) {
+	static string ToString(LegacyGeometryType type) {
 		switch (type) {
-		case GeometryType::POINT:
+		case LegacyGeometryType::POINT:
 			return "POINT";
-		case GeometryType::LINESTRING:
+		case LegacyGeometryType::LINESTRING:
 			return "LINESTRING";
-		case GeometryType::POLYGON:
+		case LegacyGeometryType::POLYGON:
 			return "POLYGON";
-		case GeometryType::MULTIPOINT:
+		case LegacyGeometryType::MULTIPOINT:
 			return "MULTIPOINT";
-		case GeometryType::MULTILINESTRING:
+		case LegacyGeometryType::MULTILINESTRING:
 			return "MULTILINESTRING";
-		case GeometryType::MULTIPOLYGON:
+		case LegacyGeometryType::MULTIPOLYGON:
 			return "MULTIPOLYGON";
-		case GeometryType::GEOMETRYCOLLECTION:
+		case LegacyGeometryType::GEOMETRYCOLLECTION:
 			return "GEOMETRYCOLLECTION";
 		default:
 			return StringUtil::Format("UNKNOWN(%d)", static_cast<int>(type));
@@ -85,9 +85,9 @@ public:
 		return data;
 	}
 
-	GeometryType GetType() const {
+	LegacyGeometryType GetType() const {
 		// return the type
-		const auto type = Load<GeometryType>(const_data_ptr_cast(data.GetPrefix()));
+		const auto type = Load<LegacyGeometryType>(const_data_ptr_cast(data.GetPrefix()));
 		const auto props = Load<GeometryProperties>(const_data_ptr_cast(data.GetPrefix() + 1));
 		props.CheckVersion();
 		return type;
@@ -104,7 +104,7 @@ public:
 		Cursor cursor(data);
 
 		// Read the header
-		auto header_type = cursor.Read<GeometryType>();
+		auto header_type = cursor.Read<LegacyGeometryType>();
 		auto properties = cursor.Read<GeometryProperties>();
 		auto hash = cursor.Read<uint16_t>();
 		(void)hash;
@@ -123,7 +123,7 @@ public:
 			return true;
 		}
 
-		if (header_type == GeometryType::POINT) {
+		if (header_type == LegacyGeometryType::POINT) {
 			cursor.Skip(4); // skip padding
 
 			// Read the point

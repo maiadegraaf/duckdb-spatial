@@ -20,7 +20,8 @@ struct GeoTypes {
 	static LogicalType BOX_2DF();
 	static LogicalType WKB_BLOB();
 
-	static LogicalType GEOMETRY();
+	// Old geometry type (pre v1.5)
+	static LogicalType LEGACY_GEOMETRY();
 
 	static void Register(ExtensionLoader &loader);
 

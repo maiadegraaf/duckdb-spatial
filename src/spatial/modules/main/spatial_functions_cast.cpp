@@ -171,7 +171,7 @@ struct GeometryCasts {
 	//------------------------------------------------------------------------------------------------------------------
 	static void Register(ExtensionLoader &loader) {
 		const auto wkb_type = GeoTypes::WKB_BLOB();
-		const auto geom_type = GeoTypes::GEOMETRY();
+		const auto geom_type = LogicalType::GEOMETRY();
 
 		// VARCHAR -> Geometry is explicitly castable
 		loader.RegisterCastFunction(geom_type, LogicalType::VARCHAR, BoundCastInfo(ToVarcharCast), 1);
@@ -392,16 +392,16 @@ struct PointCasts {
 		// POINT_3D -> VARCHAR
 		loader.RegisterCastFunction(GeoTypes::POINT_3D(), LogicalType::VARCHAR, BoundCastInfo(ToVarcharCast3D), 1);
 		// POINT_2D -> GEOMETRY
-		loader.RegisterCastFunction(GeoTypes::POINT_2D(), GeoTypes::GEOMETRY(),
+		loader.RegisterCastFunction(GeoTypes::POINT_2D(), LogicalType::GEOMETRY(),
 		                            BoundCastInfo(ToGeometryCast, nullptr, LocalState::InitCast), 1);
 		// POINT_3D -> GEOMETRY
-		loader.RegisterCastFunction(GeoTypes::POINT_3D(), GeoTypes::GEOMETRY(),
+		loader.RegisterCastFunction(GeoTypes::POINT_3D(), LogicalType::GEOMETRY(),
 		                            BoundCastInfo(ToGeometryCast3D, nullptr, LocalState::InitCast), 1);
 		// GEOMETRY -> POINT_2D
-		loader.RegisterCastFunction(GeoTypes::GEOMETRY(), GeoTypes::POINT_2D(),
+		loader.RegisterCastFunction(LogicalType::GEOMETRY(), GeoTypes::POINT_2D(),
 		                            BoundCastInfo(FromGeometryCast, nullptr, LocalState::InitCast), 1);
 		// GEOMETRY -> POINT_3D
-		loader.RegisterCastFunction(GeoTypes::GEOMETRY(), GeoTypes::POINT_3D(),
+		loader.RegisterCastFunction(LogicalType::GEOMETRY(), GeoTypes::POINT_3D(),
 		                            BoundCastInfo(FromGeometryCast3D, nullptr, LocalState::InitCast), 1);
 		// POINT_3D -> POINT_2D
 		loader.RegisterCastFunction(GeoTypes::POINT_3D(), GeoTypes::POINT_2D(), ToPoint2DCast, 1);
@@ -411,10 +411,10 @@ struct PointCasts {
 		// POINT_4D -> POINT_2D
 		loader.RegisterCastFunction(GeoTypes::POINT_4D(), GeoTypes::POINT_2D(), ToPoint2DCast, 1);
 		// POINT_4D -> GEOMETRY
-		loader.RegisterCastFunction(GeoTypes::POINT_4D(), GeoTypes::GEOMETRY(),
+		loader.RegisterCastFunction(GeoTypes::POINT_4D(), LogicalType::GEOMETRY(),
 		                            BoundCastInfo(ToGeometryCast4D, nullptr, LocalState::InitCast), 1);
 		// GEOMETRY -> POINT_4D
-		loader.RegisterCastFunction(GeoTypes::GEOMETRY(), GeoTypes::POINT_4D(),
+		loader.RegisterCastFunction(LogicalType::GEOMETRY(), GeoTypes::POINT_4D(),
 		                            BoundCastInfo(FromGeometryCast4D, nullptr, LocalState::InitCast), 1);
 	}
 };
@@ -607,16 +607,16 @@ struct LinestringCasts {
 		// LINESTRING_3D -> VARCHAR
 		loader.RegisterCastFunction(GeoTypes::LINESTRING_3D(), LogicalType::VARCHAR, BoundCastInfo(ToVarcharCast3D), 1);
 		// LINESTRING_2D -> GEOMETRY
-		loader.RegisterCastFunction(GeoTypes::LINESTRING_2D(), GeoTypes::GEOMETRY(),
+		loader.RegisterCastFunction(GeoTypes::LINESTRING_2D(), LogicalType::GEOMETRY(),
 		                            BoundCastInfo(ToGeometryCast, nullptr, LocalState::InitCast), 1);
 		// LINESTRING_3D -> GEOMETRY
-		loader.RegisterCastFunction(GeoTypes::LINESTRING_3D(), GeoTypes::GEOMETRY(),
+		loader.RegisterCastFunction(GeoTypes::LINESTRING_3D(), LogicalType::GEOMETRY(),
 		                            BoundCastInfo(ToGeometryCast3D, nullptr, LocalState::InitCast), 1);
 		// GEOMETRY -> LINESTRING_2D
-		loader.RegisterCastFunction(GeoTypes::GEOMETRY(), GeoTypes::LINESTRING_2D(),
+		loader.RegisterCastFunction(LogicalType::GEOMETRY(), GeoTypes::LINESTRING_2D(),
 		                            BoundCastInfo(FromGeometryCast, nullptr, LocalState::InitCast), 1);
 		// GEOMETRY -> LINESTRING_3D
-		loader.RegisterCastFunction(GeoTypes::GEOMETRY(), GeoTypes::LINESTRING_3D(),
+		loader.RegisterCastFunction(LogicalType::GEOMETRY(), GeoTypes::LINESTRING_3D(),
 		                            BoundCastInfo(FromGeometryCast3D, nullptr, LocalState::InitCast), 1);
 		// LINESTRING_3D -> LINESTRING_2D
 		loader.RegisterCastFunction(GeoTypes::LINESTRING_3D(), GeoTypes::LINESTRING_2D(), ToLine2DCast, 1);
@@ -871,16 +871,16 @@ struct PolygonCasts {
 		// POLYGON_3D -> VARCHAR
 		loader.RegisterCastFunction(GeoTypes::POLYGON_3D(), LogicalType::VARCHAR, BoundCastInfo(ToVarcharCast3D), 1);
 		// POLYGON_2D -> GEOMETRY
-		loader.RegisterCastFunction(GeoTypes::POLYGON_2D(), GeoTypes::GEOMETRY(),
+		loader.RegisterCastFunction(GeoTypes::POLYGON_2D(), LogicalType::GEOMETRY(),
 		                            BoundCastInfo(ToGeometryCast, nullptr, LocalState::InitCast), 1);
 		// POLYGON_3D -> GEOMETRY
-		loader.RegisterCastFunction(GeoTypes::POLYGON_3D(), GeoTypes::GEOMETRY(),
+		loader.RegisterCastFunction(GeoTypes::POLYGON_3D(), LogicalType::GEOMETRY(),
 		                            BoundCastInfo(ToGeometryCast3D, nullptr, LocalState::InitCast), 1);
 		// GEOMETRY -> POLYGON_2D
-		loader.RegisterCastFunction(GeoTypes::GEOMETRY(), GeoTypes::POLYGON_2D(),
+		loader.RegisterCastFunction(LogicalType::GEOMETRY(), GeoTypes::POLYGON_2D(),
 		                            BoundCastInfo(FromGeometryCast, nullptr, LocalState::InitCast), 1);
 		// GEOMETRY -> POLYGON_3D
-		loader.RegisterCastFunction(GeoTypes::GEOMETRY(), GeoTypes::POLYGON_3D(),
+		loader.RegisterCastFunction(LogicalType::GEOMETRY(), GeoTypes::POLYGON_3D(),
 		                            BoundCastInfo(FromGeometryCast3D, nullptr, LocalState::InitCast), 1);
 		// POLYGON_3D -> POLYGON_2D
 		loader.RegisterCastFunction(GeoTypes::POLYGON_3D(), GeoTypes::POLYGON_2D(), ToPolygon2DCast, 1);
@@ -954,11 +954,11 @@ struct BoxCasts {
 		loader.RegisterCastFunction(GeoTypes::BOX_2D(), LogicalType::VARCHAR, BoundCastInfo(ToVarcharCast), 1);
 
 		// BOX_2D -> GEOMETRY
-		loader.RegisterCastFunction(GeoTypes::BOX_2D(), GeoTypes::GEOMETRY(),
+		loader.RegisterCastFunction(GeoTypes::BOX_2D(), LogicalType::GEOMETRY(),
 		                            BoundCastInfo(ToGeometryCast2D, nullptr, LocalState::InitCast), 1);
 
 		// BOX_2F -> GEOMETRY
-		loader.RegisterCastFunction(GeoTypes::BOX_2DF(), GeoTypes::GEOMETRY(),
+		loader.RegisterCastFunction(GeoTypes::BOX_2DF(), LogicalType::GEOMETRY(),
 		                            BoundCastInfo(ToGeometryCast2F, nullptr, LocalState::InitCast), 1);
 	}
 };
@@ -1327,19 +1327,19 @@ public:
 	void ProcessCollection(CollectionState &state, bool) override {
 		bool collection_is_typed = false;
 		switch (CurrentType()) {
-		case GeometryType::MULTIPOINT:
+		case LegacyGeometryType::MULTIPOINT:
 			text += "MULTIPOINT";
 			collection_is_typed = true;
 			break;
-		case GeometryType::MULTILINESTRING:
+		case LegacyGeometryType::MULTILINESTRING:
 			text += "MULTILINESTRING";
 			collection_is_typed = true;
 			break;
-		case GeometryType::MULTIPOLYGON:
+		case LegacyGeometryType::MULTIPOLYGON:
 			text += "MULTIPOLYGON";
 			collection_is_typed = true;
 			break;
-		case GeometryType::GEOMETRYCOLLECTION:
+		case LegacyGeometryType::GEOMETRYCOLLECTION:
 			text += "GEOMETRYCOLLECTION";
 			collection_is_typed = false;
 			break;
