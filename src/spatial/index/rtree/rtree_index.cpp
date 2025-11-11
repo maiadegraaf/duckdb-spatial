@@ -284,8 +284,12 @@ bool RTreeIndex::MergeIndexes(IndexLock &state, BoundIndex &other_index) {
 void RTreeIndex::Vacuum(IndexLock &state) {
 }
 
-string RTreeIndex::VerifyAndToString(IndexLock &state, const bool only_verify) {
-	throw NotImplementedException("RTreeIndex::VerifyAndToString() not implemented");
+void RTreeIndex::Verify(IndexLock &l) {
+	throw NotImplementedException("RTreeIndex::Verify() not implemented");
+}
+
+string RTreeIndex::ToString(IndexLock &l, bool display_ascii) {
+	throw NotImplementedException("RTreeIndex::ToString() not implemented");
 }
 
 void RTreeIndex::VerifyAllocations(IndexLock &state) {

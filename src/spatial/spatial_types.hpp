@@ -18,8 +18,9 @@ struct GeoTypes {
 	static LogicalType POLYGON_3D();
 	static LogicalType BOX_2D();
 	static LogicalType BOX_2DF();
-	static LogicalType GEOMETRY();
 	static LogicalType WKB_BLOB();
+
+	static LogicalType GEOMETRY();
 
 	static void Register(ExtensionLoader &loader);
 
