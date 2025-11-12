@@ -23,7 +23,6 @@ public:
 	static void Polygon2DToVarchar(Vector &source, Vector &result, idx_t count);
 	static void Polygon3DToVarchar(Vector &source, Vector &result, idx_t count);
 	static void Box2DToVarchar(Vector &source, Vector &result, idx_t count);
-	static void GeometryToVarchar(Vector &source, Vector &result, idx_t count);
 };
 
 } // namespace duckdb

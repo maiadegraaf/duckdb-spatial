@@ -1,7 +1,6 @@
 #include "spatial/geometry/bbox.hpp"
 #include "spatial/geometry/geometry_serialization.hpp"
 #include "spatial/geometry/sgl.hpp"
-#include "spatial/geometry/geometry_type.hpp"
 #include "spatial/modules/main/spatial_functions.hpp"
 #include "spatial/spatial_types.hpp"
 #include "spatial/util/function_builder.hpp"

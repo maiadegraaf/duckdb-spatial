@@ -1,5 +1,4 @@
 #include "spatial/operators/spatial_join_physical.hpp"
-#include "spatial/geometry/geometry_type.hpp"
 #include "spatial/geometry/sgl.hpp"
 #include "spatial/spatial_types.hpp"
 #include "spatial_join_logical.hpp"
@@ -13,6 +12,8 @@
 #include "duckdb/planner/expression/bound_reference_expression.hpp"
 #include "duckdb/planner/expression/bound_conjunction_expression.hpp"
 #include "duckdb/storage/buffer_manager.hpp"
+#include "spatial/geometry/geometry_serialization.hpp"
+#include "spatial/util/math.hpp"
 
 namespace duckdb {
 
@@ -627,7 +628,7 @@ SinkFinalizeType PhysicalSpatialJoin::Finalize(Pipeline &pipeline, Event &event,
 		gstate.collection->Gather(row_pointer_vector, sel, row_count, build_side_key_col, geom_vec, sel, nullptr);
 
 		// Get a pointer to what we just gathered
-		const auto geom_ptr = FlatVector::GetData<geometry_t>(geom_vec);
+		const auto geom_ptr = FlatVector::GetData<string_t>(geom_vec);
 		// Push the bounding boxes into the R-Tree
 		for (idx_t row_idx = 0; row_idx < row_count; row_idx++) {
 			if (!validity.RowIsValid(row_idx)) {
@@ -637,7 +638,7 @@ SinkFinalizeType PhysicalSpatialJoin::Finalize(Pipeline &pipeline, Event &event,
 
 			const auto &geom = geom_ptr[row_idx];
 			Box2D<float> bbox;
-			if (!geom.TryGetCachedBounds(bbox)) {
+			if (!Serde::TryGetBounds(geom, bbox)) {
 				// Skip empty geometries
 				continue;
 			}
@@ -819,11 +820,11 @@ OperatorResultType PhysicalSpatialJoin::ExecuteInternal(ExecutionContext &contex
 				continue;
 			}
 
-			const auto geom_ptr = UnifiedVectorFormat::GetData<geometry_t>(lstate.probe_side_key_vformat);
+			const auto geom_ptr = UnifiedVectorFormat::GetData<string_t>(lstate.probe_side_key_vformat);
 			const auto &geom = geom_ptr[geom_idx];
 
 			Box2D<float> bbox;
-			if (!geom.TryGetCachedBounds(bbox)) {
+			if (!Serde::TryGetBounds(geom, bbox)) {
 				lstate.input_index++;
 				continue;
 			}

@@ -1,10 +1,8 @@
 #include "spatial/modules/main/spatial_functions.hpp"
-#include "spatial/geometry/geometry_processor.hpp"
 #include "spatial/geometry/sgl.hpp"
 #include "spatial/geometry/geometry_serialization.hpp"
 #include "spatial/spatial_types.hpp"
 #include "spatial/util/math.hpp"
-#include "spatial/geometry/wkb_writer.hpp"
 
 #include "duckdb/common/error_data.hpp"
 #include "duckdb/common/operator/cast_operators.hpp"
@@ -80,57 +78,6 @@ string_t LocalState::Serialize(Vector &vector, const sgl::geometry &geom) {
 struct GeometryCasts {
 
 	//------------------------------------------------------------------------------------------------------------------
-	// GEOMETRY -> VARCHAR
-	//------------------------------------------------------------------------------------------------------------------
-	static bool ToVarcharCast(Vector &source, Vector &result, idx_t count, CastParameters &) {
-		CoreVectorOperations::GeometryToVarchar(source, result, count);
-		return true;
-	}
-
-	//------------------------------------------------------------------------------------------------------------------
-	// VARCHAR -> GEOMETRY
-	//------------------------------------------------------------------------------------------------------------------
-	static bool FromVarcharCast(Vector &source, Vector &result, idx_t count, CastParameters &parameters) {
-		auto &lstate = LocalState::ResetAndGet(parameters);
-		auto &alloc = lstate.GetAllocator();
-
-		sgl::wkt_reader reader(alloc);
-
-		auto success = true;
-
-		UnaryExecutor::ExecuteWithNulls<string_t, string_t>(
-		    source, result, count, [&](const string_t &wkt, ValidityMask &mask, idx_t row_idx) {
-			    const auto wkt_ptr = wkt.GetDataUnsafe();
-			    const auto wkt_len = wkt.GetSize();
-
-			    sgl::geometry geom;
-
-			    if (!reader.try_parse(geom, wkt_ptr, wkt_len)) {
-				    if (success) {
-					    success = false;
-					    const auto error = reader.get_error_message();
-					    HandleCastError::AssignError(error, parameters.error_message);
-				    }
-				    mask.SetInvalid(row_idx);
-				    return string_t {};
-			    }
-
-			    return lstate.Serialize(result, geom);
-		    });
-
-		return success;
-	}
-
-	//------------------------------------------------------------------------------------------------------------------
-	// GEOMETRY -> WKB_BLOB
-	//------------------------------------------------------------------------------------------------------------------
-	static bool ToWKBCast(Vector &source, Vector &result, idx_t count, CastParameters &) {
-		UnaryExecutor::Execute<string_t, string_t>(
-		    source, result, count, [&](const string_t &input) { return WKBWriter::Write(input, result); });
-		return true;
-	}
-
-	//------------------------------------------------------------------------------------------------------------------
 	// WKB_BLOB -> GEOMETRY
 	//------------------------------------------------------------------------------------------------------------------
 	static bool FromWKBCast(Vector &source, Vector &result, idx_t count, CastParameters &params) {
@@ -173,15 +120,8 @@ struct GeometryCasts {
 		const auto wkb_type = GeoTypes::WKB_BLOB();
 		const auto geom_type = LogicalType::GEOMETRY();
 
-		// VARCHAR -> Geometry is explicitly castable
-		loader.RegisterCastFunction(geom_type, LogicalType::VARCHAR, BoundCastInfo(ToVarcharCast), 1);
-
-		// Geometry -> VARCHAR is implicitly castable
-		loader.RegisterCastFunction(LogicalType::VARCHAR, geom_type,
-		                            BoundCastInfo(FromVarcharCast, nullptr, LocalState::InitCast));
-
 		// Geometry -> WKB is explicitly castable
-		loader.RegisterCastFunction(geom_type, wkb_type, BoundCastInfo(ToWKBCast));
+		// loader.RegisterCastFunction(geom_type, wkb_type, BoundCastInfo(ToWKBCast));
 
 		// Geometry -> BLOB is explicitly castable
 		loader.RegisterCastFunction(geom_type, LogicalType::BLOB, DefaultCasts::ReinterpretCast);
@@ -1185,208 +1125,6 @@ void CoreVectorOperations::Box2DToVarchar(Vector &source, Vector &result, idx_t 
 		return StringVector::AddString(result,
 		                               StringUtil::Format("BOX(%s, %s)", MathUtil::format_coord(box.a_val, box.b_val),
 		                                                  MathUtil::format_coord(box.c_val, box.d_val)));
-	});
-}
-
-//------------------------------------------------------------------------------
-// GEOMETRY -> VARCHAR
-//------------------------------------------------------------------------------
-namespace {
-class GeometryTextProcessor final : GeometryProcessor<void, bool> {
-private:
-	string text;
-
-public:
-	void OnVertexData(const VertexData &data) {
-		auto &dims = data.data;
-		auto &strides = data.stride;
-		auto count = data.count;
-
-		if (HasZ() && HasM()) {
-			for (uint32_t i = 0; i < count; i++) {
-				auto x = Load<double>(dims[0] + i * strides[0]);
-				auto y = Load<double>(dims[1] + i * strides[1]);
-				auto z = Load<double>(dims[2] + i * strides[2]);
-				auto m = Load<double>(dims[3] + i * strides[3]);
-				text += MathUtil::format_coord(x, y, z, m);
-				if (i < count - 1) {
-					text += ", ";
-				}
-			}
-		} else if (HasZ()) {
-			for (uint32_t i = 0; i < count; i++) {
-				auto x = Load<double>(dims[0] + i * strides[0]);
-				auto y = Load<double>(dims[1] + i * strides[1]);
-				auto zm = Load<double>(dims[2] + i * strides[2]);
-				text += MathUtil::format_coord(x, y, zm);
-				if (i < count - 1) {
-					text += ", ";
-				}
-			}
-		} else if (HasM()) {
-			for (uint32_t i = 0; i < count; i++) {
-				auto x = Load<double>(dims[0] + i * strides[0]);
-				auto y = Load<double>(dims[1] + i * strides[1]);
-				auto m = Load<double>(dims[3] + i * strides[3]);
-				text += MathUtil::format_coord(x, y, m);
-				if (i < count - 1) {
-					text += ", ";
-				}
-			}
-		} else {
-			for (uint32_t i = 0; i < count; i++) {
-				auto x = Load<double>(dims[0] + i * strides[0]);
-				auto y = Load<double>(dims[1] + i * strides[1]);
-				text += MathUtil::format_coord(x, y);
-
-				if (i < count - 1) {
-					text += ", ";
-				}
-			}
-		}
-	}
-
-	void ProcessPoint(const VertexData &data, bool in_typed_collection) override {
-		if (!in_typed_collection) {
-			text += "POINT";
-			if (HasZ() && HasM()) {
-				text += " ZM";
-			} else if (HasZ()) {
-				text += " Z";
-			} else if (HasM()) {
-				text += " M";
-			}
-			text += " ";
-		}
-
-		if (data.count == 0) {
-			text += "EMPTY";
-		} else if (in_typed_collection) {
-			OnVertexData(data);
-		} else {
-			text += "(";
-			OnVertexData(data);
-			text += ")";
-		}
-	}
-
-	void ProcessLineString(const VertexData &data, bool in_typed_collection) override {
-		if (!in_typed_collection) {
-			text += "LINESTRING";
-			if (HasZ() && HasM()) {
-				text += " ZM";
-			} else if (HasZ()) {
-				text += " Z";
-			} else if (HasM()) {
-				text += " M";
-			}
-			text += " ";
-		}
-
-		if (data.count == 0) {
-			text += "EMPTY";
-		} else {
-			text += "(";
-			OnVertexData(data);
-			text += ")";
-		}
-	}
-
-	void ProcessPolygon(PolygonState &state, bool in_typed_collection) override {
-		if (!in_typed_collection) {
-			text += "POLYGON";
-			if (HasZ() && HasM()) {
-				text += " ZM";
-			} else if (HasZ()) {
-				text += " Z";
-			} else if (HasM()) {
-				text += " M";
-			}
-			text += " ";
-		}
-
-		if (state.RingCount() == 0) {
-			text += "EMPTY";
-		} else {
-			text += "(";
-			bool first = true;
-			while (!state.IsDone()) {
-				if (!first) {
-					text += ", ";
-				}
-				first = false;
-				text += "(";
-				auto vertices = state.Next();
-				OnVertexData(vertices);
-				text += ")";
-			}
-			text += ")";
-		}
-	}
-
-	void ProcessCollection(CollectionState &state, bool) override {
-		bool collection_is_typed = false;
-		switch (CurrentType()) {
-		case LegacyGeometryType::MULTIPOINT:
-			text += "MULTIPOINT";
-			collection_is_typed = true;
-			break;
-		case LegacyGeometryType::MULTILINESTRING:
-			text += "MULTILINESTRING";
-			collection_is_typed = true;
-			break;
-		case LegacyGeometryType::MULTIPOLYGON:
-			text += "MULTIPOLYGON";
-			collection_is_typed = true;
-			break;
-		case LegacyGeometryType::GEOMETRYCOLLECTION:
-			text += "GEOMETRYCOLLECTION";
-			collection_is_typed = false;
-			break;
-		default:
-			throw InvalidInputException("Invalid geometry type");
-		}
-
-		if (HasZ() && HasM()) {
-			text += " ZM";
-		} else if (HasZ()) {
-			text += " Z";
-		} else if (HasM()) {
-			text += " M";
-		}
-
-		if (state.ItemCount() == 0) {
-			text += " EMPTY";
-		} else {
-			text += " (";
-			bool first = true;
-			while (!state.IsDone()) {
-				if (!first) {
-					text += ", ";
-				}
-				first = false;
-				state.Next(collection_is_typed);
-			}
-			text += ")";
-		}
-	}
-
-	virtual ~GeometryTextProcessor() = default;
-
-	const string &Execute(const geometry_t &geom) {
-		text.clear();
-		Process(geom, false);
-		return text;
-	}
-};
-
-} // namespace
-
-void CoreVectorOperations::GeometryToVarchar(Vector &source, Vector &result, idx_t count) {
-	GeometryTextProcessor processor;
-	UnaryExecutor::Execute<geometry_t, string_t>(source, result, count, [&](const geometry_t &input) {
-		const auto text = processor.Execute(input);
-		return StringVector::AddString(result, text);
 	});
 }
 

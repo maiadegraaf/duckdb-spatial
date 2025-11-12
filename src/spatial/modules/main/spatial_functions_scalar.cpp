@@ -1,8 +1,8 @@
 // Spatial
 #include "spatial/modules/main/spatial_functions.hpp"
 #include "spatial/geometry/geometry_serialization.hpp"
+#include "spatial/geometry/vertex.hpp"
 #include "spatial/geometry/sgl.hpp"
-#include "spatial/geometry/wkb_writer.hpp"
 #include "spatial/spatial_types.hpp"
 #include "spatial/util/binary_reader.hpp"
 #include "spatial/util/function_builder.hpp"
@@ -938,17 +938,6 @@ struct ST_AsText {
 	}
 
 	//------------------------------------------------------------------------------------------------------------------
-	// GEOMETRY
-	//------------------------------------------------------------------------------------------------------------------
-	// TODO: Move this to SGL once we have proper double formatting
-	static void ExecuteGeometry(DataChunk &args, ExpressionState &state, Vector &result) {
-		D_ASSERT(args.data.size() == 1);
-		auto count = args.size();
-		auto &input = args.data[0];
-		CoreVectorOperations::GeometryToVarchar(input, result, count);
-	}
-
-	//------------------------------------------------------------------------------------------------------------------
 	// Documentation
 	//------------------------------------------------------------------------------------------------------------------
 	static constexpr const char *DESCRIPTION = R"(
@@ -966,13 +955,6 @@ struct ST_AsText {
 	//------------------------------------------------------------------------------------------------------------------
 	static void Register(ExtensionLoader &loader) {
 		FunctionBuilder::RegisterScalar(loader, "ST_AsText", [](ScalarFunctionBuilder &func) {
-			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
-				variant.AddParameter("geom", LogicalType::GEOMETRY());
-				variant.SetReturnType(LogicalType::VARCHAR);
-
-				variant.SetFunction(ExecuteGeometry);
-			});
-
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("point", GeoTypes::POINT_2D());
 				variant.SetReturnType(LogicalType::VARCHAR);
@@ -1020,9 +1002,7 @@ struct ST_AsWKB {
 	// GEOMETRY
 	//------------------------------------------------------------------------------------------------------------------
 	static void Execute(DataChunk &args, ExpressionState &state, Vector &result) {
-
-		UnaryExecutor::Execute<string_t, string_t>(
-		    args.data[0], result, args.size(), [&](const string_t &input) { return WKBWriter::Write(input, result); });
+		return Geometry::ToBinary(args.data[0], result, args.size());
 	}
 
 	//------------------------------------------------------------------------------------------------------------------
@@ -1066,18 +1046,17 @@ struct ST_AsHEXWKB {
 	// GEOMETRY
 	//------------------------------------------------------------------------------------------------------------------
 	static void Execute(DataChunk &args, ExpressionState &state, Vector &result) {
-		vector<data_t> buffer;
 		UnaryExecutor::Execute<string_t, string_t>(args.data[0], result, args.size(), [&](const string_t &blob) {
-			buffer.clear();
+			auto size = blob.GetSize();
+			auto data = blob.GetData();
 
-			WKBWriter::Write(blob, buffer);
-
-			auto blob_size = buffer.size() * 2; // every byte is rendered as two characters
+			auto blob_size = size * 2; // every byte is rendered as two characters
 			auto blob_str = StringVector::EmptyString(result, blob_size);
 			auto blob_ptr = blob_str.GetDataWriteable();
 
 			idx_t str_idx = 0;
-			for (auto byte : buffer) {
+			for (idx_t i = 0; i < size; i++) {
+				auto byte = data[i];
 				auto byte_a = byte >> 4;
 				auto byte_b = byte & 0x0F;
 				blob_ptr[str_idx++] = Blob::HEX_TABLE[byte_a];
@@ -3256,7 +3235,7 @@ struct ST_Extent_Approx {
 
 		UnifiedVectorFormat input_vdata;
 		input.ToUnifiedFormat(count, input_vdata);
-		const auto input_data = UnifiedVectorFormat::GetData<geometry_t>(input_vdata);
+		const auto input_data = UnifiedVectorFormat::GetData<string_t>(input_vdata);
 
 		for (idx_t i = 0; i < count; i++) {
 			const auto row_idx = input_vdata.sel->get_index(i);
@@ -3265,7 +3244,7 @@ struct ST_Extent_Approx {
 
 				// Try to get the cached bounding box from the blob
 				Box2D<float> bbox;
-				if (blob.TryGetCachedBounds(bbox)) {
+				if (Serde::TryGetBounds(blob, bbox)) {
 					min_x_data[i] = bbox.min.x;
 					min_y_data[i] = bbox.min.y;
 					max_x_data[i] = bbox.max.x;
@@ -6128,12 +6107,12 @@ struct ST_Hilbert {
 	// GEOMETRY
 	//------------------------------------------------------------------------------------------------------------------
 	static void ExecuteGeometry(DataChunk &args, ExpressionState &state, Vector &result) {
-		UnaryExecutor::ExecuteWithNulls<geometry_t, uint32_t>(
+		UnaryExecutor::ExecuteWithNulls<string_t, uint32_t>(
 		    args.data[0], result, args.size(),
-		    [&](const geometry_t &geom, ValidityMask &mask, idx_t out_idx) -> uint32_t {
+		    [&](const string_t &geom, ValidityMask &mask, idx_t out_idx) -> uint32_t {
 			    // TODO: This is shit, dont rely on cached bounds
 			    Box2D<float> bounds;
-			    if (!geom.TryGetCachedBounds(bounds)) {
+			    if (!Serde::TryGetBounds(geom, bounds)) {
 				    mask.SetInvalid(out_idx);
 				    return 0;
 			    }
@@ -9342,10 +9321,10 @@ struct ST_MMin : VertexAggFunctionBase<ST_MMin, VertexMinAggOp> {
 	static constexpr auto ORDINATE = VertexOrdinate::M;
 };
 
-constexpr const char * ST_M::NAME;
-constexpr const char * ST_X::NAME;
-constexpr const char * ST_Y::NAME;
-constexpr const char * ST_Z::NAME;
+constexpr const char *ST_M::NAME;
+constexpr const char *ST_X::NAME;
+constexpr const char *ST_Y::NAME;
+constexpr const char *ST_Z::NAME;
 
 } // namespace
 

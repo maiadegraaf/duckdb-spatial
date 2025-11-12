@@ -139,6 +139,10 @@ struct vertex_xyzm {
 			return dummy;
 		}
 	}
+
+	bool all_nan() const {
+		return std::isnan(x) && std::isnan(y) && std::isnan(z) && std::isnan(m);
+	}
 };
 
 } // namespace sgl

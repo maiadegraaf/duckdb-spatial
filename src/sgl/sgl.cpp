@@ -2382,6 +2382,86 @@ bool ops::get_euclidean_distance(const geometry &lhs_geom, const geometry &rhs_g
 	return found;
 }
 
+// Visit all non-collection geometries
+template <class CALLBACK>
+void visit_leaf_pairs(const geometry &lhs, const geometry &rhs, CALLBACK &&callback) {
+	const auto lhs_root = lhs.get_parent();
+	auto lhs_part = &lhs;
+
+	while (true) {
+		switch (lhs_part->get_type()) {
+		case geometry_type::POINT:
+		case geometry_type::LINESTRING:
+		case geometry_type::POLYGON: {
+
+			const auto rhs_root = rhs.get_parent();
+			auto rhs_part = &rhs;
+
+			while (true) {
+				switch (rhs_part->get_type()) {
+				case geometry_type::POINT:
+				case geometry_type::LINESTRING:
+				case geometry_type::POLYGON: {
+					// Found a pair of leaf geometries
+					// If the callback returns true, we stop visiting
+					if (callback(*lhs_part, *rhs_part)) {
+						return;
+					}
+				} break;
+				case geometry_type::MULTI_POINT:
+				case geometry_type::MULTI_LINESTRING:
+				case geometry_type::MULTI_POLYGON:
+				case geometry_type::GEOMETRY_COLLECTION:
+					if (rhs_part->is_empty()) {
+						break;
+					}
+					rhs_part = rhs_part->get_first_part();
+					continue;
+				default:
+					break;
+				}
+
+				while (true) {
+					const auto parent = rhs_part->get_parent();
+					if (parent == rhs_root) {
+						break;
+					}
+					if (rhs_part != parent->get_last_part()) {
+						rhs_part = rhs_part->get_next();
+						break;
+					}
+					rhs_part = parent;
+				}
+			}
+
+		} break;
+		case geometry_type::MULTI_POINT:
+		case geometry_type::MULTI_LINESTRING:
+		case geometry_type::MULTI_POLYGON:
+		case geometry_type::GEOMETRY_COLLECTION:
+			if (lhs_part->is_empty()) {
+				break;
+			}
+			lhs_part = lhs_part->get_first_part();
+			continue;
+		default:
+			break;
+		}
+
+		while (true) {
+			const auto parent = lhs_part->get_parent();
+			if (parent == lhs_root) {
+				return;
+			}
+			if (lhs_part != parent->get_last_part()) {
+				lhs_part = lhs_part->get_next();
+				break;
+			}
+			lhs_part = parent;
+		}
+	}
+}
+
 } // namespace sgl
 
 //======================================================================================================================

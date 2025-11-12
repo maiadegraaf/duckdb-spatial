@@ -5,8 +5,8 @@
 #include "duckdb/execution/index/fixed_size_allocator.hpp"
 #include "duckdb/storage/table/scan_state.hpp"
 #include "duckdb/main/database.hpp"
+#include "spatial/geometry/geometry_serialization.hpp"
 
-#include "spatial/geometry/geometry_type.hpp"
 #include "spatial/index/rtree/rtree_module.hpp"
 #include "spatial/index/rtree/rtree_node.hpp"
 #include "spatial/index/rtree/rtree_scanner.hpp"
@@ -148,7 +148,7 @@ ErrorData RTreeIndex::Insert(IndexLock &lock, DataChunk &input, Vector &rowid_ve
 	input.Flatten();
 
 	auto &geom_vec = input.data[0];
-	const auto &geom_data = FlatVector::GetData<geometry_t>(geom_vec);
+	const auto &geom_data = FlatVector::GetData<string_t>(geom_vec);
 	const auto &rowid_data = FlatVector::GetData<row_t>(rowid_vec);
 
 	if (geom_data == nullptr || rowid_data == nullptr) {
@@ -167,7 +167,7 @@ ErrorData RTreeIndex::Insert(IndexLock &lock, DataChunk &input, Vector &rowid_ve
 		const auto rowid = rowid_data[i];
 
 		Box2D<float> bbox;
-		if (!geom_data[i].TryGetCachedBounds(bbox)) {
+		if (!Serde::TryGetBounds(geom_data[i], bbox)) {
 			valid_buffer[i] = false;
 			continue;
 		}
@@ -218,11 +218,11 @@ void RTreeIndex::Delete(IndexLock &lock, DataChunk &input, Vector &rowid_vec) {
 			continue;
 		}
 
-		auto &geom = UnifiedVectorFormat::GetData<geometry_t>(geom_format)[geom_idx];
+		auto &geom = UnifiedVectorFormat::GetData<string_t>(geom_format)[geom_idx];
 		auto &rowid = UnifiedVectorFormat::GetData<row_t>(rowid_format)[rowid_idx];
 
 		Box2D<float> approx_bounds;
-		if (!geom.TryGetCachedBounds(approx_bounds)) {
+		if (!Serde::TryGetBounds(geom, approx_bounds)) {
 			continue;
 		}
 

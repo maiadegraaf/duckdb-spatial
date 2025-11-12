@@ -19,12 +19,12 @@
 #include "duckdb/main/database.hpp"
 
 #include "spatial/geometry/bbox.hpp"
-#include "spatial/geometry/geometry_type.hpp"
 #include "spatial/index/rtree/rtree_index.hpp"
 #include "spatial/index/rtree/rtree_index_create_logical.hpp"
 #include "spatial/index/rtree/rtree_index_scan.hpp"
 #include "spatial/index/rtree/rtree_module.hpp"
 #include "spatial/spatial_types.hpp"
+#include "spatial/geometry/geometry_serialization.hpp"
 #include "spatial/util/math.hpp"
 
 namespace duckdb {
@@ -115,12 +115,8 @@ public:
 	}
 
 	static bool TryGetBoundingBox(const Value &value, Box2D<float> &bbox) {
-		const auto str = value.GetValueUnsafe<string_t>();
-		const geometry_t blob(str);
-		if (!blob.TryGetCachedBounds(bbox)) {
-			return false;
-		}
-		return true;
+		const auto blob = value.GetValueUnsafe<string_t>();
+		return Serde::TryGetBounds(blob, bbox) != 0;
 	}
 
 	static bool TryOptimize(Binder &binder, ClientContext &context, unique_ptr<LogicalOperator> &plan,
