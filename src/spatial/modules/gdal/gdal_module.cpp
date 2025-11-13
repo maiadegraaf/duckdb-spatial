@@ -1993,6 +1993,7 @@ struct ST_Write {
 	// Register
 	//------------------------------------------------------------------------------------------------------------------
 	static void Register(ExtensionLoader &loader) {
+		/*
 		CopyFunction info("GDAL");
 		info.copy_to_bind = Bind;
 		info.copy_to_initialize_local = InitLocal;
@@ -2002,6 +2003,7 @@ struct ST_Write {
 		info.copy_to_finalize = Finalize;
 		info.extension = "gdal";
 		loader.RegisterFunction(info);
+		*/
 	}
 };
 
@@ -2057,6 +2059,8 @@ void RegisterGDALModule(ExtensionLoader &loader) {
 			}
 		});
 	});
+
+	RegisterExtraFunction(loader);
 
 	ST_Read::Register(loader);
 	ST_Read_Meta::Register(loader);
