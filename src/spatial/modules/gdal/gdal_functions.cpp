@@ -16,6 +16,8 @@
 #include "duckdb/function/table/arrow.hpp"
 #include "duckdb/main/database.hpp"
 
+#include <ogr_srs_api.h>
+
 namespace duckdb {
 namespace {
 
@@ -24,32 +26,13 @@ namespace {
 //======================================================================================================================
 namespace gdal_read {
 
-class StringList {
-public:
-	void Add(const string &item) {
-		const auto cstr = new char[item.size() + 1];
-		strcpy(cstr, item.c_str());
-		items.insert(items.end() - 1, cstr);
-	}
-
-	char** Get() { return items.data(); }
-
-	~StringList() {
-		for (const auto &item : items) {
-			delete[] item;
-		}
-	}
-private:
-	vector<char*> items = { nullptr };
-};
-
 //----------------------------------------------------------------------------------------------------------------------
 // BIND
 //----------------------------------------------------------------------------------------------------------------------
 class BindData final : public TableFunctionData {
 public:
 	string file_path;
-	StringList layer_options;
+	CPLStringList layer_options;
 };
 
 auto Bind(ClientContext &ctx, TableFunctionBindInput &input, vector<LogicalType> &col_types, vector<string> &col_names)
@@ -60,8 +43,8 @@ auto Bind(ClientContext &ctx, TableFunctionBindInput &input, vector<LogicalType>
 	result->file_path = input.inputs[0].GetValue<string>();
 
 	// Set GDAL Arrow layer options
-	result->layer_options.Add(StringUtil::Format("MAX_FEATURES_IN_BATCH=%d", STANDARD_VECTOR_SIZE));
-	result->layer_options.Add("GEOMETRY_METADATA_ENCODING=GEOARROW");
+	result->layer_options.AddString(StringUtil::Format("MAX_FEATURES_IN_BATCH=%d", STANDARD_VECTOR_SIZE).c_str());
+	result->layer_options.AddString("GEOMETRY_METADATA_ENCODING=GEOARROW");
 
 	const auto dataset = GDALOpenEx(result->file_path.c_str(), GDAL_OF_VECTOR | GDAL_OF_READONLY, nullptr, nullptr, nullptr);
 	if (!dataset) {
@@ -81,7 +64,7 @@ auto Bind(ClientContext &ctx, TableFunctionBindInput &input, vector<LogicalType>
 	}
 
 	ArrowArrayStream stream;
-	if (!OGR_L_GetArrowStream(layer, &stream, result->layer_options.Get())) {
+	if (!OGR_L_GetArrowStream(layer, &stream, result->layer_options.List())) {
 		GDALClose(dataset);
 		throw IOException("Could not get GDAL Arrow stream at: %s", result->file_path);
 	}
@@ -109,6 +92,10 @@ auto Bind(ClientContext &ctx, TableFunctionBindInput &input, vector<LogicalType>
 	return std::move(result);
 }
 
+//----------------------------------------------------------------------------------------------------------------------
+// GLOBAL STATE
+//----------------------------------------------------------------------------------------------------------------------
+
 class GlobalState final : public GlobalTableFunctionState {
 public:
 
@@ -124,6 +111,7 @@ public:
 	}
 
 	GDALDatasetH dataset;
+	CPLStringList layer_options;
 	OGRLayerH layer;
 	ArrowArrayStream stream;
 	vector<unique_ptr<ArrowType>> col_types;
@@ -139,16 +127,17 @@ auto InitGlobal(ClientContext &context, TableFunctionInitInput &input) -> unique
 
 	auto result = make_uniq<GlobalState>();
 	result->dataset = dataset;
+	result->layer_options = bdata.layer_options;
 
 	// Get the first layer
 	result->layer = GDALDatasetGetLayer(dataset, 0);
 
-	StringList layer_options;
-	layer_options.Add(StringUtil::Format("MAX_FEATURES_IN_BATCH=%d", STANDARD_VECTOR_SIZE));
-	layer_options.Add("GEOMETRY_METADATA_ENCODING=GEOARROW");
+	CPLStringList layer_options;
+	layer_options.AddString(StringUtil::Format("MAX_FEATURES_IN_BATCH=%d", STANDARD_VECTOR_SIZE).data());
+	layer_options.AddString("GEOMETRY_METADATA_ENCODING=GEOARROW");
 
 	// Open the Arrow stream
-	if (!OGR_L_GetArrowStream(result->layer, &result->stream, layer_options.Get())) {
+	if (!OGR_L_GetArrowStream(result->layer, &result->stream, result->layer_options.List())) {
 		GDALClose(dataset);
 		throw IOException("Could not get GDAL Arrow stream at: foo");
 	}
@@ -169,6 +158,10 @@ auto InitGlobal(ClientContext &context, TableFunctionInitInput &input) -> unique
 	return std::move(result);
 }
 
+//----------------------------------------------------------------------------------------------------------------------
+// SCAN
+//----------------------------------------------------------------------------------------------------------------------
+
 void Scan(ClientContext &context, TableFunctionInput &input, DataChunk &output) {
 	auto &bdata = input.bind_data->Cast<BindData>();
 	auto &state = input.global_state->Cast<GlobalState>();
@@ -187,8 +180,9 @@ void Scan(ClientContext &context, TableFunctionInput &input, DataChunk &output) 
 
 		auto &arrow_type = *state.col_types[i];
 		auto array_state = ArrowArrayScanState(context);
+
 		// We need to make sure that our chunk will hold the ownership
-		array_state.owned_data = duckdb::make_shared_ptr<duckdb::ArrowArrayWrapper>();
+		array_state.owned_data = make_shared_ptr<ArrowArrayWrapper>();
 		array_state.owned_data->arrow_array = arrow_array;
 
 		// We set it to nullptr to effectively transfer the ownership
@@ -237,8 +231,10 @@ public:
 	string file_path;
 	string driver_name;
 	string layer_name;
-	vector<string> driver_options;
-	vector<string> layer_options;
+
+	CPLStringList driver_options;
+	CPLStringList layer_options;
+
 	string target_srs;
 	OGRwkbGeometryType geometry_type;
 
@@ -327,14 +323,14 @@ auto Bind(ClientContext &context, CopyFunctionBindInput &input, const vector<str
 
 		if (MatchOption("LAYER_CREATION_OPTIONS", option, true)) {
 			for (auto &val : option.second) {
-				result->layer_options.push_back(val.GetValue<string>());
+				result->layer_options.AddString(val.GetValue<string>().c_str());
 			}
 			continue;
 		}
 
 		if (MatchOption("DATASET_CREATION_OPTIONS", option, true)) {
 			for (auto &val : option.second) {
-				result->driver_options.push_back(val.GetValue<string>());
+				result->driver_options.AddString(val.GetValue<string>().c_str());
 			}
 			continue;
 		}
@@ -394,89 +390,86 @@ public:
 			GDALClose(dataset);
 			dataset = nullptr;
 		}
-
-		if (array.release) {
-			array.release(&array);
-			array.release = nullptr;
+		if (srs) {
+			OSRDestroySpatialReference(srs);
+			srs = nullptr;
 		}
 	}
 
-	void Open(const BindData &data) {
+	mutex lock;
+	GDALDatasetH dataset = nullptr;
+	OGRLayerH layer = nullptr;
+	OGRSpatialReferenceH srs = nullptr;
+};
 
-		const auto driver = GDALGetDriverByName(data.driver_name.c_str());
-		if (!driver) {
-			throw InvalidInputException("Could not find GDAL driver: " + data.driver_name);
-		}
+auto InitGlobal(ClientContext &context, FunctionData &bdata_p, const string &path) -> unique_ptr<GlobalFunctionData> {
+	auto &bdata = bdata_p.Cast<BindData>();
+	auto result = make_uniq<GlobalState>();
 
-		// Make CPL list for driver options
-		vector<const char*> cpl_driver_options;
-		for (auto &option : data.driver_options) {
-			cpl_driver_options.push_back(option.c_str());
-		}
-		cpl_driver_options.push_back(nullptr);
+	const auto driver = GDALGetDriverByName(bdata.driver_name.c_str());
+	if (!driver) {
+		throw InvalidInputException("Could not find GDAL driver: " + bdata.driver_name);
+	}
 
-		// Create Dataset
-		dataset = GDALCreate(driver, data.file_path.c_str(), 0, 0, 0, GDT_Unknown, nullptr);
-		if (!dataset) {
-			throw IOException("Could not create GDAL dataset at: " + data.file_path);
-		}
+	// Create Dataset
+	result->dataset = GDALCreate(driver, bdata.file_path.c_str(), 0, 0, 0, GDT_Unknown, bdata.driver_options);
+	if (!result->dataset) {
+		throw IOException("Could not create GDAL dataset at: " + bdata.file_path);
+	}
 
-		// Make CPL list for layer options
-		vector<const char*> cpl_layer_options;
-		for (auto &option : data.layer_options) {
-			cpl_layer_options.push_back(option.c_str());
-		}
-		cpl_layer_options.push_back(nullptr);
+	if (!bdata.target_srs.empty()) {
+		// Make a new spatial reference object, and set it from the user input
+		result->srs = OSRNewSpatialReference(nullptr);
+		OSRSetFromUserInput(result->srs, bdata.target_srs.c_str());
+	}
 
-		// Create Layer
-		layer = GDALDatasetCreateLayer(dataset, data.driver_name.c_str(), nullptr, wkbUnknown, nullptr);
-		if (!layer) {
-			throw IOException("Could not create GDAL layer in dataset at: " + data.file_path);
-		}
+	// Create Layer
+	result->layer = GDALDatasetCreateLayer(
+		result->dataset,
+		bdata.driver_name.c_str(),
+		result->srs,
+		bdata.geometry_type,
+		bdata.layer_options);
 
-		// Create fields for all children
-		auto geometry_field_count = 0;
-		for (auto i = 0; i < data.schema.n_children; i++) {
-			const auto child_schema = data.schema.children[i];
+	if (!result->layer) {
+		throw IOException("Could not create GDAL layer in dataset at: " + bdata.file_path);
+	}
 
-			// Check if this is a geometry field
-			if (child_schema->metadata != nullptr) {
-				// TODO: Look for arrow metadata!
-				geometry_field_count++;
-				if (geometry_field_count > 1) {
-					throw NotImplementedException("Multiple geometry fields not supported yet");
-				}
-			} else {
-				// Register normal attribute
-				if (!OGR_L_CreateFieldFromArrowSchema(layer, child_schema, nullptr)) {
-					throw IOException("Could not create field in GDAL layer for column: " + string(child_schema->name));
-				}
+	// Create fields for all children
+	auto geometry_field_count = 0;
+	for (auto i = 0; i < bdata.schema.n_children; i++) {
+		const auto child_schema = bdata.schema.children[i];
+
+		// Check if this is a geometry field
+		if (child_schema->metadata != nullptr) {
+			// TODO: Look for arrow metadata!
+			geometry_field_count++;
+			if (geometry_field_count > 1) {
+				throw NotImplementedException("Multiple geometry fields not supported yet");
+			}
+		} else {
+			// Register normal attribute
+			if (!OGR_L_CreateFieldFromArrowSchema(result->layer, child_schema, nullptr)) {
+				throw IOException("Could not create field in GDAL layer for column: " + string(child_schema->name));
 			}
 		}
 	}
-public:
-	mutex lock;
-	GDALDatasetH dataset;
-	OGRLayerH layer;
-	ArrowArray array;
-};
-
-auto InitGlobal(ClientContext &context, FunctionData &bdata, const string &path) -> unique_ptr<GlobalFunctionData> {
-	auto &bind_data = bdata.Cast<BindData>();
-	auto result = make_uniq<GlobalState>();
-
-	result->Open(bind_data);
 
 	return std::move(result);
 }
-
 
 //----------------------------------------------------------------------------------------------------------------------
 // Local State
 //----------------------------------------------------------------------------------------------------------------------
 class LocalState final : public LocalFunctionData {
 public:
-	// No-op, we don't need any local state for now
+	~LocalState() override {
+		if (array.release) {
+			array.release(&array);
+			array.release = nullptr;
+		}
+	}
+	ArrowArray array;
 };
 
 auto InitLocal(ExecutionContext &context, FunctionData &bind_data) -> unique_ptr<LocalFunctionData> {
@@ -492,16 +485,24 @@ void Sink(ExecutionContext &context, FunctionData &bdata_p, GlobalFunctionData &
 
 	const auto &bdata = bdata_p.Cast<BindData>();
 	auto &gstate = gstate_p.Cast<GlobalState>();
+	auto &lstate = lstate_p.Cast<LocalState>();
 
-	// Lock
-	lock_guard<mutex> guard(gstate.lock);
-
-	auto &arrow_array = gstate.array;
+	auto &arrow_array = lstate.array;
 	auto &arrow_schema = bdata.schema;
 
+	// Convert to Arrow array
 	ArrowConverter::ToArrowArray(input, &arrow_array, bdata.props, bdata.extension_type_cast);
-	OGR_L_WriteArrowBatch(gstate.layer, &arrow_schema, &arrow_array, nullptr);
 
+	// Sink the Arrow array into GDAL
+	{
+		// Lock
+		lock_guard<mutex> guard(gstate.lock);
+
+		// Sink into GDAL
+		OGR_L_WriteArrowBatch(gstate.layer, &arrow_schema, &arrow_array, nullptr);
+	}
+
+	// Release the array
 	if (arrow_array.release) {
 		arrow_array.release(&arrow_array);
 		arrow_array.release = nullptr;
@@ -513,14 +514,28 @@ void Sink(ExecutionContext &context, FunctionData &bdata_p, GlobalFunctionData &
 //----------------------------------------------------------------------------------------------------------------------
 void Combine(ExecutionContext &context, FunctionData &bind_data, GlobalFunctionData &gstate,
 						LocalFunctionData &lstate) {
-
+	// Nothing to do, we don't have any local state that needs to be merged
 }
 
 //----------------------------------------------------------------------------------------------------------------------
 // Finalize
 //----------------------------------------------------------------------------------------------------------------------
-void Finalize(ClientContext &context, FunctionData &bind_data, GlobalFunctionData &gstate) {
+void Finalize(ClientContext &context, FunctionData &bind_data, GlobalFunctionData &gstate_p) {
+	auto &gstate = gstate_p.Cast<GlobalState>();
 
+	// Flush and close the dataset
+	GDALFlushCache(gstate.dataset);
+	GDALClose(gstate.dataset);
+	gstate.dataset = nullptr;
+}
+
+CopyFunctionExecutionMode Mode(bool preserve_insertion_order, bool use_batch_index) {
+	// Parallel writes have limited utility since we still lock on each write to GDAL layer
+	// But in theory we still benefit from the parallel conversion to Arrow arrays, and this also allows
+	// the rest of the pipeline to be parallelized if we don't care about insertion order.
+	return preserve_insertion_order
+		? CopyFunctionExecutionMode::REGULAR_COPY_TO_FILE
+		: CopyFunctionExecutionMode::PARALLEL_COPY_TO_FILE;
 }
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -535,6 +550,7 @@ void Register(ExtensionLoader &loader) {
 	info.copy_to_sink = Sink;
 	info.copy_to_combine = Combine;
 	info.copy_to_finalize = Finalize;
+	info.execution_mode = Mode;
 	info.extension = "gdal";
 
 	loader.RegisterFunction(info);

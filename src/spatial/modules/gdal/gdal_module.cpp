@@ -665,6 +665,8 @@ struct ST_Read : ArrowTableFunction {
 			result->layer_creation_options.AddString(str.c_str());
 		}
 
+		result->layer_creation_options.AddString("GEOMETRY_METADATA_ENCODING=GEOARROW");
+
 		// Get the schema for the selected layer
 		auto layer = dataset->GetLayer(result->layer_idx);
 
