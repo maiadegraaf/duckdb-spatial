@@ -1020,13 +1020,6 @@ struct ST_AsWKB {
 	//------------------------------------------------------------------------------------------------------------------
 	static void Register(ExtensionLoader &loader) {
 		FunctionBuilder::RegisterScalar(loader, "ST_AsWKB", [](ScalarFunctionBuilder &func) {
-			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
-				variant.AddParameter("geom", LogicalType::GEOMETRY());
-				variant.SetReturnType(GeoTypes::WKB_BLOB());
-
-				variant.SetFunction(Execute);
-			});
-
 			func.SetDescription(DESCRIPTION);
 			func.SetExample(EXAMPLE);
 
@@ -1047,18 +1040,18 @@ struct ST_AsHEXWKB {
 	//------------------------------------------------------------------------------------------------------------------
 	static void Execute(DataChunk &args, ExpressionState &state, Vector &result) {
 		UnaryExecutor::Execute<string_t, string_t>(args.data[0], result, args.size(), [&](const string_t &blob) {
-			auto size = blob.GetSize();
-			auto data = blob.GetData();
+			const auto size = blob.GetSize();
+			const auto data = const_data_ptr_cast(blob.GetData());
 
 			auto blob_size = size * 2; // every byte is rendered as two characters
 			auto blob_str = StringVector::EmptyString(result, blob_size);
-			auto blob_ptr = blob_str.GetDataWriteable();
+			auto blob_ptr =  blob_str.GetDataWriteable();
 
 			idx_t str_idx = 0;
 			for (idx_t i = 0; i < size; i++) {
-				auto byte = data[i];
-				auto byte_a = byte >> 4;
-				auto byte_b = byte & 0x0F;
+				const auto byte = data[i];
+				const auto byte_a = byte >> 4;
+				const auto byte_b = byte & 0x0F;
 				blob_ptr[str_idx++] = Blob::HEX_TABLE[byte_a];
 				blob_ptr[str_idx++] = Blob::HEX_TABLE[byte_b];
 			}
@@ -3114,66 +3107,6 @@ struct ST_Extent {
 	}
 
 	//------------------------------------------------------------------------------------------------------------------
-	// Execute (WKB)
-	//------------------------------------------------------------------------------------------------------------------
-	static void ExecuteWKB(DataChunk &args, ExpressionState &state, Vector &result) {
-		const auto count = args.size();
-		auto &input = args.data[0];
-
-		UnifiedVectorFormat input_vdata;
-		input.ToUnifiedFormat(count, input_vdata);
-
-		const auto &struct_vec = StructVector::GetEntries(result);
-		const auto min_x_data = FlatVector::GetData<double>(*struct_vec[0]);
-		const auto min_y_data = FlatVector::GetData<double>(*struct_vec[1]);
-		const auto max_x_data = FlatVector::GetData<double>(*struct_vec[2]);
-		const auto max_y_data = FlatVector::GetData<double>(*struct_vec[3]);
-
-		auto &lstate = LocalState::ResetAndGet(state);
-
-		sgl::wkb_reader reader(lstate.GetAllocator());
-		reader.set_allow_mixed_zm(true);
-		reader.set_nan_as_empty(true);
-
-		for (idx_t out_idx = 0; out_idx < count; out_idx++) {
-			const auto row_idx = input_vdata.sel->get_index(out_idx);
-
-			if (!input_vdata.validity.RowIsValid(row_idx)) {
-				FlatVector::SetNull(result, out_idx, true);
-				continue;
-			}
-
-			const auto &blob = UnifiedVectorFormat::GetData<string_t>(input_vdata)[row_idx];
-
-			const auto wkb_buf = blob.GetDataUnsafe();
-			const auto wkb_len = blob.GetSize();
-
-			sgl::extent_xy bbox = sgl::extent_xy::smallest();
-			size_t vertex_count = 0;
-			if (!reader.try_parse_stats(bbox, vertex_count, wkb_buf, wkb_len)) {
-				const auto error = reader.get_error_message();
-				throw InvalidInputException("Failed to parse WKB: %s", error);
-			}
-
-			if (vertex_count == 0) {
-				// no vertices -> no extent -> return null
-				FlatVector::SetNull(result, out_idx, true);
-				continue;
-			}
-
-			// Else, write the bounding box
-			min_x_data[out_idx] = bbox.min.x;
-			min_y_data[out_idx] = bbox.min.y;
-			max_x_data[out_idx] = bbox.max.x;
-			max_y_data[out_idx] = bbox.max.y;
-		}
-
-		if (args.AllConstant()) {
-			result.SetVectorType(VectorType::CONSTANT_VECTOR);
-		}
-	}
-
-	//------------------------------------------------------------------------------------------------------------------
 	// Documentation
 	//------------------------------------------------------------------------------------------------------------------
 	static constexpr auto DESCRIPTION = R"(
@@ -3194,14 +3127,6 @@ struct ST_Extent {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
-			});
-
-			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
-				variant.AddParameter("wkb", GeoTypes::WKB_BLOB());
-				variant.SetReturnType(GeoTypes::BOX_2D());
-
-				variant.SetFunction(ExecuteWKB);
-				variant.SetInit(LocalState::Init);
 			});
 
 			func.SetDescription(DESCRIPTION);
@@ -4034,28 +3959,6 @@ struct ST_GeometryType {
 	}
 
 	//------------------------------------------------------------------------------------------------------------------
-	// WKB
-	//------------------------------------------------------------------------------------------------------------------
-	static void ExecuteWKB(DataChunk &args, ExpressionState &state, Vector &result) {
-
-		UnaryExecutor::Execute<string_t, uint8_t>(args.data[0], result, args.size(), [&](const string_t &blob) {
-			BinaryReader cursor(blob.GetData(), blob.GetSize());
-
-			const auto le = cursor.Read<uint8_t>();
-			const auto type = le ? cursor.Read<uint32_t>() : cursor.ReadBE<uint32_t>();
-			const auto normalized_type = (type & 0xffff) % 1000;
-
-			if (normalized_type == 0 || normalized_type > 7) {
-				return LEGACY_UNKNOWN_TYPE;
-			}
-
-			// Return the geometry type
-			// Subtract 1 since the WKB type is 1-indexed
-			return static_cast<uint8_t>(normalized_type - 1);
-		});
-	}
-
-	//------------------------------------------------------------------------------------------------------------------
 	// Documentation
 	//------------------------------------------------------------------------------------------------------------------
 	static constexpr auto DESCRIPTION = R"(
@@ -4104,14 +4007,6 @@ struct ST_GeometryType {
 
 				variant.SetBind(Bind);
 				variant.SetFunction(ExecutePolygon);
-			});
-
-			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
-				variant.AddParameter("wkb", GeoTypes::WKB_BLOB());
-				variant.SetReturnType(LogicalTypeId::ANY);
-
-				variant.SetBind(Bind);
-				variant.SetFunction(ExecuteWKB);
 			});
 
 			func.SetDescription(DESCRIPTION);
@@ -5041,14 +4936,6 @@ struct ST_GeomFromWKB {
 	static void Register(ExtensionLoader &loader) {
 		FunctionBuilder::RegisterScalar(loader, "ST_Point2DFromWKB", [](ScalarFunctionBuilder &builder) {
 			builder.AddVariant([](ScalarFunctionVariantBuilder &variant) {
-				variant.AddParameter("wkb", GeoTypes::WKB_BLOB());
-				variant.SetReturnType(GeoTypes::POINT_2D());
-
-				variant.SetInit(LocalState::Init);
-				variant.SetFunction(ExecutePoint);
-			});
-
-			builder.AddVariant([](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("blob", LogicalType::BLOB);
 				variant.SetReturnType(GeoTypes::POINT_2D());
 
@@ -5063,14 +4950,6 @@ struct ST_GeomFromWKB {
 		});
 
 		FunctionBuilder::RegisterScalar(loader, "ST_LineString2DFromWKB", [](ScalarFunctionBuilder &builder) {
-			builder.AddVariant([](ScalarFunctionVariantBuilder &variant) {
-				variant.AddParameter("wkb", GeoTypes::WKB_BLOB());
-				variant.SetReturnType(GeoTypes::LINESTRING_2D());
-
-				variant.SetInit(LocalState::Init);
-				variant.SetFunction(ExecuteLineString);
-			});
-
 			builder.AddVariant([](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("blob", LogicalType::BLOB);
 				variant.SetReturnType(GeoTypes::LINESTRING_2D());
@@ -5087,13 +4966,6 @@ struct ST_GeomFromWKB {
 
 		FunctionBuilder::RegisterScalar(loader, "ST_Polygon2DFromWKB", [](ScalarFunctionBuilder &builder) {
 			builder.AddVariant([](ScalarFunctionVariantBuilder &variant) {
-				variant.AddParameter("wkb", GeoTypes::WKB_BLOB());
-				variant.SetReturnType(GeoTypes::POLYGON_2D());
-
-				variant.SetInit(LocalState::Init);
-				variant.SetFunction(ExecutePolygon);
-			});
-			builder.AddVariant([](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("blob", LogicalType::BLOB);
 				variant.SetReturnType(GeoTypes::POLYGON_2D());
 
@@ -5108,14 +4980,6 @@ struct ST_GeomFromWKB {
 		});
 
 		FunctionBuilder::RegisterScalar(loader, "ST_GeomFromWKB", [](ScalarFunctionBuilder &builder) {
-			builder.AddVariant([](ScalarFunctionVariantBuilder &variant) {
-				variant.AddParameter("wkb", GeoTypes::WKB_BLOB());
-				variant.SetReturnType(LogicalType::GEOMETRY());
-
-				variant.SetInit(LocalState::Init);
-				variant.SetFunction(ExecuteGeometry);
-			});
-
 			builder.AddVariant([](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("blob", LogicalType::BLOB);
 				variant.SetReturnType(LogicalType::GEOMETRY());
@@ -5150,22 +5014,6 @@ struct ST_HasZ {
 			lstate.Deserialize(blob, geom);
 
 			return geom.has_z();
-		});
-	}
-
-	//------------------------------------------------------------------------------------------------------------------
-	// WKB
-	//------------------------------------------------------------------------------------------------------------------
-	static void ExecuteWKB(DataChunk &args, ExpressionState &state, Vector &result) {
-		UnaryExecutor::Execute<string_t, bool>(args.data[0], result, args.size(), [](const string_t &wkb) {
-			BinaryReader cursor(wkb.GetData(), wkb.GetSize());
-
-			const auto le = cursor.Read<uint8_t>();
-			const auto type = le ? cursor.Read<uint32_t>() : cursor.ReadBE<uint32_t>();
-
-			// Check for ISO WKB and EWKB Z flag;
-			const auto flags = (type & 0xffff) / 1000;
-			return flags == 1 || flags == 3 || ((type & 0x80000000) != 0);
 		});
 	}
 
@@ -5209,13 +5057,6 @@ struct ST_HasZ {
 				variant.SetFunction(ExecuteGeometry);
 			});
 
-			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
-				variant.AddParameter("wkb", GeoTypes::WKB_BLOB());
-				variant.SetReturnType(LogicalType::BOOLEAN);
-
-				variant.SetFunction(ExecuteWKB);
-			});
-
 			func.SetDescription(DESCRIPTION);
 			func.SetExample(EXAMPLE);
 
@@ -5243,22 +5084,6 @@ struct ST_HasM {
 			lstate.Deserialize(blob, geom);
 
 			return geom.has_m();
-		});
-	}
-
-	//------------------------------------------------------------------------------------------------------------------
-	// WKB_BLOB
-	//------------------------------------------------------------------------------------------------------------------
-	static void ExecuteWKB(DataChunk &args, ExpressionState &state, Vector &result) {
-		UnaryExecutor::Execute<string_t, bool>(args.data[0], result, args.size(), [](const string_t &wkb) {
-			BinaryReader cursor(wkb.GetData(), wkb.GetSize());
-
-			const auto le = cursor.Read<uint8_t>();
-			const auto type = le ? cursor.Read<uint32_t>() : cursor.ReadBE<uint32_t>();
-
-			// Check for ISO WKB and EWKB M flag;
-			const auto flags = (type & 0xffff) / 1000;
-			return flags == 2 || flags == 3 || ((type & 0x40000000) != 0);
 		});
 	}
 
@@ -5300,13 +5125,6 @@ struct ST_HasM {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(ExecuteGeometry);
-			});
-
-			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
-				variant.AddParameter("wkb", GeoTypes::WKB_BLOB());
-				variant.SetReturnType(LogicalType::BOOLEAN);
-
-				variant.SetFunction(ExecuteWKB);
 			});
 
 			func.SetDescription(DESCRIPTION);
@@ -5857,34 +5675,6 @@ struct ST_ZMFlag {
 	}
 
 	//------------------------------------------------------------------------------------------------------------------
-	// WKB
-	//------------------------------------------------------------------------------------------------------------------
-	static void ExecuteWKB(DataChunk &args, ExpressionState &state, Vector &result) {
-		UnaryExecutor::Execute<string_t, uint8_t>(args.data[0], result, args.size(), [](const string_t &wkb) {
-			BinaryReader cursor(wkb.GetData(), wkb.GetSize());
-
-			const auto le = cursor.Read<uint8_t>();
-			const auto type = le ? cursor.Read<uint32_t>() : cursor.ReadBE<uint32_t>();
-
-			// Check for ISO WKB and EWKB Z and M flags
-			const uint32_t iso_wkb_props = (type & 0xffff) / 1000;
-			const auto has_z = (iso_wkb_props == 1) || (iso_wkb_props == 3) || ((type & 0x80000000) != 0);
-			const auto has_m = (iso_wkb_props == 2) || (iso_wkb_props == 3) || ((type & 0x40000000) != 0);
-
-			if (has_z && has_m) {
-				return 3;
-			}
-			if (has_z) {
-				return 2;
-			}
-			if (has_m) {
-				return 1;
-			}
-			return 0;
-		});
-	}
-
-	//------------------------------------------------------------------------------------------------------------------
 	// Documentation
 	//------------------------------------------------------------------------------------------------------------------
 	static constexpr auto DESCRIPTION = R"(
@@ -5928,13 +5718,6 @@ struct ST_ZMFlag {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(ExecuteGeometry);
-			});
-
-			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
-				variant.AddParameter("wkb", GeoTypes::WKB_BLOB());
-				variant.SetReturnType(LogicalType::UTINYINT);
-
-				variant.SetFunction(ExecuteWKB);
 			});
 
 			func.SetDescription(DESCRIPTION);
@@ -9349,7 +9132,7 @@ void RegisterSpatialScalarFunctions(ExtensionLoader &loader) {
 	ST_Area::Register(loader);
 	ST_AsGeoJSON::Register(loader);
 	ST_AsText::Register(loader);
-	ST_AsWKB::Register(loader);
+	// ST_AsWKB::Register(loader);
 	ST_AsHEXWKB::Register(loader);
 	ST_AsSVG::Register(loader);
 	ST_Azimuth::Register(loader);

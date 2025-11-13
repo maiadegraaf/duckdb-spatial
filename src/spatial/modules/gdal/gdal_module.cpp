@@ -630,7 +630,7 @@ struct ST_Read : ArrowTableFunction {
 				result->spatial_filter = make_uniq<RectangleSpatialFilter>(minx, miny, maxx, maxy);
 			}
 
-			if (loption == "spatial_filter" && kv.second.type() == GeoTypes::WKB_BLOB()) {
+			if (loption == "spatial_filter" && kv.second.type() == LogicalType::GEOMETRY()) {
 				if (result->spatial_filter) {
 					throw BinderException("Only one spatial filter can be specified");
 				}
@@ -725,7 +725,7 @@ struct ST_Read : ArrowTableFunction {
 				result->arrow_table.AddColumn(col_idx, std::move(arrow_type), column_name);
 
 				if (result->keep_wkb) {
-					return_types.emplace_back(GeoTypes::WKB_BLOB());
+					return_types.emplace_back(LogicalType::BLOB);
 				} else {
 					return_types.emplace_back(LogicalType::GEOMETRY());
 					if (column_name == "wkb_geometry") {
@@ -1090,7 +1090,7 @@ struct ST_Read : ArrowTableFunction {
 		func.named_parameters["allowed_drivers"] = LogicalType::LIST(LogicalType::VARCHAR);
 		func.named_parameters["sibling_files"] = LogicalType::LIST(LogicalType::VARCHAR);
 		func.named_parameters["spatial_filter_box"] = GeoTypes::BOX_2D();
-		func.named_parameters["spatial_filter"] = GeoTypes::WKB_BLOB();
+		func.named_parameters["spatial_filter"] = LogicalType::GEOMETRY();
 		func.named_parameters["layer"] = LogicalType::VARCHAR;
 		func.named_parameters["sequential_layer_scan"] = LogicalType::BOOLEAN;
 		func.named_parameters["max_batch_size"] = LogicalType::INTEGER;
@@ -1615,7 +1615,7 @@ struct ST_Write {
 	};
 
 	static bool IsGeometryType(const LogicalType &type) {
-		return type == GeoTypes::WKB_BLOB() || type == GeoTypes::POINT_2D() || type == LogicalType::GEOMETRY();
+		return type == GeoTypes::POINT_2D() || type == LogicalType::GEOMETRY();
 	}
 
 	static unique_ptr<OGRFieldDefn> OGRFieldTypeFromLogicalType(const string &name, const LogicalType &type) {
@@ -1782,19 +1782,6 @@ struct ST_Write {
 	                                                 ArenaAllocator &arena) {
 		if (value.IsNull()) {
 			return nullptr;
-		}
-
-		if (type == GeoTypes::WKB_BLOB()) {
-			const auto str = value.GetValueUnsafe<string_t>();
-			OGRGeometry *ptr;
-			size_t consumed;
-			const auto ok = OGRGeometryFactory::createFromWkb(str.GetDataUnsafe(), nullptr, &ptr, str.GetSize(),
-			                                                  wkbVariantIso, consumed);
-
-			if (ok != OGRERR_NONE) {
-				throw IOException("Could not parse WKB");
-			}
-			return OGRGeometryUniquePtr(ptr);
 		}
 
 		if (type == LogicalType::GEOMETRY()) {

@@ -18,7 +18,6 @@ struct GeoTypes {
 	static LogicalType POLYGON_3D();
 	static LogicalType BOX_2D();
 	static LogicalType BOX_2DF();
-	static LogicalType WKB_BLOB();
 
 	// Old geometry type (pre v1.5)
 	static LogicalType LEGACY_GEOMETRY();

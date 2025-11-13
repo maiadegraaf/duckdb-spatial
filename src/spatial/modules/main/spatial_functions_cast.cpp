@@ -117,7 +117,6 @@ struct GeometryCasts {
 	// Register
 	//------------------------------------------------------------------------------------------------------------------
 	static void Register(ExtensionLoader &loader) {
-		const auto wkb_type = GeoTypes::WKB_BLOB();
 		const auto geom_type = LogicalType::GEOMETRY();
 
 		// Geometry -> WKB is explicitly castable
@@ -125,12 +124,6 @@ struct GeometryCasts {
 
 		// Geometry -> BLOB is explicitly castable
 		loader.RegisterCastFunction(geom_type, LogicalType::BLOB, DefaultCasts::ReinterpretCast);
-
-		// WKB -> Geometry is explicitly castable
-		loader.RegisterCastFunction(wkb_type, geom_type, BoundCastInfo(FromWKBCast, nullptr, LocalState::InitCast));
-
-		// WKB -> BLOB is implicitly castable
-		loader.RegisterCastFunction(wkb_type, LogicalType::BLOB, DefaultCasts::ReinterpretCast, 1);
 	}
 };
 
