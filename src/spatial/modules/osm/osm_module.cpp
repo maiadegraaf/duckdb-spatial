@@ -21,7 +21,7 @@ namespace {
 
 namespace pz = protozero;
 
-static int32_t ReadInt32BigEndian(data_ptr_t ptr) {
+int32_t ReadInt32BigEndian(data_ptr_t ptr) {
 	return (ptr[0] << 24) | (ptr[1] << 16) | (ptr[2] << 8) | ptr[3];
 }
 
@@ -36,7 +36,7 @@ struct BindData final : TableFunctionData {
 	}
 };
 
-static unique_ptr<FunctionData> Bind(ClientContext &context, TableFunctionBindInput &input,
+unique_ptr<FunctionData> Bind(ClientContext &context, TableFunctionBindInput &input,
                                      vector<LogicalType> &return_types, vector<string> &names) {
 
 	// Create an enum type for all osm kinds
@@ -113,7 +113,7 @@ struct FileBlock {
 	}
 };
 
-static unique_ptr<FileBlock> DecompressBlob(ClientContext &context, OsmBlob &blob) {
+unique_ptr<FileBlock> DecompressBlob(ClientContext &context, OsmBlob &blob) {
 
 	auto &buffer_manager = BufferManager::GetBufferManager(context);
 	pz::pbf_reader reader(reinterpret_cast<const char *>(blob.data.get()), blob.size);
@@ -189,16 +189,23 @@ public:
 		//    serialized Blob message (size is given in the header)
 
 		// Read the length of the BlobHeader
-		int32_t header_length_be = 0;
-		handle->Read((data_ptr_t)&header_length_be, sizeof(int32_t), offset);
+		char header_length_be[4];
+		handle->Read(header_length_be, sizeof(int32_t), offset);
 		offset += sizeof(int32_t);
-		int32_t header_length = ReadInt32BigEndian((data_ptr_t)&header_length_be);
+
+		const auto header_length = ReadInt32BigEndian(data_ptr_cast(header_length_be));
+
+		// Sanity check
+		if (offset + header_length > file_size) {
+			throw ParserException("Unexpected end of file when reading BlobHeader");
+		}
 
 		// Read the BlobHeader
 		auto header_buffer = buffer_manager.GetBufferAllocator().Allocate(header_length);
 		handle->Read(header_buffer.get(), header_length, offset);
+		offset += header_length;
 
-		pz::pbf_reader reader((const char *)header_buffer.get(), header_length);
+		pz::pbf_reader reader(char_ptr_cast(header_buffer.get()), header_length);
 
 		// 1 - type of the blob
 		reader.next(1);
@@ -215,21 +222,25 @@ public:
 		reader.next(3);
 		auto blob_length = reader.get_int32(); // size of the next blob
 
-		offset += header_length;
+
+		// Sanity check
+		if (offset + blob_length > file_size) {
+			throw ParserException("Unexpected end of file when reading Blob");
+		}
 
 		// Read the Blob
 		auto blob_buffer = buffer_manager.GetBufferAllocator().Allocate(blob_length);
 		handle->Read(blob_buffer.get(), blob_length, offset);
-
 		offset += blob_length;
+
 		bytes_read = offset;
 
 		return make_uniq<OsmBlob>(type, std::move(blob_buffer), blob_length, blob_index++);
 	}
 };
 
-static unique_ptr<GlobalTableFunctionState> InitGlobal(ClientContext &context, TableFunctionInitInput &input) {
-	auto &bind_data = (BindData &)*input.bind_data;
+unique_ptr<GlobalTableFunctionState> InitGlobal(ClientContext &context, TableFunctionInitInput &input) {
+	auto &bind_data = input.bind_data->Cast<BindData>();
 
 	auto &fs = FileSystem::GetFileSystem(context);
 	auto file_name = bind_data.file_name;
@@ -272,7 +283,7 @@ struct LocalState final : LocalTableFunctionState {
 		lat_offset = 0;
 		lon_offset = 0;
 
-		block_reader = pz::pbf_reader((const char *)block->data.get(), block->size);
+		block_reader = pz::pbf_reader(const_char_ptr_cast(block->data.get()), block->size);
 		block_reader.next(1); // String table
 		auto string_table_reader = block_reader.get_message();
 		while (string_table_reader.next(1)) {
@@ -784,7 +795,7 @@ struct LocalState final : LocalTableFunctionState {
 	}
 };
 
-static unique_ptr<LocalTableFunctionState> InitLocal(ExecutionContext &context, TableFunctionInitInput &input,
+unique_ptr<LocalTableFunctionState> InitLocal(ExecutionContext &context, TableFunctionInitInput &input,
                                                      GlobalTableFunctionState *global_state) {
 	auto &global = global_state->Cast<GlobalState>();
 	const auto blob = global.GetNextBlob(context.client);
@@ -797,7 +808,7 @@ static unique_ptr<LocalTableFunctionState> InitLocal(ExecutionContext &context, 
 	return std::move(result);
 }
 
-static void Execute(ClientContext &context, TableFunctionInput &input, DataChunk &output) {
+void Execute(ClientContext &context, TableFunctionInput &input, DataChunk &output) {
 	if (input.local_state == nullptr) {
 		return;
 	}
@@ -823,13 +834,13 @@ static void Execute(ClientContext &context, TableFunctionInput &input, DataChunk
 	output.SetCardinality(row_id);
 }
 
-static double Progress(ClientContext &context, const FunctionData *bind_data,
+double Progress(ClientContext &context, const FunctionData *bind_data,
                        const GlobalTableFunctionState *global_state) {
 	const auto &state = global_state->Cast<GlobalState>();
 	return state.GetProgress();
 }
 
-static OperatorPartitionData GetPartitionData(ClientContext &context, TableFunctionGetPartitionInput &input) {
+OperatorPartitionData GetPartitionData(ClientContext &context, TableFunctionGetPartitionInput &input) {
 	if (input.partition_info.RequiresPartitionColumns()) {
 		throw InternalException("ST_ReadOSM::GetPartitionData: partition columns not supported");
 	}
@@ -837,7 +848,7 @@ static OperatorPartitionData GetPartitionData(ClientContext &context, TableFunct
 	return OperatorPartitionData(state.block->block_idx);
 }
 
-static unique_ptr<TableRef> ReadOsmPBFReplacementScan(ClientContext &context, ReplacementScanInput &input,
+unique_ptr<TableRef> ReadOsmPBFReplacementScan(ClientContext &context, ReplacementScanInput &input,
                                                       optional_ptr<ReplacementScanData> data) {
 	auto &table_name = input.table_name;
 	// Check if the table name ends with .osm.pbf
@@ -858,7 +869,7 @@ static unique_ptr<TableRef> ReadOsmPBFReplacementScan(ClientContext &context, Re
 
 // static constexpr DocTag DOC_TAGS[] = {{"ext", "spatial"}};
 
-static constexpr const char *DOC_DESCRIPTION = R"(
+constexpr const char *DOC_DESCRIPTION = R"(
     The `ST_ReadOsm()` table function enables reading compressed OpenStreetMap data directly from a `.osm.pbf` file.
 
     This function uses multithreading and zero-copy protobuf parsing which makes it a lot faster than using the `ST_Read()` OSM driver, however it only outputs the raw OSM data (Nodes, Ways, Relations), without constructing any geometries. For simple node entities (like PoI's) you can trivially construct POINT geometries, but it is also possible to construct LINESTRING and POLYGON geometries by manually joining refs and nodes together in SQL, although with available memory usually being a limiting factor.
@@ -869,7 +880,7 @@ static constexpr const char *DOC_DESCRIPTION = R"(
     ```
 )";
 
-static constexpr const char *DOC_EXAMPLE = R"(
+constexpr const char *DOC_EXAMPLE = R"(
     SELECT *
     FROM ST_ReadOSM('tmp/data/germany.osm.pbf')
     WHERE tags['highway'] != []
