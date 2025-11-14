@@ -1,24 +1,24 @@
 #include "duckdb/main/extension/extension_loader.hpp"
 #include "duckdb/function/copy_function.hpp"
+#include "duckdb/function/table/arrow.hpp"
+#include "duckdb/common/arrow/arrow_converter.hpp"
+#include "duckdb/common/arrow/arrow.hpp"
+#include "duckdb/main/database.hpp"
+#include "duckdb/planner/expression/bound_function_expression.hpp"
+#include "duckdb/planner/expression/bound_constant_expression.hpp"
+#include "duckdb/parser/expression/constant_expression.hpp"
+#include "duckdb/parser/expression/function_expression.hpp"
+
+#include "gdal.h"
+#include "ogr_core.h"
+#include "ogr_api.h"
+#include "ogr_srs_api.h"
 
 #include "cpl_string.h"
 #include "cpl_vsi.h"
 #include "cpl_vsi_error.h"
 #include "cpl_vsi_virtual.h"
-
-#include "gdal.h"
-#include "ogr_core.h"
-#include "ogr_api.h"
-
-#include "duckdb/common/arrow/arrow_converter.hpp"
-#include "duckdb/common/arrow/arrow.hpp"
-#include "duckdb/function/table/arrow.hpp"
-#include "duckdb/main/database.hpp"
-
-#include "duckdb/planner/expression/bound_function_expression.hpp"
-#include "duckdb/planner/expression/bound_constant_expression.hpp"
-
-#include <ogr_srs_api.h>
+#include "duckdb/parser/tableref/table_function_ref.hpp"
 
 namespace duckdb {
 namespace {
@@ -26,6 +26,7 @@ namespace {
 //======================================================================================================================
 // GDAL READ
 //======================================================================================================================
+
 namespace gdal_read {
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -36,7 +37,6 @@ public:
 	string file_path;
 
 	int layer_idx = 0;
-	bool sequential_layer_scan = false;
 	bool keep_wkb = false;
 
 	CPLStringList layer_options;
@@ -86,36 +86,83 @@ auto Bind(ClientContext &ctx, TableFunctionBindInput &input, vector<LogicalType>
 		}
 	}
 
-	const auto sequential_layer_scan_param = input.named_parameters.find("sequential_layer_scan");
-	if (sequential_layer_scan_param != input.named_parameters.end()) {
-		result->sequential_layer_scan = BooleanValue::Get(sequential_layer_scan_param->second);
-	}
-
 	const auto keep_wkb_param = input.named_parameters.find("keep_wkb");
 	if (keep_wkb_param != input.named_parameters.end()) {
 		result->keep_wkb = BooleanValue::Get(keep_wkb_param->second);
 	}
 
-	// Set additional default GDAL Arrow layer options
+	// Set additional default GDAL default options
+
+	// This for OSM, but we don't know if we are reading OSM until we open the dataset, so just always set it for now.
+	result->dataset_options.AddString("INTERLEAVED_READING=YES");
+
+	// This is so taht we dont have to deal with chunking ourselves, let GDAL do it for us
 	result->layer_options.AddString(StringUtil::Format("MAX_FEATURES_IN_BATCH=%d", STANDARD_VECTOR_SIZE).c_str());
+
+	// We always want GeoArrow geometry which DuckDB knows how to convert to GEOMETRY type, unless `keep_wkb` is set
 	if (!result->keep_wkb) {
 		result->layer_options.AddString("GEOMETRY_METADATA_ENCODING=GEOARROW");
 	}
 
 	// Open the dataset and get the Arrow schema
 	const auto dataset =
-	    GDALOpenEx(result->file_path.c_str(), GDAL_OF_VECTOR | GDAL_OF_READONLY, nullptr, nullptr, nullptr);
+	    GDALOpenEx(result->file_path.c_str(), GDAL_OF_VECTOR | GDAL_OF_READONLY,
+	    	result->dataset_drivers,
+	    	result->dataset_options,
+	    	result->dataset_sibling);
+
+	if (!dataset) {
+		throw IOException("Could not open GDAL dataset at: %s", result->file_path);
+	}
+
 	ArrowSchema schema;
 	ArrowArrayStream stream;
 
 	try {
 
-		if (GDALDatasetGetLayerCount(dataset) <= 0) {
+		const auto layer_count = GDALDatasetGetLayerCount(dataset);
+		if (layer_count <= 0) {
 			throw IOException("GDAL dataset contains no layers at: %s", result->file_path);
 		}
 
+		// Find layer
+		const auto layer_param = input.named_parameters.find("layer");
+
+		if (layer_param != input.named_parameters.end()) {
+			if (layer_param->second.type() == LogicalType::INTEGER) {
+				// Find layer by index
+				const auto layer_idx = IntegerValue::Get(layer_param->second);
+				if (layer_idx < 0) {
+					throw BinderException("Layer index must be positive");
+				}
+				if (layer_idx > layer_count) {
+					throw BinderException(
+					    StringUtil::Format("Layer index out of range (%s > %s)", layer_idx, layer_count));
+				}
+				result->layer_idx = layer_idx;
+			} else if (layer_param->second.type() == LogicalType::VARCHAR) {
+				// Find layer by name
+				const auto &layer_name = StringValue::Get(layer_param->second);
+				auto found = false;
+				for (int i = 0; i < layer_count; i++) {
+					const auto layer = GDALDatasetGetLayer(dataset, i);
+					if (!layer) {
+						continue;
+					}
+					if (OGR_L_GetName(layer) == layer_name) {
+						result->layer_idx = i;
+						found = true;
+						break;
+					}
+				}
+				if (!found) {
+					throw BinderException("Could not find layer with name: %s", layer_name);
+				}
+			}
+		}
+
 		// Get the layer by index
-		const auto layer = GDALDatasetGetLayer(dataset, 0);
+		const auto layer = GDALDatasetGetLayer(dataset, result->layer_idx);
 		if (!layer) {
 			throw IOException("Could not get GDAL layer at: %s", result->file_path);
 		}
@@ -322,7 +369,11 @@ auto InitGlobal(ClientContext &context, TableFunctionInitInput &input) -> unique
 	auto &bdata = input.bind_data->Cast<BindData>();
 
 	const auto dataset =
-	    GDALOpenEx(bdata.file_path.c_str(), GDAL_OF_VECTOR | GDAL_OF_READONLY, nullptr, nullptr, nullptr);
+	    GDALOpenEx(bdata.file_path.c_str(), GDAL_OF_VECTOR | GDAL_OF_READONLY,
+	    	bdata.dataset_drivers,
+	    	bdata.dataset_options,
+	    	bdata.dataset_sibling);
+
 	if (!dataset) {
 		throw IOException("Could not open GDAL dataset at: foo");
 	}
@@ -331,8 +382,27 @@ auto InitGlobal(ClientContext &context, TableFunctionInitInput &input) -> unique
 	result->dataset = dataset;
 	result->layer_options = bdata.layer_options;
 
-	// Get the first layer
-	result->layer = GDALDatasetGetLayer(dataset, 0);
+	const auto driver = GDALGetDatasetDriver(dataset);
+	if (strcmp(GDALGetDriverShortName(driver), "OSM") != 0) {
+		// Get the layer by index
+		result->layer = GDALDatasetGetLayer(dataset, bdata.layer_idx);
+	} else {
+		// Special case for OSM, which requires sequential reading of layers
+		const auto layer_count = GDALDatasetGetLayerCount(dataset);
+		for (int i = 0; i < layer_count; i++) {
+			result->layer = GDALDatasetGetLayer(dataset, i);
+			if (i == bdata.layer_idx) {
+				// desired layer found
+				break;
+			}
+
+			// else scan through and empty the layer
+			OGRFeatureH feature;
+			while ((feature = OGR_L_GetNextFeature(result->layer)) != nullptr) {
+				OGR_F_Destroy(feature);
+			}
+		}
+	}
 
 	// Set the filter, if we got one
 	if (bdata.has_filter) {
@@ -347,14 +417,14 @@ auto InitGlobal(ClientContext &context, TableFunctionInitInput &input) -> unique
 	// Open the Arrow stream
 	if (!OGR_L_GetArrowStream(result->layer, &result->stream, result->layer_options.List())) {
 		GDALClose(dataset);
-		throw IOException("Could not get GDAL Arrow stream at: foo");
+		throw IOException("Could not get GDAL Arrow stream");
 	}
 
 	ArrowSchema schema;
 	if (result->stream.get_schema(&result->stream, &schema) != 0) {
 		result->stream.release(&result->stream);
 		GDALClose(dataset);
-		throw IOException("Could not get GDAL Arrow schema at: foo");
+		throw IOException("Could not get GDAL Arrow schema");
 	}
 
 	// Store the column types
@@ -493,6 +563,26 @@ auto Progress(ClientContext &context, const FunctionData *b_data, const GlobalTa
 	return MinValue(100.0 * (total / count), 100.0);
 }
 
+//------------------------------------------------------------------------------------------------------------------
+// REPLACEMENT SCAN
+//------------------------------------------------------------------------------------------------------------------
+auto ReplacementScan(ClientContext &, ReplacementScanInput &input, optional_ptr<ReplacementScanData>)
+    -> unique_ptr<TableRef> {
+	auto &table_name = input.table_name;
+	auto lower_name = StringUtil::Lower(table_name);
+	// Check if the table name ends with some common geospatial file extensions
+	if (StringUtil::EndsWith(lower_name, ".gpkg") || StringUtil::EndsWith(lower_name, ".fgb")) {
+
+		auto table_function = make_uniq<TableFunctionRef>();
+		vector<unique_ptr<ParsedExpression>> children;
+		children.push_back(make_uniq<ConstantExpression>(Value(table_name)));
+		table_function->function = make_uniq<FunctionExpression>("ST_Read", std::move(children));
+		return std::move(table_function);
+	}
+	// else not something we can replace
+	return nullptr;
+}
+
 //----------------------------------------------------------------------------------------------------------------------
 // REGISTER
 //----------------------------------------------------------------------------------------------------------------------
@@ -506,17 +596,18 @@ void Register(ExtensionLoader &loader) {
 	read_func.named_parameters["open_options"] = LogicalType::LIST(LogicalType::VARCHAR);
 	read_func.named_parameters["allowed_drivers"] = LogicalType::LIST(LogicalType::VARCHAR);
 	read_func.named_parameters["sibling_files"] = LogicalType::LIST(LogicalType::VARCHAR);
-	// read_func.named_parameters["spatial_filter_box"] = GeoTypes::BOX_2D();
-	// read_func.named_parameters["spatial_filter"] = LogicalType::GEOMETRY();
 	read_func.named_parameters["layer"] = LogicalType::VARCHAR;
-	read_func.named_parameters["sequential_layer_scan"] = LogicalType::BOOLEAN;
 	read_func.named_parameters["max_batch_size"] = LogicalType::INTEGER;
 	read_func.named_parameters["keep_wkb"] = LogicalType::BOOLEAN;
 
 	loader.RegisterFunction(read_func);
+
+	auto &config = DBConfig::GetConfig(loader.GetDatabaseInstance());
+	config.replacement_scans.emplace_back(ReplacementScan);
 }
 
 } // namespace gdal_read
+
 //======================================================================================================================
 // GDAL COPY
 //======================================================================================================================

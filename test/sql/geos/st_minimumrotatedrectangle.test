@@ -1,3 +1,6 @@
+# name: test/sql/geos/st_minimumrotatedrectangle.test
+# group: [geos]
+
 require spatial
 
 # As per st_isvalid, we trust that GEOS knows what it's doing, so we're not interested in testing this too much

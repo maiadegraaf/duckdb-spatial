@@ -1045,7 +1045,7 @@ struct ST_AsHEXWKB {
 
 			auto blob_size = size * 2; // every byte is rendered as two characters
 			auto blob_str = StringVector::EmptyString(result, blob_size);
-			auto blob_ptr =  blob_str.GetDataWriteable();
+			auto blob_ptr = blob_str.GetDataWriteable();
 
 			idx_t str_idx = 0;
 			for (idx_t i = 0; i < size; i++) {
