@@ -1,7 +1,6 @@
 #include "duckdb/main/extension/extension_loader.hpp"
 #include "duckdb/function/copy_function.hpp"
 
-
 #include "cpl_string.h"
 #include "cpl_vsi.h"
 #include "cpl_vsi_error.h"
@@ -15,6 +14,9 @@
 #include "duckdb/common/arrow/arrow.hpp"
 #include "duckdb/function/table/arrow.hpp"
 #include "duckdb/main/database.hpp"
+
+#include "duckdb/planner/expression/bound_function_expression.hpp"
+#include "duckdb/planner/expression/bound_constant_expression.hpp"
 
 #include <ogr_srs_api.h>
 
@@ -45,13 +47,17 @@ public:
 	int64_t estimated_cardinality = 0;
 	unordered_set<idx_t> geometry_columns = {};
 
-	OGREnvelope layer_extent;
+	bool can_filter = false;
 	bool has_extent = false;
+	bool has_filter = false;
+	OGREnvelope layer_extent;
+	OGREnvelope layer_filter;
+
 	OGRwkbGeometryType layer_type = wkbUnknown;
 };
 
 auto Bind(ClientContext &ctx, TableFunctionBindInput &input, vector<LogicalType> &col_types, vector<string> &col_names)
-	-> unique_ptr<FunctionData> {
+    -> unique_ptr<FunctionData> {
 
 	auto result = make_uniq<BindData>();
 
@@ -92,10 +98,13 @@ auto Bind(ClientContext &ctx, TableFunctionBindInput &input, vector<LogicalType>
 
 	// Set additional default GDAL Arrow layer options
 	result->layer_options.AddString(StringUtil::Format("MAX_FEATURES_IN_BATCH=%d", STANDARD_VECTOR_SIZE).c_str());
-	result->layer_options.AddString("GEOMETRY_METADATA_ENCODING=GEOARROW");
+	if (!result->keep_wkb) {
+		result->layer_options.AddString("GEOMETRY_METADATA_ENCODING=GEOARROW");
+	}
 
 	// Open the dataset and get the Arrow schema
-	const auto dataset = GDALOpenEx(result->file_path.c_str(), GDAL_OF_VECTOR | GDAL_OF_READONLY, nullptr, nullptr, nullptr);
+	const auto dataset =
+	    GDALOpenEx(result->file_path.c_str(), GDAL_OF_VECTOR | GDAL_OF_READONLY, nullptr, nullptr, nullptr);
 	ArrowSchema schema;
 	ArrowArrayStream stream;
 
@@ -117,6 +126,11 @@ auto Bind(ClientContext &ctx, TableFunctionBindInput &input, vector<LogicalType>
 		// Get extent (Only if spatial filter is not pushed down!)
 		if (OGR_L_GetExtent(layer, &result->layer_extent, 0) == OGRERR_NONE) {
 			result->has_extent = true;
+		}
+
+		// Check if fast spatial filtering is available
+		if (OGR_L_TestCapability(layer, OLCFastSpatialFilter)) {
+			result->can_filter = true;
 		}
 
 		// Get the layer geometry type if available
@@ -149,29 +163,142 @@ auto Bind(ClientContext &ctx, TableFunctionBindInput &input, vector<LogicalType>
 
 	} catch (...) {
 		// Release stream, schema and dataset
-		if (dataset) {
-			GDALClose(dataset);
-		}
 		if (schema.release) {
 			schema.release(&schema);
 		}
 		if (stream.release) {
 			stream.release(&stream);
 		}
+		if (dataset) {
+			GDALClose(dataset);
+		}
 		// Re-throw exception
 		throw;
+	}
+
+	if (schema.release) {
+		schema.release(&schema);
+	}
+	if (stream.release) {
+		stream.release(&stream);
+	}
+	if (dataset) {
+		GDALClose(dataset);
 	}
 
 	return std::move(result);
 }
 
 //----------------------------------------------------------------------------------------------------------------------
+// FILTER (EXPRESSION) PUSHDOWN
+//----------------------------------------------------------------------------------------------------------------------
+auto Pushdown(ClientContext &context, LogicalGet &get, FunctionData *bind_data, vector<unique_ptr<Expression>> &filters)
+    -> void {
+
+	auto &bdata = bind_data->Cast<BindData>();
+
+	if (!bdata.can_filter) {
+		return;
+	}
+
+	if (bdata.geometry_columns.size() != 1) {
+		return; // Only optimize if there is a single geometry column
+	}
+
+	optional_idx geom_filter_idx = optional_idx::Invalid();
+
+	for (idx_t expr_idx = 0; expr_idx < filters.size(); expr_idx++) {
+		const auto &expr = filters[expr_idx];
+
+		if (expr->GetExpressionType() != ExpressionType::BOUND_FUNCTION) {
+			continue;
+		}
+		if (expr->return_type != LogicalType::BOOLEAN) {
+			continue;
+		}
+		const auto &func = expr->Cast<BoundFunctionExpression>();
+		if (func.children.size() != 2) {
+			continue;
+		}
+
+		if (func.children[0]->return_type.id() != LogicalTypeId::GEOMETRY ||
+		    func.children[1]->return_type.id() != LogicalTypeId::GEOMETRY) {
+			continue;
+		}
+
+		// The set of geometry predicates that can be optimized using the bounding box
+		static constexpr const char *geometry_predicates[2] = {"&&", "st_intersects_extent"};
+
+		auto found = false;
+		for (const auto &name : geometry_predicates) {
+			if (StringUtil::CIEquals(func.function.name.c_str(), name)) {
+				found = true;
+				break;
+			}
+		}
+		if (!found) {
+			// Not a geometry predicate we can optimize
+			continue;
+		}
+
+		const auto lhs_kind = func.children[0]->GetExpressionType();
+		const auto rhs_kind = func.children[1]->GetExpressionType();
+
+		const auto lhs_is_const =
+		    lhs_kind == ExpressionType::VALUE_CONSTANT && rhs_kind == ExpressionType::BOUND_COLUMN_REF;
+		const auto rhs_is_const =
+		    rhs_kind == ExpressionType::VALUE_CONSTANT && lhs_kind == ExpressionType::BOUND_COLUMN_REF;
+
+		if (lhs_is_const == rhs_is_const) {
+			// Both sides are constant or both sides are column refs
+			continue;
+		}
+
+		auto &constant_expr = func.children[lhs_is_const ? 0 : 1]->Cast<BoundConstantExpression>();
+		auto &geometry_expr = func.children[lhs_is_const ? 1 : 0]->Cast<BoundColumnRefExpression>();
+
+		if (constant_expr.value.type().id() != LogicalTypeId::GEOMETRY) {
+			// Constant is not geometry
+			continue;
+		}
+		if (constant_expr.value.IsNull()) {
+			// Constant is NULL
+			continue;
+		}
+		if (geometry_expr.alias != "geom") {
+			// Not the geometry column
+			continue;
+		}
+
+		auto geom_extent = GeometryExtent::Empty();
+		auto geom_binary = string_t(StringValue::Get(constant_expr.value));
+
+		if (Geometry::GetExtent(geom_binary, geom_extent)) {
+			bdata.has_filter = true;
+			bdata.layer_filter.MinX = geom_extent.x_min;
+			bdata.layer_filter.MinY = geom_extent.y_min;
+			bdata.layer_filter.MaxX = geom_extent.x_max;
+			bdata.layer_filter.MaxY = geom_extent.y_max;
+		}
+
+		// Set the index so we can remove it later
+		// We can __ONLY__ do this if the filter predicate is "&&" or "st_intersects_extent"
+		// as other predicates may require exact geometry evaluation, the filter cannot be fully removed
+		geom_filter_idx = expr_idx;
+		break;
+	}
+
+	if (geom_filter_idx != optional_idx::Invalid()) {
+		// Remove the filter from the list
+		filters.erase_at(geom_filter_idx.GetIndex());
+	}
+}
+
+//----------------------------------------------------------------------------------------------------------------------
 // GLOBAL STATE
 //----------------------------------------------------------------------------------------------------------------------
-
 class GlobalState final : public GlobalTableFunctionState {
 public:
-
 	~GlobalState() override {
 		if (dataset) {
 			GDALClose(dataset);
@@ -188,12 +315,14 @@ public:
 	OGRLayerH layer;
 	ArrowArrayStream stream;
 	vector<unique_ptr<ArrowType>> col_types;
+	atomic<idx_t> features_read = {0};
 };
 
 auto InitGlobal(ClientContext &context, TableFunctionInitInput &input) -> unique_ptr<GlobalTableFunctionState> {
 	auto &bdata = input.bind_data->Cast<BindData>();
 
-	const auto dataset = GDALOpenEx(bdata.file_path.c_str(), GDAL_OF_VECTOR | GDAL_OF_READONLY, nullptr, nullptr, nullptr);
+	const auto dataset =
+	    GDALOpenEx(bdata.file_path.c_str(), GDAL_OF_VECTOR | GDAL_OF_READONLY, nullptr, nullptr, nullptr);
 	if (!dataset) {
 		throw IOException("Could not open GDAL dataset at: foo");
 	}
@@ -204,6 +333,12 @@ auto InitGlobal(ClientContext &context, TableFunctionInitInput &input) -> unique
 
 	// Get the first layer
 	result->layer = GDALDatasetGetLayer(dataset, 0);
+
+	// Set the filter, if we got one
+	if (bdata.has_filter) {
+		OGR_L_SetSpatialFilterRect(result->layer, bdata.layer_filter.MinX, bdata.layer_filter.MinY,
+		                           bdata.layer_filter.MaxX, bdata.layer_filter.MaxY);
+	}
 
 	CPLStringList layer_options;
 	layer_options.AddString(StringUtil::Format("MAX_FEATURES_IN_BATCH=%d", STANDARD_VECTOR_SIZE).data());
@@ -234,7 +369,6 @@ auto InitGlobal(ClientContext &context, TableFunctionInitInput &input) -> unique
 //----------------------------------------------------------------------------------------------------------------------
 // SCAN
 //----------------------------------------------------------------------------------------------------------------------
-
 void Scan(ClientContext &context, TableFunctionInput &input, DataChunk &output) {
 	auto &state = input.global_state->Cast<GlobalState>();
 
@@ -262,29 +396,28 @@ void Scan(ClientContext &context, TableFunctionInput &input, DataChunk &output) 
 
 		switch (arrow_type.GetPhysicalType()) {
 		case ArrowArrayPhysicalType::DICTIONARY_ENCODED:
-			ArrowToDuckDBConversion::ColumnArrowToDuckDBDictionary(vec, arr, 0, array_state,
-																		   arrow_array.length, arrow_type);
+			ArrowToDuckDBConversion::ColumnArrowToDuckDBDictionary(vec, arr, 0, array_state, arrow_array.length,
+			                                                       arrow_type);
 			break;
 		case ArrowArrayPhysicalType::RUN_END_ENCODED:
-			ArrowToDuckDBConversion::ColumnArrowToDuckDBRunEndEncoded(vec, arr, 0, array_state,
-				arrow_array.length, arrow_type);
+			ArrowToDuckDBConversion::ColumnArrowToDuckDBRunEndEncoded(vec, arr, 0, array_state, arrow_array.length,
+			                                                          arrow_type);
 			break;
 		case ArrowArrayPhysicalType::DEFAULT:
-			ArrowToDuckDBConversion::SetValidityMask(vec, arr, 0,
-				arrow_array.length, arrow_array.offset, -1);
-			ArrowToDuckDBConversion::ColumnArrowToDuckDB(vec, arr, 0, array_state,
-																 arrow_array.length, arrow_type);
+			ArrowToDuckDBConversion::SetValidityMask(vec, arr, 0, arrow_array.length, arrow_array.offset, -1);
+			ArrowToDuckDBConversion::ColumnArrowToDuckDB(vec, arr, 0, array_state, arrow_array.length, arrow_type);
 			break;
 		default:
 			throw NotImplementedException("ArrowArrayPhysicalType not recognized");
 		}
 	}
 
+	state.features_read += arrow_array.length;
 	output.SetCardinality(arrow_array.length);
 }
 
 //------------------------------------------------------------------------------------------------------------------
-// Cardinality
+// CARDINALITY
 //------------------------------------------------------------------------------------------------------------------
 auto Cardinality(ClientContext &context, const FunctionData *data) -> unique_ptr<NodeStatistics> {
 	auto &bdata = data->Cast<BindData>();
@@ -293,13 +426,18 @@ auto Cardinality(ClientContext &context, const FunctionData *data) -> unique_ptr
 	if (bdata.estimated_cardinality > -1) {
 		result->has_estimated_cardinality = true;
 		result->estimated_cardinality = bdata.estimated_cardinality;
+		result->has_max_cardinality = true;
+		result->max_cardinality = bdata.estimated_cardinality;
 	}
 
 	return result;
 }
 
+//----------------------------------------------------------------------------------------------------------------------
+// STATISTICS
+//----------------------------------------------------------------------------------------------------------------------
 auto Statistics(ClientContext &context, const FunctionData *bind_data, column_t column_index)
-	-> unique_ptr<BaseStatistics> {
+    -> unique_ptr<BaseStatistics> {
 
 	auto &bdata = bind_data->Cast<BindData>();
 
@@ -336,13 +474,44 @@ auto Statistics(ClientContext &context, const FunctionData *bind_data, column_t 
 	}
 
 	return nullptr;
-
 }
 
+//----------------------------------------------------------------------------------------------------------------------
+// PROGRESS
+//----------------------------------------------------------------------------------------------------------------------
+auto Progress(ClientContext &context, const FunctionData *b_data, const GlobalTableFunctionState *g_state) -> double {
+	auto &bdata = b_data->Cast<BindData>();
+	auto &gstate = g_state->Cast<GlobalState>();
+
+	if (bdata.estimated_cardinality < 0) {
+		return 0.0;
+	}
+
+	const auto count = static_cast<double>(gstate.features_read.load());
+	const auto total = static_cast<double>(bdata.estimated_cardinality);
+
+	return MinValue(100.0 * (total / count), 100.0);
+}
+
+//----------------------------------------------------------------------------------------------------------------------
+// REGISTER
+//----------------------------------------------------------------------------------------------------------------------
 void Register(ExtensionLoader &loader) {
 	TableFunction read_func("gdal_read", {LogicalType::VARCHAR}, Scan, Bind, InitGlobal);
 	read_func.cardinality = Cardinality;
 	read_func.statistics = Statistics;
+	read_func.table_scan_progress = Progress;
+	read_func.pushdown_complex_filter = Pushdown;
+
+	read_func.named_parameters["open_options"] = LogicalType::LIST(LogicalType::VARCHAR);
+	read_func.named_parameters["allowed_drivers"] = LogicalType::LIST(LogicalType::VARCHAR);
+	read_func.named_parameters["sibling_files"] = LogicalType::LIST(LogicalType::VARCHAR);
+	// read_func.named_parameters["spatial_filter_box"] = GeoTypes::BOX_2D();
+	// read_func.named_parameters["spatial_filter"] = LogicalType::GEOMETRY();
+	read_func.named_parameters["layer"] = LogicalType::VARCHAR;
+	read_func.named_parameters["sequential_layer_scan"] = LogicalType::BOOLEAN;
+	read_func.named_parameters["max_batch_size"] = LogicalType::INTEGER;
+	read_func.named_parameters["keep_wkb"] = LogicalType::BOOLEAN;
 
 	loader.RegisterFunction(read_func);
 }
@@ -381,7 +550,7 @@ public:
 	}
 };
 
-bool MatchOption(const char* name, const pair<string, vector<Value>> &option, bool list = false) {
+bool MatchOption(const char *name, const pair<string, vector<Value>> &option, bool list = false) {
 	if (StringUtil::CIEquals(name, option.first)) {
 		if (option.second.empty()) {
 			throw BinderException("GDAL COPY option '%s' requires a value", name);
@@ -406,7 +575,7 @@ bool MatchOption(const char* name, const pair<string, vector<Value>> &option, bo
 }
 
 auto Bind(ClientContext &context, CopyFunctionBindInput &input, const vector<string> &names,
-	const vector<LogicalType> &sql_types) -> unique_ptr<FunctionData> {
+          const vector<LogicalType> &sql_types) -> unique_ptr<FunctionData> {
 	auto result = make_uniq<BindData>();
 
 	// Set file path
@@ -515,7 +684,6 @@ auto Bind(ClientContext &context, CopyFunctionBindInput &input, const vector<str
 //----------------------------------------------------------------------------------------------------------------------
 class GlobalState final : public GlobalFunctionData {
 public:
-
 	~GlobalState() override {
 		if (dataset) {
 			GDALClose(dataset);
@@ -555,12 +723,8 @@ auto InitGlobal(ClientContext &context, FunctionData &bdata_p, const string &pat
 	}
 
 	// Create Layer
-	result->layer = GDALDatasetCreateLayer(
-		result->dataset,
-		bdata.driver_name.c_str(),
-		result->srs,
-		bdata.geometry_type,
-		bdata.layer_options);
+	result->layer = GDALDatasetCreateLayer(result->dataset, bdata.driver_name.c_str(), result->srs, bdata.geometry_type,
+	                                       bdata.layer_options);
 
 	if (!result->layer) {
 		throw IOException("Could not create GDAL layer in dataset at: " + bdata.file_path);
@@ -612,7 +776,7 @@ auto InitLocal(ExecutionContext &context, FunctionData &bind_data) -> unique_ptr
 // Sink
 //----------------------------------------------------------------------------------------------------------------------
 void Sink(ExecutionContext &context, FunctionData &bdata_p, GlobalFunctionData &gstate_p, LocalFunctionData &lstate_p,
-		DataChunk &input) {
+          DataChunk &input) {
 
 	const auto &bdata = bdata_p.Cast<BindData>();
 	auto &gstate = gstate_p.Cast<GlobalState>();
@@ -644,7 +808,7 @@ void Sink(ExecutionContext &context, FunctionData &bdata_p, GlobalFunctionData &
 // Combine
 //----------------------------------------------------------------------------------------------------------------------
 void Combine(ExecutionContext &context, FunctionData &bind_data, GlobalFunctionData &gstate,
-						LocalFunctionData &lstate) {
+             LocalFunctionData &lstate) {
 	// Nothing to do, we don't have any local state that needs to be merged
 }
 
@@ -664,9 +828,8 @@ CopyFunctionExecutionMode Mode(bool preserve_insertion_order, bool use_batch_ind
 	// Parallel writes have limited utility since we still lock on each write to GDAL layer
 	// But in theory we still benefit from the parallel conversion to Arrow arrays, and this also allows
 	// the rest of the pipeline to be parallelized if we don't care about insertion order.
-	return preserve_insertion_order
-		? CopyFunctionExecutionMode::REGULAR_COPY_TO_FILE
-		: CopyFunctionExecutionMode::PARALLEL_COPY_TO_FILE;
+	return preserve_insertion_order ? CopyFunctionExecutionMode::REGULAR_COPY_TO_FILE
+	                                : CopyFunctionExecutionMode::PARALLEL_COPY_TO_FILE;
 }
 
 //----------------------------------------------------------------------------------------------------------------------
