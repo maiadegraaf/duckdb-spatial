@@ -32,7 +32,22 @@ namespace gdal_read {
 class BindData final : public TableFunctionData {
 public:
 	string file_path;
+
+	int layer_idx = 0;
+	bool sequential_layer_scan = false;
+	bool keep_wkb = false;
+
 	CPLStringList layer_options;
+	CPLStringList dataset_options;
+	CPLStringList dataset_sibling;
+	CPLStringList dataset_drivers;
+
+	int64_t estimated_cardinality = 0;
+	unordered_set<idx_t> geometry_columns = {};
+
+	OGREnvelope layer_extent;
+	bool has_extent = false;
+	OGRwkbGeometryType layer_type = wkbUnknown;
 };
 
 auto Bind(ClientContext &ctx, TableFunctionBindInput &input, vector<LogicalType> &col_types, vector<string> &col_names)
@@ -40,54 +55,112 @@ auto Bind(ClientContext &ctx, TableFunctionBindInput &input, vector<LogicalType>
 
 	auto result = make_uniq<BindData>();
 
+	// Pass file path
 	result->file_path = input.inputs[0].GetValue<string>();
 
-	// Set GDAL Arrow layer options
+	// Parse options
+	const auto dataset_options_param = input.named_parameters.find("open_options");
+	if (dataset_options_param != input.named_parameters.end()) {
+		for (auto &param : ListValue::GetChildren(dataset_options_param->second)) {
+			result->dataset_options.AddString(StringValue::Get(param).c_str());
+		}
+	}
+
+	const auto drivers_param = input.named_parameters.find("allowed_drivers");
+	if (drivers_param != input.named_parameters.end()) {
+		for (auto &param : ListValue::GetChildren(drivers_param->second)) {
+			result->dataset_drivers.AddString(StringValue::Get(param).c_str());
+		}
+	}
+
+	const auto siblings_params = input.named_parameters.find("sibling_files");
+	if (siblings_params != input.named_parameters.end()) {
+		for (auto &param : ListValue::GetChildren(siblings_params->second)) {
+			result->dataset_sibling.AddString(StringValue::Get(param).c_str());
+		}
+	}
+
+	const auto sequential_layer_scan_param = input.named_parameters.find("sequential_layer_scan");
+	if (sequential_layer_scan_param != input.named_parameters.end()) {
+		result->sequential_layer_scan = BooleanValue::Get(sequential_layer_scan_param->second);
+	}
+
+	const auto keep_wkb_param = input.named_parameters.find("keep_wkb");
+	if (keep_wkb_param != input.named_parameters.end()) {
+		result->keep_wkb = BooleanValue::Get(keep_wkb_param->second);
+	}
+
+	// Set additional default GDAL Arrow layer options
 	result->layer_options.AddString(StringUtil::Format("MAX_FEATURES_IN_BATCH=%d", STANDARD_VECTOR_SIZE).c_str());
 	result->layer_options.AddString("GEOMETRY_METADATA_ENCODING=GEOARROW");
 
+	// Open the dataset and get the Arrow schema
 	const auto dataset = GDALOpenEx(result->file_path.c_str(), GDAL_OF_VECTOR | GDAL_OF_READONLY, nullptr, nullptr, nullptr);
-	if (!dataset) {
-		GDALClose(dataset);
-		throw IOException("Could not open GDAL dataset at: %s", result->file_path);
-	}
-
-	if (GDALDatasetGetLayerCount(dataset) <= 0) {
-		GDALClose(dataset);
-		throw IOException("GDAL dataset contains no layers at: %s", result->file_path);
-	}
-
-	const auto layer = GDALDatasetGetLayer(dataset, 0);
-	if (!layer) {
-		GDALClose(dataset);
-		throw IOException("Could not get GDAL layer at: %s", result->file_path);
-	}
-
-	ArrowArrayStream stream;
-	if (!OGR_L_GetArrowStream(layer, &stream, result->layer_options.List())) {
-		GDALClose(dataset);
-		throw IOException("Could not get GDAL Arrow stream at: %s", result->file_path);
-	}
-
 	ArrowSchema schema;
-	if (stream.get_schema(&stream, &schema) != 0) {
-		stream.release(&stream);
-		GDALClose(dataset);
-		throw IOException("Could not get GDAL Arrow schema at: %s", result->file_path);
-	}
+	ArrowArrayStream stream;
 
-	// Convert Arrow schema to DuckDB types
-	for (int64_t i = 0; i < schema.n_children; i++) {
-		auto &child_schema = *schema.children[i];
-		const auto type = ArrowType::GetTypeFromSchema(ctx.db->config, child_schema);
-		col_names.push_back(child_schema.name);
-		col_types.push_back(type->GetDuckType());
-	}
+	try {
 
-	// Release stream, schema and dataset
-	schema.release(&schema);
-	stream.release(&stream);
-	GDALClose(dataset);
+		if (GDALDatasetGetLayerCount(dataset) <= 0) {
+			throw IOException("GDAL dataset contains no layers at: %s", result->file_path);
+		}
+
+		// Get the layer by index
+		const auto layer = GDALDatasetGetLayer(dataset, 0);
+		if (!layer) {
+			throw IOException("Could not get GDAL layer at: %s", result->file_path);
+		}
+
+		// Estimate cardinality
+		result->estimated_cardinality = OGR_L_GetFeatureCount(layer, 0);
+
+		// Get extent (Only if spatial filter is not pushed down!)
+		if (OGR_L_GetExtent(layer, &result->layer_extent, 0) == OGRERR_NONE) {
+			result->has_extent = true;
+		}
+
+		// Get the layer geometry type if available
+		result->layer_type = OGR_L_GetGeomType(layer);
+
+		// Get the arrow stream
+		if (!OGR_L_GetArrowStream(layer, &stream, result->layer_options.List())) {
+			throw IOException("Could not get GDAL Arrow stream at: %s", result->file_path);
+		}
+
+		// And the schema
+		if (stream.get_schema(&stream, &schema) != 0) {
+			throw IOException("Could not get GDAL Arrow schema at: %s", result->file_path);
+		}
+
+		// Convert Arrow schema to DuckDB types
+		for (int64_t i = 0; i < schema.n_children; i++) {
+			auto &child_schema = *schema.children[i];
+			const auto gdal_type = ArrowType::GetTypeFromSchema(ctx.db->config, child_schema);
+			auto duck_type = gdal_type->GetDuckType();
+
+			// Track geometry columns to compute stats later
+			if (duck_type.id() == LogicalTypeId::GEOMETRY) {
+				result->geometry_columns.insert(i);
+			}
+
+			col_names.push_back(child_schema.name);
+			col_types.push_back(std::move(duck_type));
+		}
+
+	} catch (...) {
+		// Release stream, schema and dataset
+		if (dataset) {
+			GDALClose(dataset);
+		}
+		if (schema.release) {
+			schema.release(&schema);
+		}
+		if (stream.release) {
+			stream.release(&stream);
+		}
+		// Re-throw exception
+		throw;
+	}
 
 	return std::move(result);
 }
@@ -163,7 +236,6 @@ auto InitGlobal(ClientContext &context, TableFunctionInitInput &input) -> unique
 //----------------------------------------------------------------------------------------------------------------------
 
 void Scan(ClientContext &context, TableFunctionInput &input, DataChunk &output) {
-	auto &bdata = input.bind_data->Cast<BindData>();
 	auto &state = input.global_state->Cast<GlobalState>();
 
 	ArrowArray arrow_array;
@@ -211,8 +283,67 @@ void Scan(ClientContext &context, TableFunctionInput &input, DataChunk &output) 
 	output.SetCardinality(arrow_array.length);
 }
 
+//------------------------------------------------------------------------------------------------------------------
+// Cardinality
+//------------------------------------------------------------------------------------------------------------------
+auto Cardinality(ClientContext &context, const FunctionData *data) -> unique_ptr<NodeStatistics> {
+	auto &bdata = data->Cast<BindData>();
+	auto result = make_uniq<NodeStatistics>();
+
+	if (bdata.estimated_cardinality > -1) {
+		result->has_estimated_cardinality = true;
+		result->estimated_cardinality = bdata.estimated_cardinality;
+	}
+
+	return result;
+}
+
+auto Statistics(ClientContext &context, const FunctionData *bind_data, column_t column_index)
+	-> unique_ptr<BaseStatistics> {
+
+	auto &bdata = bind_data->Cast<BindData>();
+
+	// If we have an extent, and the column is a geometry column, we can provide min/max stats
+	if (bdata.has_extent) {
+
+		// Check if this is the only geometry column
+		const auto is_geom_col = bdata.geometry_columns.find(column_index) != bdata.geometry_columns.end();
+		const auto is_only_one = bdata.geometry_columns.size() == 1;
+		const auto has_stats = bdata.has_extent || bdata.layer_type != wkbUnknown;
+
+		if (is_geom_col && is_only_one && has_stats) {
+			auto stats = GeometryStats::CreateUnknown(LogicalType::GEOMETRY());
+
+			if (bdata.has_extent) {
+				auto &extent = GeometryStats::GetExtent(stats);
+				extent.x_min = bdata.layer_extent.MinX;
+				extent.x_max = bdata.layer_extent.MaxX;
+				extent.y_min = bdata.layer_extent.MinY;
+				extent.y_max = bdata.layer_extent.MaxY;
+			}
+
+			const auto geom_type = bdata.layer_type % 1000;
+			const auto vert_type = bdata.layer_type / 1000;
+
+			if ((geom_type >= 1) && (geom_type <= 7) && (vert_type >= 0) && (vert_type <= 3)) {
+				auto &types = GeometryStats::GetTypes(stats);
+				types.Clear();
+				types.AddWKBType(static_cast<int32_t>(geom_type));
+			}
+
+			return stats.ToUnique();
+		}
+	}
+
+	return nullptr;
+
+}
+
 void Register(ExtensionLoader &loader) {
 	TableFunction read_func("gdal_read", {LogicalType::VARCHAR}, Scan, Bind, InitGlobal);
+	read_func.cardinality = Cardinality;
+	read_func.statistics = Statistics;
+
 	loader.RegisterFunction(read_func);
 }
 
