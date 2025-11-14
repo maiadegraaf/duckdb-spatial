@@ -2038,26 +2038,32 @@ void RegisterGDALModule(ExtensionLoader &loader) {
 				msg.erase(path_pos, 48);
 			}
 
+			// GDAL Catches exceptions internally and passes them on to the handler again as CPLE_AppDefined
+			// So we don't add any extra information here or we end up with very long nested error messages.
+			// Using ErrorData we can parse the message part of DuckDB exceptions properly, and for other exceptions
+			// their error message will still be preserved as the "raw message".
+			ErrorData error_msg(raw_msg);
+
 			switch (code) {
 			case CPLE_NoWriteAccess:
-				throw PermissionException("GDAL Error (%d): %s", code, msg);
+				throw PermissionException(error_msg.RawMessage());
 			case CPLE_UserInterrupt:
 				throw InterruptException();
 			case CPLE_OutOfMemory:
-				throw OutOfMemoryException("GDAL Error (%d): %s", code, msg);
+				throw OutOfMemoryException(error_msg.RawMessage());
 			case CPLE_NotSupported:
-				throw NotImplementedException("GDAL Error (%d): %s", code, msg);
+				throw NotImplementedException(error_msg.RawMessage());
 			case CPLE_AssertionFailed:
 			case CPLE_ObjectNull:
-				throw InternalException("GDAL Error (%d): %s", code, msg);
+				throw InternalException(error_msg.RawMessage());
 			case CPLE_IllegalArg:
-				throw InvalidInputException("GDAL Error (%d): %s", code, msg);
+				throw InvalidInputException( error_msg.RawMessage());
 			case CPLE_AppDefined:
 			case CPLE_HttpResponse:
 			case CPLE_FileIO:
 			case CPLE_OpenFailed:
 			default:
-				throw IOException("GDAL Error (%d): %s", code, msg);
+				throw IOException(error_msg.RawMessage());
 			}
 		});
 	});

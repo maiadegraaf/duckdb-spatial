@@ -94,7 +94,7 @@ auto Bind(ClientContext &ctx, TableFunctionBindInput &input, vector<LogicalType>
 	// Set additional default GDAL default options
 
 	// This for OSM, but we don't know if we are reading OSM until we open the dataset, so just always set it for now.
-	result->dataset_options.AddString("INTERLEAVED_READING=YES");
+	//result->dataset_options.AddString("INTERLEAVED_READING=YES");
 
 	// This is so taht we dont have to deal with chunking ourselves, let GDAL do it for us
 	result->layer_options.AddString(StringUtil::Format("MAX_FEATURES_IN_BATCH=%d", STANDARD_VECTOR_SIZE).c_str());
