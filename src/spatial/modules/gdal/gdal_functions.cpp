@@ -32,7 +32,7 @@ namespace {
 class DuckDBFileHandle final : public VSIVirtualHandle {
 public:
 	explicit DuckDBFileHandle(unique_ptr<FileHandle> file_handle_p)
-	    : file_handle(std::move(file_handle_p)), is_eof(false) {
+	    : file_handle(std::move(file_handle_p)), is_eof(false), can_seek(file_handle->CanSeek()) {
 	}
 
 	vsi_l_offset Tell() override {
@@ -125,6 +125,7 @@ public:
 private:
 	unique_ptr<FileHandle> file_handle = nullptr;
 	bool is_eof = false;
+	bool can_seek = false;
 };
 
 class DuckDBFileSystemHandler final : public VSIFilesystemHandler {
@@ -186,15 +187,6 @@ public:
 		}
 
 		try {
-			// If the file is remote and NOT in write mode, we can cache it.
-			if (fs.IsRemoteFile(real_file_path) && !flags.OpenForWriting() && !flags.OpenForAppending()) {
-				// Pass the direct IO flag to the file system since we use GDAL's caching instead
-				flags |= FileFlags::FILE_FLAGS_DIRECT_IO;
-				auto file = fs.OpenFile(real_file_path, flags | FileCompressionType::AUTO_DETECT);
-				return VSICreateCachedFile(new DuckDBFileHandle(std::move(file)));
-			}
-
-			// Else, just open normally
 			auto file = fs.OpenFile(real_file_path, flags | FileCompressionType::AUTO_DETECT);
 			return new DuckDBFileHandle(std::move(file));
 
@@ -385,10 +377,6 @@ public:
 		} catch (...) {
 			return -1;
 		}
-	}
-
-	string GetCanonicalFilename(const std::string &osFilename) const override {
-		return StripPrefix(osFilename.c_str());
 	}
 
 private:
