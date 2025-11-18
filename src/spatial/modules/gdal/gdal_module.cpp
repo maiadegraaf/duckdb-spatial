@@ -2015,65 +2015,65 @@ struct ST_Write {
 // Register Module
 //######################################################################################################################
 void RegisterGDALModule(ExtensionLoader &loader) {
-
-	// Load GDAL (once)
-	static std::once_flag loaded;
-	std::call_once(loaded, [&]() {
-		// Register all embedded drivers (dont go looking for plugins)
-		OGRRegisterAllInternal();
-
-		// Set GDAL error handler
-		CPLSetErrorHandler([](CPLErr e, int code, const char *raw_msg) {
-			// DuckDB doesnt do warnings, so we only throw on errors
-			if (e != CE_Failure && e != CE_Fatal) {
-				return;
-			}
-
-			// If the error contains a /vsiduckdb-<uuid>/ prefix,
-			// try to strip it off to make the errors more readable
-			auto msg = string(raw_msg);
-			auto path_pos = msg.find("/vsiduckdb-");
-			if (path_pos != string::npos) {
-				// We found a path, strip it off
-				msg.erase(path_pos, 48);
-			}
-
-			// GDAL Catches exceptions internally and passes them on to the handler again as CPLE_AppDefined
-			// So we don't add any extra information here or we end up with very long nested error messages.
-			// Using ErrorData we can parse the message part of DuckDB exceptions properly, and for other exceptions
-			// their error message will still be preserved as the "raw message".
-			ErrorData error_msg(raw_msg);
-
-			switch (code) {
-			case CPLE_NoWriteAccess:
-				throw PermissionException(error_msg.RawMessage());
-			case CPLE_UserInterrupt:
-				throw InterruptException();
-			case CPLE_OutOfMemory:
-				throw OutOfMemoryException(error_msg.RawMessage());
-			case CPLE_NotSupported:
-				throw NotImplementedException(error_msg.RawMessage());
-			case CPLE_AssertionFailed:
-			case CPLE_ObjectNull:
-				throw InternalException(error_msg.RawMessage());
-			case CPLE_IllegalArg:
-				throw InvalidInputException( error_msg.RawMessage());
-			case CPLE_AppDefined:
-			case CPLE_HttpResponse:
-			case CPLE_FileIO:
-			case CPLE_OpenFailed:
-			default:
-				throw IOException(error_msg.RawMessage());
-			}
-		});
-	});
+	//
+	// // Load GDAL (once)
+	// static std::once_flag loaded;
+	// std::call_once(loaded, [&]() {
+	// 	// Register all embedded drivers (dont go looking for plugins)
+	// 	OGRRegisterAllInternal();
+	//
+	// 	// Set GDAL error handler
+	// 	CPLSetErrorHandler([](CPLErr e, int code, const char *raw_msg) {
+	// 		// DuckDB doesnt do warnings, so we only throw on errors
+	// 		if (e != CE_Failure && e != CE_Fatal) {
+	// 			return;
+	// 		}
+	//
+	// 		// If the error contains a /vsiduckdb-<uuid>/ prefix,
+	// 		// try to strip it off to make the errors more readable
+	// 		auto msg = string(raw_msg);
+	// 		auto path_pos = msg.find("/vsiduckdb-");
+	// 		if (path_pos != string::npos) {
+	// 			// We found a path, strip it off
+	// 			msg.erase(path_pos, 48);
+	// 		}
+	//
+	// 		// GDAL Catches exceptions internally and passes them on to the handler again as CPLE_AppDefined
+	// 		// So we don't add any extra information here or we end up with very long nested error messages.
+	// 		// Using ErrorData we can parse the message part of DuckDB exceptions properly, and for other exceptions
+	// 		// their error message will still be preserved as the "raw message".
+	// 		ErrorData error_msg(raw_msg);
+	//
+	// 		switch (code) {
+	// 		case CPLE_NoWriteAccess:
+	// 			throw PermissionException(error_msg.RawMessage());
+	// 		case CPLE_UserInterrupt:
+	// 			throw InterruptException();
+	// 		case CPLE_OutOfMemory:
+	// 			throw OutOfMemoryException(error_msg.RawMessage());
+	// 		case CPLE_NotSupported:
+	// 			throw NotImplementedException(error_msg.RawMessage());
+	// 		case CPLE_AssertionFailed:
+	// 		case CPLE_ObjectNull:
+	// 			throw InternalException(error_msg.RawMessage());
+	// 		case CPLE_IllegalArg:
+	// 			throw InvalidInputException( error_msg.RawMessage());
+	// 		case CPLE_AppDefined:
+	// 		case CPLE_HttpResponse:
+	// 		case CPLE_FileIO:
+	// 		case CPLE_OpenFailed:
+	// 		default:
+	// 			throw IOException(error_msg.RawMessage());
+	// 		}
+	// 	});
+	// });
 
 	RegisterExtraFunction(loader);
 
-	ST_Read::Register(loader);
-	ST_Read_Meta::Register(loader);
-	ST_Drivers::Register(loader);
-	ST_Write::Register(loader);
+	//ST_Read::Register(loader);
+	//ST_Read_Meta::Register(loader);
+	//ST_Drivers::Register(loader);
+	// ST_Write::Register(loader);
 }
 
 } // namespace duckdb

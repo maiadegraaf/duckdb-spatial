@@ -18,15 +18,426 @@
 #include "cpl_vsi.h"
 #include "cpl_vsi_error.h"
 #include "cpl_vsi_virtual.h"
+#include "duckdb/common/types/uuid.hpp"
 #include "duckdb/parser/tableref/table_function_ref.hpp"
+
+#include <ogrsf_frmts.h>
 
 namespace duckdb {
 namespace {
 
 //======================================================================================================================
+// GDAL FILE
+//======================================================================================================================
+class DuckDBFileHandle final : public VSIVirtualHandle {
+public:
+	explicit DuckDBFileHandle(unique_ptr<FileHandle> file_handle_p)
+	    : file_handle(std::move(file_handle_p)), is_eof(false) {
+	}
+
+	vsi_l_offset Tell() override {
+		return static_cast<vsi_l_offset>(file_handle->SeekPosition());
+	}
+
+	int Seek(vsi_l_offset nOffset, int nWhence) override {
+		// Reset EOF flag on seek
+		is_eof = false;
+
+		// Use the reset function instead to allow compressed file handles to rewind
+		// even if they don't support seeking
+		if (nWhence == SEEK_SET && nOffset == 0) {
+			file_handle->Reset();
+			return 0;
+		}
+
+		switch (nWhence) {
+		case SEEK_SET:
+			file_handle->Seek(nOffset);
+			return 0;
+		case SEEK_CUR:
+			file_handle->Seek(file_handle->SeekPosition() + nOffset);
+			return 0;
+		case SEEK_END:
+			file_handle->Seek(file_handle->GetFileSize() + nOffset);
+			return 0;
+		default:
+			return -1;
+		}
+	}
+
+	size_t Read(void *buffer, size_t size, size_t count) override {
+		auto bytes_data = static_cast<char *>(buffer);
+		auto bytes_left = size * count;
+
+		try {
+			while (bytes_left > 0) {
+				const auto bytes_read = file_handle->Read(bytes_data, bytes_left);
+				if (bytes_read == 0) {
+					break;
+				}
+				bytes_left -= bytes_read;
+				bytes_data += bytes_read;
+			}
+		} catch (...) {
+			if (bytes_left != 0) {
+				if (file_handle->SeekPosition() == file_handle->GetFileSize()) {
+					// Is at EOF!
+					is_eof = true;
+				}
+			} else {
+				// else, error!
+				// unfortunately, this version of GDAL cant distinguish between errors and reading less bytes
+				// its avaiable in 3.9.2, but we're stuck on 3.8.5 for now.
+				throw;
+			}
+		}
+
+		return count - (bytes_left / size);
+	}
+
+	int Eof() override {
+		return is_eof ? TRUE : FALSE;
+	}
+
+	size_t Write(const void *buffer, size_t size, size_t count) override {
+		size_t written_bytes = 0;
+		try {
+			written_bytes = file_handle->Write(const_cast<void *>(buffer), size * count);
+		} catch (...) {
+			// ignore
+		}
+		return written_bytes / size;
+	}
+
+	int Flush() override {
+		file_handle->Sync();
+		return 0;
+	}
+	int Truncate(vsi_l_offset nNewSize) override {
+		file_handle->Truncate(static_cast<int64_t>(nNewSize));
+		return 0;
+	}
+	int Close() override {
+		file_handle->Close();
+		return 0;
+	}
+
+private:
+	unique_ptr<FileHandle> file_handle = nullptr;
+	bool is_eof = false;
+};
+
+class DuckDBFileSystemHandler final : public VSIFilesystemHandler {
+public:
+	DuckDBFileSystemHandler(string client_prefix, ClientContext &context)
+	    : client_prefix(std::move(client_prefix)), context(context) {};
+
+	const char *StripPrefix(const char *pszFilename) const {
+		return pszFilename + client_prefix.size();
+	}
+	string AddPrefix(const string &value) const {
+		return client_prefix + value;
+	}
+
+	VSIVirtualHandle *Open(const char *gdal_file_path, const char *access, bool set_error,
+	                       CSLConstList /*papszoptions */) override {
+
+		// Strip the prefix to get the real file path
+		const auto real_file_path = StripPrefix(gdal_file_path);
+
+		// Get the DuckDB file system
+		auto &fs = FileSystem::GetFileSystem(context);
+
+		// Determine the file open flags
+		FileOpenFlags flags;
+		const auto len = strlen(access);
+		if (access[0] == 'r') {
+			flags = FileFlags::FILE_FLAGS_READ;
+			if (len > 1 && access[1] == '+') {
+				flags |= FileFlags::FILE_FLAGS_WRITE;
+			}
+			if (len > 2 && access[2] == '+') {
+				// might be "rb+"
+				flags |= FileFlags::FILE_FLAGS_WRITE;
+			}
+		} else if (access[0] == 'w') {
+			flags = FileFlags::FILE_FLAGS_WRITE;
+			if (!fs.IsPipe(real_file_path)) {
+				flags |= FileFlags::FILE_FLAGS_FILE_CREATE_NEW;
+			}
+			if (len > 1 && access[1] == '+') {
+				flags |= FileFlags::FILE_FLAGS_READ;
+			}
+			if (len > 2 && access[2] == '+') {
+				// might be "wb+"
+				flags |= FileFlags::FILE_FLAGS_READ;
+			}
+		} else if (access[0] == 'a') {
+			flags = FileFlags::FILE_FLAGS_APPEND;
+			if (len > 1 && access[1] == '+') {
+				flags |= FileFlags::FILE_FLAGS_READ;
+			}
+			if (len > 2 && access[2] == '+') {
+				// might be "ab+"
+				flags |= FileFlags::FILE_FLAGS_READ;
+			}
+		} else {
+			throw InternalException("Unknown file access type");
+		}
+
+		try {
+			// If the file is remote and NOT in write mode, we can cache it.
+			if (fs.IsRemoteFile(real_file_path) && !flags.OpenForWriting() && !flags.OpenForAppending()) {
+				// Pass the direct IO flag to the file system since we use GDAL's caching instead
+				flags |= FileFlags::FILE_FLAGS_DIRECT_IO;
+				auto file = fs.OpenFile(real_file_path, flags | FileCompressionType::AUTO_DETECT);
+				return VSICreateCachedFile(new DuckDBFileHandle(std::move(file)));
+			}
+
+			// Else, just open normally
+			auto file = fs.OpenFile(real_file_path, flags | FileCompressionType::AUTO_DETECT);
+			return new DuckDBFileHandle(std::move(file));
+
+		} catch (std::exception &ex) {
+
+			// Extract error message from DuckDB
+			const ErrorData error_data(ex);
+
+			// Failed to open file via DuckDB File System. If this doesnt have a VSI prefix we can return an error here.
+			if (strncmp(real_file_path, "/vsi", 4) != 0) {
+				if (set_error) {
+					VSIError(VSIE_FileError, "%s", error_data.RawMessage().c_str());
+				}
+				return nullptr;
+			}
+
+			// Fall back to GDAL instead (if external access is enabled)
+			if (!context.db->config.options.enable_external_access) {
+				if (set_error) {
+					VSIError(VSIE_FileError, "%s", error_data.RawMessage().c_str());
+				}
+				return nullptr;
+			}
+
+			const auto handler = VSIFileManager::GetHandler(real_file_path);
+			if (!handler) {
+				if (set_error) {
+					VSIError(VSIE_FileError, "%s", error_data.RawMessage().c_str());
+				}
+				return nullptr;
+			}
+
+			return handler->Open(real_file_path, access);
+		}
+	}
+
+	int Stat(const char *gdal_file_name, VSIStatBufL *result, int n_flags) override {
+		auto real_file_path = StripPrefix(gdal_file_name);
+		auto &fs = FileSystem::GetFileSystem(context);
+
+		memset(result, 0, sizeof(VSIStatBufL));
+
+		if (fs.IsPipe(real_file_path)) {
+			result->st_mode = S_IFCHR;
+			return 0;
+		}
+
+		if (!(fs.FileExists(real_file_path) ||
+		      (!FileSystem::IsRemoteFile(real_file_path) && fs.DirectoryExists(real_file_path)))) {
+			return -1;
+		}
+
+#ifdef _WIN32
+		if (!FileSystem::IsRemoteFile(real_file_path) && fs.DirectoryExists(real_file_path)) {
+			pstatbuf->st_mode = S_IFDIR;
+			return 0;
+		}
+#endif
+
+		FileOpenFlags flags;
+		flags |= FileFlags::FILE_FLAGS_READ;
+		flags |= FileFlags::FILE_FLAGS_NULL_IF_NOT_EXISTS;
+		flags |= FileCompressionType::AUTO_DETECT;
+
+		const auto file = fs.OpenFile(real_file_path, flags);
+		if (!file) {
+			return -1;
+		}
+
+		try {
+			result->st_size = static_cast<off_t>(fs.GetFileSize(*file));
+		} catch (...) {
+		}
+		try {
+			result->st_mtime = Timestamp::ToTimeT(fs.GetLastModifiedTime(*file));
+		} catch (...) {
+		}
+		try {
+			const auto type = file->GetType();
+			switch (type) {
+			case FileType::FILE_TYPE_REGULAR:
+				result->st_mode = S_IFREG;
+				break;
+			case FileType::FILE_TYPE_DIR:
+				result->st_mode = S_IFDIR;
+				break;
+			case FileType::FILE_TYPE_CHARDEV:
+				result->st_mode = S_IFCHR;
+				break;
+			default:
+				// HTTPFS returns invalid type for everything basically.
+				if (FileSystem::IsRemoteFile(real_file_path)) {
+					result->st_mode = S_IFREG;
+				} else {
+					return -1;
+				}
+			}
+		} catch (...) {
+		}
+		return 0;
+	}
+
+	bool IsLocal(const char *gdal_file_path) override {
+		const auto real_file_path = StripPrefix(gdal_file_path);
+		return !FileSystem::IsRemoteFile(real_file_path);
+	}
+
+	int Mkdir(const char *pszDirname, long nMode) override {
+		auto &fs = FileSystem::GetFileSystem(context);
+		const auto dir_name = StripPrefix(pszDirname);
+
+		fs.CreateDirectory(dir_name);
+		return 0;
+	}
+
+	int Rmdir(const char *pszDirname) override {
+		auto &fs = FileSystem::GetFileSystem(context);
+		const auto dir_name = StripPrefix(pszDirname);
+
+		fs.RemoveDirectory(dir_name);
+		return 0;
+	}
+
+	int RmdirRecursive(const char *pszDirname) override {
+		auto &fs = FileSystem::GetFileSystem(context);
+		const auto dir_name = StripPrefix(pszDirname);
+
+		fs.RemoveDirectory(dir_name);
+		return 0;
+	}
+
+	char **ReadDirEx(const char *gdal_dir_name, int max_files) override {
+		auto &fs = FileSystem::GetFileSystem(context);
+		const auto dir_name = StripPrefix(gdal_dir_name);
+
+		CPLStringList files;
+		auto files_count = 0;
+		fs.ListFiles(dir_name, [&](const string &file_name, bool is_dir) {
+			if (files_count >= max_files) {
+				return;
+			}
+			const auto tmp = AddPrefix(file_name);
+			files.AddString(tmp.c_str());
+			files_count++;
+		});
+		return files.StealList();
+	}
+
+	char **SiblingFiles(const char *gdal_file_path) override {
+		auto &fs = FileSystem::GetFileSystem(context);
+
+		const auto real_file_path = StripPrefix(gdal_file_path);
+
+		const auto real_file_stem = StringUtil::GetFileStem(real_file_path);
+		const auto base_file_path = fs.JoinPath(StringUtil::GetFilePath(real_file_path), real_file_stem);
+		const auto glob_file_path = base_file_path + ".*";
+
+		CPLStringList files;
+		for (auto &file : fs.Glob(glob_file_path)) {
+			files.AddString(AddPrefix(file.path).c_str());
+		}
+		return files.StealList();
+	}
+
+	int HasOptimizedReadMultiRange(const char *pszPath) override {
+		return 0;
+	}
+
+	int Unlink(const char *prefixed_file_name) override {
+		auto &fs = FileSystem::GetFileSystem(context);
+		const auto real_file_path = StripPrefix(prefixed_file_name);
+		try {
+			fs.RemoveFile(real_file_path);
+			return 0;
+		} catch (...) {
+			return -1;
+		}
+	}
+
+	int Rename(const char *oldpath, const char *newpath) override {
+		auto &fs = FileSystem::GetFileSystem(context);
+		const auto real_old_path = StripPrefix(oldpath);
+		const auto real_new_path = StripPrefix(newpath);
+
+		try {
+			fs.MoveFile(real_old_path, real_new_path);
+			return 0;
+		} catch (...) {
+			return -1;
+		}
+	}
+
+	string GetCanonicalFilename(const std::string &osFilename) const override {
+		return StripPrefix(osFilename.c_str());
+	}
+
+private:
+	string client_prefix;
+	ClientContext &context;
+};
+
+class DuckDBFileSystemPrefix final : public ClientContextState {
+public:
+	explicit DuckDBFileSystemPrefix(ClientContext &context) : context(context) {
+		// Create a new random prefix for this client
+		client_prefix = StringUtil::Format("/vsiduckdb-%s/", UUID::ToString(UUID::GenerateRandomUUID()));
+
+		// Create a new file handler responding to this prefix
+		fs_handler = make_uniq<DuckDBFileSystemHandler>(client_prefix, context);
+
+		// Register the file handler
+		VSIFileManager::InstallHandler(client_prefix, fs_handler.get());
+	}
+
+	~DuckDBFileSystemPrefix() override {
+		// Uninstall the file handler for this prefix
+		VSIFileManager::RemoveHandler(client_prefix);
+	}
+
+	string AddPrefix(const string &value) const {
+		// If the user explicitly asked for a VSI prefix, we don't add our own
+		if (StringUtil::StartsWith(value, "/vsi")) {
+			if (!context.db->config.options.enable_external_access) {
+				throw PermissionException("Cannot open file '%s' with VSI prefix: External access is disabled", value);
+			}
+			return value;
+		}
+		return client_prefix + value;
+	}
+
+	static DuckDBFileSystemPrefix &GetOrCreate(ClientContext &context) {
+		return *context.registered_state->GetOrCreate<DuckDBFileSystemPrefix>("gdal", context);
+	}
+
+private:
+	ClientContext &context;
+	string client_prefix;
+	unique_ptr<DuckDBFileSystemHandler> fs_handler;
+};
+
+//======================================================================================================================
 // GDAL READ
 //======================================================================================================================
-
 namespace gdal_read {
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -34,7 +445,8 @@ namespace gdal_read {
 //----------------------------------------------------------------------------------------------------------------------
 class BindData final : public TableFunctionData {
 public:
-	string file_path;
+	string real_file_path;
+	string gdal_file_path;
 
 	int layer_idx = 0;
 	bool keep_wkb = false;
@@ -61,8 +473,12 @@ auto Bind(ClientContext &ctx, TableFunctionBindInput &input, vector<LogicalType>
 
 	auto result = make_uniq<BindData>();
 
+	// Get the file prefix associated with this connection
+	const auto &file_prefix = DuckDBFileSystemPrefix::GetOrCreate(ctx);
+
 	// Pass file path
-	result->file_path = input.inputs[0].GetValue<string>();
+	result->real_file_path = input.inputs[0].GetValue<string>();
+	result->gdal_file_path = file_prefix.AddPrefix(result->real_file_path);
 
 	// Parse options
 	const auto dataset_options_param = input.named_parameters.find("open_options");
@@ -82,7 +498,7 @@ auto Bind(ClientContext &ctx, TableFunctionBindInput &input, vector<LogicalType>
 	const auto siblings_params = input.named_parameters.find("sibling_files");
 	if (siblings_params != input.named_parameters.end()) {
 		for (auto &param : ListValue::GetChildren(siblings_params->second)) {
-			result->dataset_sibling.AddString(StringValue::Get(param).c_str());
+			result->dataset_sibling.AddString(file_prefix.AddPrefix(StringValue::Get(param)).c_str());
 		}
 	}
 
@@ -105,14 +521,11 @@ auto Bind(ClientContext &ctx, TableFunctionBindInput &input, vector<LogicalType>
 	}
 
 	// Open the dataset and get the Arrow schema
-	const auto dataset =
-	    GDALOpenEx(result->file_path.c_str(), GDAL_OF_VECTOR | GDAL_OF_READONLY,
-	    	result->dataset_drivers,
-	    	result->dataset_options,
-	    	result->dataset_sibling);
+	const auto dataset = GDALOpenEx(result->gdal_file_path.c_str(), GDAL_OF_VECTOR | GDAL_OF_READONLY,
+	                                result->dataset_drivers, result->dataset_options, result->dataset_sibling);
 
 	if (!dataset) {
-		throw IOException("Could not open GDAL dataset at: %s", result->file_path);
+		throw IOException("Could not open GDAL dataset at: %s", result->real_file_path);
 	}
 
 	ArrowSchema schema;
@@ -122,7 +535,7 @@ auto Bind(ClientContext &ctx, TableFunctionBindInput &input, vector<LogicalType>
 
 		const auto layer_count = GDALDatasetGetLayerCount(dataset);
 		if (layer_count <= 0) {
-			throw IOException("GDAL dataset contains no layers at: %s", result->file_path);
+			throw IOException("GDAL dataset contains no layers at: %s", result->real_file_path);
 		}
 
 		// Find layer
@@ -164,7 +577,7 @@ auto Bind(ClientContext &ctx, TableFunctionBindInput &input, vector<LogicalType>
 		// Get the layer by index
 		const auto layer = GDALDatasetGetLayer(dataset, result->layer_idx);
 		if (!layer) {
-			throw IOException("Could not get GDAL layer at: %s", result->file_path);
+			throw IOException("Could not get GDAL layer at: %s", result->real_file_path);
 		}
 
 		// Estimate cardinality
@@ -183,14 +596,22 @@ auto Bind(ClientContext &ctx, TableFunctionBindInput &input, vector<LogicalType>
 		// Get the layer geometry type if available
 		result->layer_type = OGR_L_GetGeomType(layer);
 
+		// Check FID column
+		const auto fid_col = OGR_L_GetFIDColumn(layer);
+		if (fid_col && strcmp(fid_col, "") != 0) {
+			// Do not include the explicit FID if we already have it as a column
+			result->layer_options.AddString("INCLUDE_FID=NO");
+		}
+		const auto geom_col_name = OGR_L_GetGeometryColumn(layer);
+
 		// Get the arrow stream
 		if (!OGR_L_GetArrowStream(layer, &stream, result->layer_options.List())) {
-			throw IOException("Could not get GDAL Arrow stream at: %s", result->file_path);
+			throw IOException("Could not get GDAL Arrow stream at: %s", result->real_file_path);
 		}
 
 		// And the schema
 		if (stream.get_schema(&stream, &schema) != 0) {
-			throw IOException("Could not get GDAL Arrow schema at: %s", result->file_path);
+			throw IOException("Could not get GDAL Arrow schema at: %s", result->real_file_path);
 		}
 
 		// Convert Arrow schema to DuckDB types
@@ -204,7 +625,14 @@ auto Bind(ClientContext &ctx, TableFunctionBindInput &input, vector<LogicalType>
 				result->geometry_columns.insert(i);
 			}
 
-			col_names.push_back(child_schema.name);
+			if (geom_col_name && (strcmp(geom_col_name, "") == 0) && (strcmp(child_schema.name, "wkb_geometry") == 0) &&
+			    !result->keep_wkb) {
+				// Rename the geometry column to "geom" unless keep_wkb is set
+				col_names.push_back("geom");
+			} else {
+				col_names.push_back(child_schema.name);
+			}
+
 			col_types.push_back(std::move(duck_type));
 		}
 
@@ -368,14 +796,11 @@ public:
 auto InitGlobal(ClientContext &context, TableFunctionInitInput &input) -> unique_ptr<GlobalTableFunctionState> {
 	auto &bdata = input.bind_data->Cast<BindData>();
 
-	const auto dataset =
-	    GDALOpenEx(bdata.file_path.c_str(), GDAL_OF_VECTOR | GDAL_OF_READONLY,
-	    	bdata.dataset_drivers,
-	    	bdata.dataset_options,
-	    	bdata.dataset_sibling);
+	const auto dataset = GDALOpenEx(bdata.gdal_file_path.c_str(), GDAL_OF_VECTOR | GDAL_OF_READONLY,
+	                                bdata.dataset_drivers, bdata.dataset_options, bdata.dataset_sibling);
 
 	if (!dataset) {
-		throw IOException("Could not open GDAL dataset at: foo");
+		throw IOException("Could not open GDAL dataset at: %s", bdata.real_file_path);
 	}
 
 	auto result = make_uniq<GlobalState>();
@@ -587,7 +1012,7 @@ auto ReplacementScan(ClientContext &, ReplacementScanInput &input, optional_ptr<
 // REGISTER
 //----------------------------------------------------------------------------------------------------------------------
 void Register(ExtensionLoader &loader) {
-	TableFunction read_func("gdal_read", {LogicalType::VARCHAR}, Scan, Bind, InitGlobal);
+	TableFunction read_func("st_read", {LogicalType::VARCHAR}, Scan, Bind, InitGlobal);
 	read_func.cardinality = Cardinality;
 	read_func.statistics = Statistics;
 	read_func.table_scan_progress = Progress;
@@ -607,11 +1032,9 @@ void Register(ExtensionLoader &loader) {
 }
 
 } // namespace gdal_read
-
 //======================================================================================================================
 // GDAL COPY
 //======================================================================================================================
-
 namespace gdal_copy {
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -619,7 +1042,8 @@ namespace gdal_copy {
 //----------------------------------------------------------------------------------------------------------------------
 class BindData final : public TableFunctionData {
 public:
-	string file_path;
+	//string gdal_file_path;
+	//string real_file_path;
 	string driver_name;
 	string layer_name;
 
@@ -669,8 +1093,8 @@ auto Bind(ClientContext &context, CopyFunctionBindInput &input, const vector<str
           const vector<LogicalType> &sql_types) -> unique_ptr<FunctionData> {
 	auto result = make_uniq<BindData>();
 
-	// Set file path
-	result->file_path = input.info.file_path;
+	// Set file pat
+	const auto &file_path = input.info.file_path;
 
 	// Parse options
 	for (auto &option : input.info.options) {
@@ -736,7 +1160,7 @@ auto Bind(ClientContext &context, CopyFunctionBindInput &input, const vector<str
 
 	if (result->layer_name.empty()) {
 		auto &fs = FileSystem::GetFileSystem(context);
-		result->layer_name = fs.ExtractBaseName(result->file_path);
+		result->layer_name = fs.ExtractBaseName(file_path);
 	}
 
 	// Check the driver
@@ -792,7 +1216,8 @@ public:
 	OGRSpatialReferenceH srs = nullptr;
 };
 
-auto InitGlobal(ClientContext &context, FunctionData &bdata_p, const string &path) -> unique_ptr<GlobalFunctionData> {
+auto InitGlobal(ClientContext &context, FunctionData &bdata_p, const string &real_file_path)
+    -> unique_ptr<GlobalFunctionData> {
 	auto &bdata = bdata_p.Cast<BindData>();
 	auto result = make_uniq<GlobalState>();
 
@@ -801,10 +1226,13 @@ auto InitGlobal(ClientContext &context, FunctionData &bdata_p, const string &pat
 		throw InvalidInputException("Could not find GDAL driver: " + bdata.driver_name);
 	}
 
+	const auto &file_prefix = DuckDBFileSystemPrefix::GetOrCreate(context);
+	const auto gdal_file_path = file_prefix.AddPrefix(real_file_path);
+
 	// Create Dataset
-	result->dataset = GDALCreate(driver, bdata.file_path.c_str(), 0, 0, 0, GDT_Unknown, bdata.driver_options);
+	result->dataset = GDALCreate(driver, gdal_file_path.c_str(), 0, 0, 0, GDT_Unknown, bdata.driver_options);
 	if (!result->dataset) {
-		throw IOException("Could not create GDAL dataset at: " + bdata.file_path);
+		throw IOException("Could not create GDAL dataset at: " + real_file_path);
 	}
 
 	if (!bdata.target_srs.empty()) {
@@ -814,11 +1242,11 @@ auto InitGlobal(ClientContext &context, FunctionData &bdata_p, const string &pat
 	}
 
 	// Create Layer
-	result->layer = GDALDatasetCreateLayer(result->dataset, bdata.driver_name.c_str(), result->srs, bdata.geometry_type,
+	result->layer = GDALDatasetCreateLayer(result->dataset, bdata.layer_name.c_str(), result->srs, bdata.geometry_type,
 	                                       bdata.layer_options);
 
 	if (!result->layer) {
-		throw IOException("Could not create GDAL layer in dataset at: " + bdata.file_path);
+		throw IOException("Could not create GDAL layer in dataset at: " + real_file_path);
 	}
 
 	// Create fields for all children
@@ -945,7 +1373,60 @@ void Register(ExtensionLoader &loader) {
 } // namespace
 
 void RegisterExtraFunction(ExtensionLoader &loader) {
-	gdal_copy::Register(loader);
+
+	// Load GDAL (once)
+	static std::once_flag loaded;
+	std::call_once(loaded, [&]() {
+		// Register all embedded drivers (dont go looking for plugins)
+		OGRRegisterAllInternal();
+
+		// Set GDAL error handler
+		CPLSetErrorHandler([](CPLErr e, int code, const char *raw_msg) {
+			// DuckDB doesnt do warnings, so we only throw on errors
+			if (e != CE_Failure && e != CE_Fatal) {
+				return;
+			}
+
+			// GDAL Catches exceptions internally and passes them on to the handler again as CPLE_AppDefined
+			// So we don't add any extra information here or we end up with very long nested error messages.
+			// Using ErrorData we can parse the message part of DuckDB exceptions properly, and for other exceptions
+			// their error message will still be preserved as the "raw message".
+			ErrorData error_data(raw_msg);
+			auto msg = error_data.RawMessage();
+
+			// If the error contains a /vsiduckdb-<uuid>/ prefix,
+			// try to strip it off to make the errors more readable
+			auto path_pos = msg.find("/vsiduckdb-");
+			if (path_pos != string::npos) {
+				// We found a path, strip it off
+				msg.erase(path_pos, 48);
+			}
+
+			switch (code) {
+			case CPLE_NoWriteAccess:
+				throw PermissionException(msg);
+			case CPLE_UserInterrupt:
+				throw InterruptException();
+			case CPLE_OutOfMemory:
+				throw OutOfMemoryException(msg);
+			case CPLE_NotSupported:
+				throw NotImplementedException(msg);
+			case CPLE_AssertionFailed:
+			case CPLE_ObjectNull:
+				throw InternalException(msg);
+			case CPLE_IllegalArg:
+				throw InvalidInputException(msg);
+			case CPLE_AppDefined:
+			case CPLE_HttpResponse:
+			case CPLE_FileIO:
+			case CPLE_OpenFailed:
+			default:
+				throw IOException(msg);
+			}
+		});
+	});
+
 	gdal_read::Register(loader);
+	gdal_copy::Register(loader);
 }
 } // namespace duckdb

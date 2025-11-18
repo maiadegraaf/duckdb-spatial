@@ -36,8 +36,8 @@ struct BindData final : TableFunctionData {
 	}
 };
 
-unique_ptr<FunctionData> Bind(ClientContext &context, TableFunctionBindInput &input,
-                                     vector<LogicalType> &return_types, vector<string> &names) {
+unique_ptr<FunctionData> Bind(ClientContext &context, TableFunctionBindInput &input, vector<LogicalType> &return_types,
+                              vector<string> &names) {
 
 	// Create an enum type for all osm kinds
 	vector<string_t> enum_values = {"node", "way", "relation", "changeset"};
@@ -221,7 +221,6 @@ public:
 		// 3 - size of the next blob
 		reader.next(3);
 		auto blob_length = reader.get_int32(); // size of the next blob
-
 
 		// Sanity check
 		if (offset + blob_length > file_size) {
@@ -796,7 +795,7 @@ struct LocalState final : LocalTableFunctionState {
 };
 
 unique_ptr<LocalTableFunctionState> InitLocal(ExecutionContext &context, TableFunctionInitInput &input,
-                                                     GlobalTableFunctionState *global_state) {
+                                              GlobalTableFunctionState *global_state) {
 	auto &global = global_state->Cast<GlobalState>();
 	const auto blob = global.GetNextBlob(context.client);
 	if (blob == nullptr) {
@@ -834,8 +833,7 @@ void Execute(ClientContext &context, TableFunctionInput &input, DataChunk &outpu
 	output.SetCardinality(row_id);
 }
 
-double Progress(ClientContext &context, const FunctionData *bind_data,
-                       const GlobalTableFunctionState *global_state) {
+double Progress(ClientContext &context, const FunctionData *bind_data, const GlobalTableFunctionState *global_state) {
 	const auto &state = global_state->Cast<GlobalState>();
 	return state.GetProgress();
 }
@@ -849,7 +847,7 @@ OperatorPartitionData GetPartitionData(ClientContext &context, TableFunctionGetP
 }
 
 unique_ptr<TableRef> ReadOsmPBFReplacementScan(ClientContext &context, ReplacementScanInput &input,
-                                                      optional_ptr<ReplacementScanData> data) {
+                                               optional_ptr<ReplacementScanData> data) {
 	auto &table_name = input.table_name;
 	// Check if the table name ends with .osm.pbf
 	if (!StringUtil::EndsWith(StringUtil::Lower(table_name), ".osm.pbf")) {
