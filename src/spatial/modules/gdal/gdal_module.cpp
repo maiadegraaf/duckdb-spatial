@@ -1306,11 +1306,18 @@ auto InitGlobal(ClientContext &context, FunctionData &bdata_p, const string &rea
 			if (geometry_field_count > 1) {
 				throw NotImplementedException("Multiple geometry fields not supported yet");
 			}
-		} else {
-			// Register normal attribute
-			if (!OGR_L_CreateFieldFromArrowSchema(result->layer, child_schema, nullptr)) {
-				throw IOException("Could not create field in GDAL layer for column: " + string(child_schema->name));
-			}
+			continue;
+		}
+
+		// Check if this is the FID field
+		if (strcmp(child_schema->name, OGRLayer::DEFAULT_ARROW_FID_NAME) == 0) {
+			// Skip FID field
+			continue;
+		}
+
+		// Register normal attribute
+		if (!OGR_L_CreateFieldFromArrowSchema(result->layer, child_schema, nullptr)) {
+			throw IOException("Could not create field in GDAL layer for column: " + string(child_schema->name));
 		}
 	}
 
