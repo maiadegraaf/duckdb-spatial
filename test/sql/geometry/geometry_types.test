@@ -64,7 +64,7 @@ GEOMETRYCOLLECTION
 
 
 query I
-SELECT ST_GeometryType(ST_AsWKB(geom)) FROM types
+SELECT ST_GeometryType(ST_AsWKB(geom)::WKB_BLOB) FROM types
 ----
 POINT
 POINT

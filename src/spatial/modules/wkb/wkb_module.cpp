@@ -4,9 +4,6 @@
 #include "duckdb/main/extension/extension_loader.hpp"
 #include "duckdb/common/types/geometry.hpp"
 
-//######################################################################################################################
-// Types
-//######################################################################################################################
 namespace duckdb {
 namespace {
 
@@ -35,32 +32,23 @@ struct WKBTypes {
 		loader.RegisterType("WKB_BLOB", WKB_BLOB());
 
 		// Also register casts
-		// WKB_BLOB -> GEOMETRY (Explicit)
-		loader.RegisterCastFunction(WKB_BLOB(), LogicalType::GEOMETRY(), FromWKBCast);
-
-		// GEOMETRY -> WKB_BLOB (Explicit)
-		loader.RegisterCastFunction(LogicalType::GEOMETRY(), WKB_BLOB(), ToWKBCast);
+		// WKB_BLOB -> GEOMETRY (Implicit)
+		loader.RegisterCastFunction(WKB_BLOB(), LogicalType::GEOMETRY(), FromWKBCast, 1);
 
 		// WKB_BLOB -> BLOB (Implicit)
 		loader.RegisterCastFunction(WKB_BLOB(), LogicalType::BLOB, DefaultCasts::ReinterpretCast, 1);
 
+		// TODO: Remove support for this in the future
+		// GEOMETRY -> WKB_BLOB (Explicit)
+		loader.RegisterCastFunction(LogicalType::GEOMETRY(), WKB_BLOB(), ToWKBCast);
+
+		// TODO: Remove support for this in the future
 		// BLOB -> WKB_BLOB (Explicit)
 		loader.RegisterCastFunction(LogicalType::BLOB, WKB_BLOB(), DefaultCasts::ReinterpretCast);
 	}
 };
 
 } // namespace
-} // namespace duckdb
-//######################################################################################################################
-// Functions
-//######################################################################################################################
-namespace duckdb {
-namespace {} // namespace
-} // namespace duckdb
-//######################################################################################################################
-// Module Registration
-//######################################################################################################################
-namespace duckdb {
 
 void RegisterWKBModule(ExtensionLoader &loader) {
 	WKBTypes::Register(loader);

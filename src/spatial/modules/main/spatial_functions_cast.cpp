@@ -8,6 +8,8 @@
 #include "duckdb/common/operator/cast_operators.hpp"
 #include "duckdb/common/vector_operations/generic_executor.hpp"
 #include "duckdb/main/extension/extension_loader.hpp"
+#include "spatial/util/binary_reader.hpp"
+#include "spatial/util/binary_writer.hpp"
 
 namespace duckdb {
 
@@ -114,16 +116,195 @@ struct GeometryCasts {
 	}
 
 	//------------------------------------------------------------------------------------------------------------------
+	// LEGACY_GEOMETRY -> GEOMETRY
+	//------------------------------------------------------------------------------------------------------------------
+	static uint32_t FromLegacyGeometryRequiredSize(BinaryReader &reader) {
+
+		reader.Skip(sizeof(uint8_t)); // type
+		const auto flags = reader.Read<uint8_t>();
+		reader.Skip(sizeof(uint16_t));
+		reader.Skip(sizeof(uint32_t)); // padding
+
+		// Parse flags
+		const auto has_z = (flags & 0x01) != 0;
+		const auto has_m = (flags & 0x02) != 0;
+		const auto has_bbox = (flags & 0x04) != 0;
+
+		const auto format_v1 = (flags & 0x40) != 0;
+		const auto format_v0 = (flags & 0x80) != 0;
+
+		if (format_v1 || format_v0) {
+			// Unsupported version, throw an error
+			throw NotImplementedException(
+			    "This geometry seems to be written with a newer version of the DuckDB spatial library that is not "
+			    "compatible with this version. Please upgrade your DuckDB installation.");
+		}
+
+		if (has_bbox) {
+			// Skip past bbox if present
+			reader.Skip(sizeof(float) * 2 * (2 + has_z + has_m));
+		}
+
+		// Create root geometry
+		const auto vert_width = (2 + has_z + has_m) * sizeof(double);
+
+		uint32_t total_size = 0;
+		while (!reader.IsAtEnd()) {
+
+			const auto type = static_cast<sgl::geometry_type>(reader.Read<uint32_t>() + 1);
+			const auto size = reader.Read<uint32_t>();
+
+			// Endianness + type
+			total_size += sizeof(uint8_t) + sizeof(uint32_t);
+
+			switch (type) {
+			case sgl::geometry_type::POINT: {
+				// Points have a fixed size
+				reader.Skip(size * vert_width);
+				total_size += vert_width;
+			} break;
+			case sgl::geometry_type::LINESTRING: {
+				reader.Skip(size * vert_width);
+				total_size += sizeof(uint32_t) + (size * vert_width);
+			} break;
+			case sgl::geometry_type::POLYGON: {
+				total_size += sizeof(uint32_t); // ring count
+				auto ring_reader = reader;
+				reader.Skip(size * sizeof(uint32_t) + (size % 2) * sizeof(uint32_t));
+				for (uint32_t ring_idx = 0; ring_idx < size; ring_idx++) {
+					const auto ring_size = ring_reader.Read<uint32_t>();
+					reader.Skip(vert_width * ring_size);
+					total_size += sizeof(uint32_t) + ring_size * vert_width;
+				}
+			} break;
+			case sgl::geometry_type::MULTI_POINT:
+			case sgl::geometry_type::MULTI_LINESTRING:
+			case sgl::geometry_type::MULTI_POLYGON: {
+			case sgl::geometry_type::GEOMETRY_COLLECTION: {
+				total_size += sizeof(uint32_t); // item count
+			} break;
+			default:
+				throw InvalidInputException("Unsupported geometry type in legacy geometry!");
+			}
+			}
+		}
+		return total_size;
+	}
+
+	static void FromLegacyGeometryConversion(BinaryReader &reader, BinaryWriter &writer) {
+		reader.Skip(sizeof(uint8_t)); // type
+		const auto flags = reader.Read<uint8_t>();
+		reader.Skip(sizeof(uint16_t));
+		reader.Skip(sizeof(uint32_t)); // padding
+
+		// Parse flags
+		const auto has_z = (flags & 0x01) != 0;
+		const auto has_m = (flags & 0x02) != 0;
+		const auto has_bbox = (flags & 0x04) != 0;
+
+		const auto format_v1 = (flags & 0x40) != 0;
+		const auto format_v0 = (flags & 0x80) != 0;
+
+		if (format_v1 || format_v0) {
+			// Unsupported version, throw an error
+			throw NotImplementedException(
+			    "This geometry seems to be written with a newer version of the DuckDB spatial library that is not "
+			    "compatible with this version. Please upgrade your DuckDB installation.");
+		}
+
+		if (has_bbox) {
+			// Skip past bbox if present
+			reader.Skip(sizeof(float) * 2 * (2 + has_z + has_m));
+		}
+
+		// Create root geometry
+		const auto vert_width = (2 + has_z + has_m) * sizeof(double);
+
+		while (!reader.IsAtEnd()) {
+			const auto type = static_cast<sgl::geometry_type>(reader.Read<uint32_t>() + 1);
+			const auto size = reader.Read<uint32_t>();
+
+			// Write endianness + type
+			const auto meta = static_cast<uint32_t>(type) + (has_z ? 1 : 0) * 1000 + (has_m ? 2 : 0) * 1000;
+
+			writer.Write<uint8_t>(1); // little endian
+			writer.Write<uint32_t>(meta);
+
+			switch (type) {
+			case sgl::geometry_type::POINT: {
+				if (size == 0) {
+					constexpr auto nan = std::numeric_limits<double>::quiet_NaN();
+					constexpr double empty[4] = {nan, nan, nan, nan};
+					writer.Copy(reinterpret_cast<const char *>(empty), vert_width);
+				} else {
+					const auto vert_data = reader.Reserve(vert_width);
+					writer.Copy(vert_data, vert_width);
+				}
+			} break;
+			case sgl::geometry_type::LINESTRING: {
+				writer.Write<uint32_t>(size);
+
+				const auto vert_size = vert_width * size;
+				const auto vert_data = reader.Reserve(vert_size);
+
+				writer.Copy(vert_data, vert_size);
+			} break;
+			case sgl::geometry_type::POLYGON: {
+				writer.Write<uint32_t>(size); // ring count
+				auto ring_reader = reader;
+				reader.Skip(size * sizeof(uint32_t) + (size % 2) * sizeof(uint32_t));
+				for (uint32_t ring_idx = 0; ring_idx < size; ring_idx++) {
+					const auto ring_size = ring_reader.Read<uint32_t>();
+					writer.Write<uint32_t>(ring_size);
+
+					const auto vert_size = vert_width * ring_size;
+					const auto vert_data = reader.Reserve(vert_size);
+
+					writer.Copy(vert_data, vert_size);
+				}
+			} break;
+			case sgl::geometry_type::MULTI_POINT:
+			case sgl::geometry_type::MULTI_LINESTRING:
+			case sgl::geometry_type::MULTI_POLYGON:
+			case sgl::geometry_type::GEOMETRY_COLLECTION: {
+				writer.Write<uint32_t>(size); // item count
+			} break;
+			default:
+				throw InvalidInputException("Unsupported geometry type in legacy geometry!");
+			}
+		}
+	}
+
+	static bool FromLegacyGeometryCast(Vector &source, Vector &result, idx_t count, CastParameters &params) {
+		UnaryExecutor::Execute<string_t, string_t>(source, result, count, [&](const string_t &old_blob) {
+			BinaryReader reader(old_blob.GetDataUnsafe(), old_blob.GetSize());
+
+			const auto new_size = FromLegacyGeometryRequiredSize(reader);
+			auto new_blob = StringVector::EmptyString(result, new_size);
+
+			reader.Reset();
+			BinaryWriter writer(new_blob.GetDataWriteable(), new_blob.GetSize());
+			FromLegacyGeometryConversion(reader, writer);
+
+			new_blob.Finalize();
+			return new_blob;
+		});
+		return true;
+	}
+
+	//------------------------------------------------------------------------------------------------------------------
 	// Register
 	//------------------------------------------------------------------------------------------------------------------
 	static void Register(ExtensionLoader &loader) {
 		const auto geom_type = LogicalType::GEOMETRY();
 
-		// Geometry -> WKB is explicitly castable
-		// loader.RegisterCastFunction(geom_type, wkb_type, BoundCastInfo(ToWKBCast));
-
 		// Geometry -> BLOB is explicitly castable
 		loader.RegisterCastFunction(geom_type, LogicalType::BLOB, DefaultCasts::ReinterpretCast);
+
+		// Also allow casting from LEGACY_GEOMETRY to GEOMETRY (Implicit)
+		loader.RegisterCastFunction(GeoTypes::LEGACY_GEOMETRY(), geom_type, FromLegacyGeometryCast, 1);
+
+		// TODO: And the other way around?
 	}
 };
 
