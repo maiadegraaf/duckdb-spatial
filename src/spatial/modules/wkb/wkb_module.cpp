@@ -1,6 +1,7 @@
 #include "wkb_module.hpp"
 
 #include "duckdb/common/types.hpp"
+#include "duckdb/common/operator/cast_operators.hpp"
 #include "duckdb/main/extension/extension_loader.hpp"
 #include "duckdb/common/types/geometry.hpp"
 
@@ -21,9 +22,12 @@ struct WKBTypes {
 	}
 
 	static bool FromWKBCast(Vector &source, Vector &result, idx_t count, CastParameters &params) {
-		Geometry::FromBinary(source, result, count, params.strict);
-		// TODO: Return false if any errors occurred during the cast
-		return true;
+		try {
+			return Geometry::FromBinary(source, result, count, params.strict);
+		} catch (...) {
+			HandleCastError::AssignError("Failed to cast WKB_BLOB to GEOMETRY", params);
+			return false;
+		}
 	}
 
 	static void Register(ExtensionLoader &loader) {
