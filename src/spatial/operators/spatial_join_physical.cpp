@@ -1082,8 +1082,8 @@ unique_ptr<LocalSourceState> PhysicalSpatialJoin::GetLocalSourceState(ExecutionC
 	return std::move(lstate);
 }
 
-SourceResultType PhysicalSpatialJoin::GetData(ExecutionContext &context, DataChunk &chunk,
-                                              OperatorSourceInput &input) const {
+SourceResultType PhysicalSpatialJoin::GetDataInternal(ExecutionContext &context, DataChunk &chunk,
+                                                      OperatorSourceInput &input) const {
 	D_ASSERT(PropagatesBuildSide(join_type));
 
 	auto &gstate = input.global_state.Cast<SpatialJoinGlobalSourceState>();
