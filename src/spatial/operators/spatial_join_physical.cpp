@@ -718,6 +718,18 @@ class SpatialJoinGlobalOperatorState final : public GlobalOperatorState {
 public:
 	unique_ptr<FlatRTree> rtree;
 	unique_ptr<TupleDataCollection> collection;
+
+#ifdef DUCKDB_SPATIAL_DEBUG_JOIN
+	// TODO: Move this into proper profiling metrics later
+	// Statistics
+	atomic<idx_t> total_rtree_probes = {0};
+	atomic<idx_t> total_rtree_candidates = {0};
+
+	~SpatialJoinGlobalOperatorState() override {
+		Printer::PrintF("Spatial Join Stats: RTree Probes: %llu, RTree Candidates: %llu\n",
+		                  total_rtree_probes.load(), total_rtree_candidates.load());
+	}
+#endif
 };
 
 unique_ptr<OperatorState> PhysicalSpatialJoin::GetOperatorState(ExecutionContext &context) const {
@@ -835,6 +847,11 @@ OperatorResultType PhysicalSpatialJoin::ExecuteInternal(ExecutionContext &contex
 				lstate.input_index++;
 				continue;
 			}
+
+#ifdef DUCKDB_SPATIAL_DEBUG_JOIN
+			gstate.total_rtree_candidates += lstate.scan.matches_count;
+			gstate.total_rtree_probes += 1;
+#endif
 
 			lstate.state = SpatialJoinState::SCAN;
 		} // fall through

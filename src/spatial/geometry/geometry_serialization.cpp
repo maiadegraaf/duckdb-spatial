@@ -290,7 +290,7 @@ void Serde::DeserializePrepared(sgl::prepared_geometry &result, ArenaAllocator &
 }
 
 uint32_t Serde::TryGetBounds(const string_t &blob, Box2D<float> &bbox) {
-	GeometryExtent extent;
+	GeometryExtent extent = GeometryExtent::Empty();
 	const auto count = Geometry::GetExtent(blob, extent);
 	if (count == 0) {
 		return 0;
