@@ -61,8 +61,8 @@ static unique_ptr<Expression> GetInversePredicate(ClientContext &context, unique
 	                                                           nullptr, func.is_operator);
 }
 
-static bool IsSpatialJoinPredicate(const unique_ptr<Expression> &expr,
-	const unordered_set<idx_t> &left_bindings, const unordered_set<idx_t> &right_bindings, bool &needs_flipping) {
+static bool IsSpatialJoinPredicate(const unique_ptr<Expression> &expr, const unordered_set<idx_t> &left_bindings,
+                                   const unordered_set<idx_t> &right_bindings, bool &needs_flipping) {
 
 	const auto total_side = JoinSide::GetJoinSide(*expr, left_bindings, right_bindings);
 
@@ -84,7 +84,7 @@ static bool IsSpatialJoinPredicate(const unique_ptr<Expression> &expr,
 
 	// The function must operate on two GEOMETRY types
 	if (func.children[0]->return_type != LogicalType::GEOMETRY() ||
-		func.children[1]->return_type != LogicalType::GEOMETRY()) {
+	    func.children[1]->return_type != LogicalType::GEOMETRY()) {
 		return false;
 	}
 
@@ -110,7 +110,6 @@ static bool IsSpatialJoinPredicate(const unique_ptr<Expression> &expr,
 
 	return true;
 }
-
 
 static bool TrySwapComparisonJoin(OptimizerExtensionInput &input, unique_ptr<LogicalOperator> &plan) {
 	auto &op = *plan;
@@ -174,7 +173,7 @@ static bool TrySwapComparisonJoin(OptimizerExtensionInput &input, unique_ptr<Log
 	if (pred_func.function.name == "ST_DWithin") {
 		// Try to get the constant distance value from the bind data;
 		spatial_join->has_const_distance =
-			ST_DWithinHelper::TryGetConstDistance(pred_func.bind_info, spatial_join->const_distance);
+		    ST_DWithinHelper::TryGetConstDistance(pred_func.bind_info, spatial_join->const_distance);
 	}
 
 	// Also take all the conditions from the comparison join and add them as filters

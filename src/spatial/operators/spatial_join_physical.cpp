@@ -726,8 +726,8 @@ public:
 	atomic<idx_t> total_rtree_candidates = {0};
 
 	~SpatialJoinGlobalOperatorState() override {
-		Printer::PrintF("Spatial Join Stats: RTree Probes: %llu, RTree Candidates: %llu\n",
-		                  total_rtree_probes.load(), total_rtree_candidates.load());
+		Printer::PrintF("Spatial Join Stats: RTree Probes: %llu, RTree Candidates: %llu\n", total_rtree_probes.load(),
+		                total_rtree_candidates.load());
 	}
 #endif
 };
