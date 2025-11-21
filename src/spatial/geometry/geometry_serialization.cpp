@@ -166,13 +166,13 @@ void Prepare<sgl::prepared_geometry>(sgl::prepared_geometry &type, ArenaAllocato
 }
 
 template <class GEOM_TYPE = sgl::geometry>
-static void DeserializeInternal(sgl::geometry &result, ArenaAllocator &arena, const char *buffer, size_t buffer_size) {
+static void DeserializeInternal(GEOM_TYPE &result, ArenaAllocator &arena, const char *buffer, size_t buffer_size) {
 	BinaryReader reader(buffer, buffer_size);
 
 	uint32_t stack[32];
 	uint32_t depth = 0;
 
-	auto geom = &result;
+	sgl::geometry *geom = &result;
 
 	while (true) {
 		const auto le = reader.Read<uint8_t>() == 1;
@@ -213,8 +213,8 @@ static void DeserializeInternal(sgl::geometry &result, ArenaAllocator &arena, co
 				break;
 			}
 			for (uint32_t i = 0; i < ring_count; i++) {
-				auto ring_mem = arena.AllocateAligned(sizeof(sgl::geometry));
-				const auto ring = new (ring_mem) sgl::geometry(sgl::geometry_type::LINESTRING, has_z, has_m);
+				auto ring_mem = arena.AllocateAligned(sizeof(GEOM_TYPE));
+				const auto ring = new (ring_mem) GEOM_TYPE(sgl::geometry_type::LINESTRING, has_z, has_m);
 
 				const auto vert_count = reader.Read<uint32_t>();
 				const auto vert_array = reader.Reserve(vert_count * ring->get_vertex_width());
@@ -241,8 +241,8 @@ static void DeserializeInternal(sgl::geometry &result, ArenaAllocator &arena, co
 			stack[depth++] = part_count;
 
 			// Make a new part
-			const auto part_mem = arena.AllocateAligned(sizeof(sgl::geometry));
-			const auto part_ptr = new (part_mem) sgl::geometry(sgl::geometry_type::INVALID, has_z, has_m);
+			const auto part_mem = arena.AllocateAligned(sizeof(GEOM_TYPE));
+			const auto part_ptr = new (part_mem) GEOM_TYPE(sgl::geometry_type::INVALID, has_z, has_m);
 
 			geom->append_part(part_ptr);
 			geom = part_ptr;
@@ -265,8 +265,8 @@ static void DeserializeInternal(sgl::geometry &result, ArenaAllocator &arena, co
 
 			stack[depth - 1]--;
 			if (stack[depth - 1] > 0) {
-				const auto part_mem = arena.AllocateAligned(sizeof(sgl::geometry));
-				const auto part_ptr = new (part_mem) sgl::geometry(sgl::geometry_type::INVALID, has_z, has_m);
+				const auto part_mem = arena.AllocateAligned(sizeof(GEOM_TYPE));
+				const auto part_ptr = new (part_mem) GEOM_TYPE(sgl::geometry_type::INVALID, has_z, has_m);
 
 				parent->append_part(part_ptr);
 
@@ -281,12 +281,12 @@ static void DeserializeInternal(sgl::geometry &result, ArenaAllocator &arena, co
 }
 
 void Serde::Deserialize(sgl::geometry &result, ArenaAllocator &arena, const char *buffer, size_t buffer_size) {
-	DeserializeInternal(result, arena, buffer, buffer_size);
+	DeserializeInternal<sgl::geometry>(result, arena, buffer, buffer_size);
 }
 
 void Serde::DeserializePrepared(sgl::prepared_geometry &result, ArenaAllocator &arena, const char *buffer,
                                 size_t buffer_size) {
-	DeserializeInternal(result, arena, buffer, buffer_size);
+	DeserializeInternal<sgl::prepared_geometry>(result, arena, buffer, buffer_size);
 }
 
 uint32_t Serde::TryGetBounds(const string_t &blob, Box2D<float> &bbox) {
