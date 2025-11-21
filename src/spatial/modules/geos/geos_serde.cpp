@@ -6,6 +6,7 @@
 #include "sgl/sgl.hpp"
 
 #include "duckdb/common/assert.hpp"
+#include "duckdb/storage/arena_allocator.hpp"
 #include "spatial/util/binary_writer.hpp"
 #include "spatial/util/math.hpp"
 #include "spatial/util/binary_reader.hpp"
@@ -205,10 +206,16 @@ void GeosSerde::Serialize(GEOSContextHandle_t ctx, const GEOSGeom_t *geom, char 
 //------------------------------------------------------------------------------
 // Deserialize
 //------------------------------------------------------------------------------
-static GEOSGeom_t *DeserializeInternal(BinaryReader &reader, GEOSContextHandle_t ctx);
+static GEOSGeom_t *DeserializeInternal(BinaryReader &reader, ArenaAllocator &arena, GEOSContextHandle_t ctx);
+
+template <class T>
+static T *AllocateArray(ArenaAllocator &arena, size_t count) {
+	return reinterpret_cast<T *>(arena.AllocateAligned(count * sizeof(T)));
+}
 
 template <class V = VertexXY>
-static GEOSGeom_t *DeserializeTemplated(BinaryReader &reader, GEOSContextHandle_t ctx, sgl::geometry_type type) {
+static GEOSGeom_t *DeserializeTemplated(BinaryReader &reader, ArenaAllocator &arena, GEOSContextHandle_t ctx,
+                                        sgl::geometry_type type) {
 	constexpr auto VERTEX_SIZE = V::HAS_Z + V::HAS_M + 2;
 
 	switch (type) {
@@ -225,11 +232,10 @@ static GEOSGeom_t *DeserializeTemplated(BinaryReader &reader, GEOSContextHandle_
 		if (vert_count == 0) {
 			return GEOSGeom_createEmptyLineString_r(ctx);
 		}
-		auto vert_array = new double[vert_count * VERTEX_SIZE];
+		auto vert_array = AllocateArray<double>(arena, vert_count * VERTEX_SIZE);
 		auto ptr = reader.Reserve(vert_count * VERTEX_SIZE * sizeof(double));
 		memcpy(vert_array, ptr, vert_count * VERTEX_SIZE * sizeof(double));
 		auto seq = GEOSCoordSeq_copyFromBuffer_r(ctx, vert_array, vert_count, V::HAS_Z, V::HAS_M);
-		delete[] vert_array;
 		return GEOSGeom_createLineString_r(ctx, seq);
 	}
 	case sgl::geometry_type::POLYGON: {
@@ -237,56 +243,67 @@ static GEOSGeom_t *DeserializeTemplated(BinaryReader &reader, GEOSContextHandle_
 		if (ring_count == 0) {
 			return GEOSGeom_createEmptyPolygon_r(ctx);
 		}
-		vector<GEOSGeometry *> rings;
+		auto ring_array = AllocateArray<GEOSGeometry *>(ring_count);
 		for (uint32_t i = 0; i < ring_count; i++) {
 			const auto vert_count = reader.Read<uint32_t>();
-			auto vert_array = new double[vert_count * VERTEX_SIZE];
+			auto vert_array = AllocateArray<double>(arena, vert_count * VERTEX_SIZE);
 			auto ptr = reader.Reserve(vert_count * VERTEX_SIZE * sizeof(double));
 			memcpy(vert_array, ptr, vert_count * VERTEX_SIZE * sizeof(double));
 			auto seq = GEOSCoordSeq_copyFromBuffer_r(ctx, vert_array, vert_count, V::HAS_Z, V::HAS_M);
-			delete[] vert_array;
-			rings.push_back(GEOSGeom_createLinearRing_r(ctx, seq));
+			ring_array[i] = GEOSGeom_createLinearRing_r(ctx, seq);
 		}
-		return GEOSGeom_createPolygon_r(ctx, rings[0], rings.data() + 1, ring_count - 1);
+		return GEOSGeom_createPolygon_r(ctx, ring_array[0], ring_array + 1, ring_count - 1);
 	}
 	case sgl::geometry_type::MULTI_POINT: {
-		vector<GEOSGeometry *> rings;
 		const auto part_count = reader.Read<uint32_t>();
-		for (uint32_t i = 0; i < part_count; i++) {
-			rings.push_back(DeserializeInternal(reader, ctx));
+		if (part_count == 0) {
+			return GEOSGeom_createEmptyCollection_r(ctx, GEOS_MULTIPOINT);
 		}
-		return GEOSGeom_createCollection_r(ctx, GEOS_MULTIPOINT, rings.data(), part_count);
+		const auto part_array = AllocateArray<GEOSGeometry *>(arena, part_count);
+		for (uint32_t i = 0; i < part_count; i++) {
+			part_array[i] = DeserializeInternal(reader, arena, ctx);
+		}
+		return GEOSGeom_createCollection_r(ctx, GEOS_MULTIPOINT, part_array, part_count);
 	}
 	case sgl::geometry_type::MULTI_LINESTRING: {
-		vector<GEOSGeometry *> rings;
 		const auto part_count = reader.Read<uint32_t>();
-		for (uint32_t i = 0; i < part_count; i++) {
-			rings.push_back(DeserializeInternal(reader, ctx));
+		if (part_count == 0) {
+			return GEOSGeom_createEmptyCollection_r(ctx, GEOS_MULTILINESTRING);
 		}
-		return GEOSGeom_createCollection_r(ctx, GEOS_MULTILINESTRING, rings.data(), part_count);
+		const auto part_array = AllocateArray<GEOSGeometry *>(arena, part_count);
+		for (uint32_t i = 0; i < part_count; i++) {
+			part_array[i] = DeserializeInternal(reader, arena, ctx);
+		}
+		return GEOSGeom_createCollection_r(ctx, GEOS_MULTILINESTRING, part_array, part_count);
 	}
 	case sgl::geometry_type::MULTI_POLYGON: {
-		vector<GEOSGeometry *> rings;
 		const auto part_count = reader.Read<uint32_t>();
-		for (uint32_t i = 0; i < part_count; i++) {
-			rings.push_back(DeserializeInternal(reader, ctx));
+		if (part_count == 0) {
+			return GEOSGeom_createEmptyCollection_r(ctx, GEOS_MULTIPOLYGON);
 		}
-		return GEOSGeom_createCollection_r(ctx, GEOS_MULTIPOLYGON, rings.data(), part_count);
+		const auto part_array = AllocateArray<GEOSGeometry *>(arena, part_count);
+		for (uint32_t i = 0; i < part_count; i++) {
+			part_array[i] = DeserializeInternal(reader, arena, ctx);
+		}
+		return GEOSGeom_createCollection_r(ctx, GEOS_MULTIPOLYGON, part_array, part_count);
 	}
 	case sgl::geometry_type::GEOMETRY_COLLECTION: {
-		vector<GEOSGeometry *> rings;
 		const auto part_count = reader.Read<uint32_t>();
-		for (uint32_t i = 0; i < part_count; i++) {
-			rings.push_back(DeserializeInternal(reader, ctx));
+		if (part_count == 0) {
+			return GEOSGeom_createEmptyCollection_r(ctx, GEOS_GEOMETRYCOLLECTION);
 		}
-		return GEOSGeom_createCollection_r(ctx, GEOS_GEOMETRYCOLLECTION, rings.data(), part_count);
+		const auto part_array = AllocateArray<GEOSGeometry *>(arena, part_count);
+		for (uint32_t i = 0; i < part_count; i++) {
+			part_array[i] = DeserializeInternal(reader, arena, ctx);
+		}
+		return GEOSGeom_createCollection_r(ctx, GEOS_GEOMETRYCOLLECTION, part_array, part_count);
 	}
 	default:
 		throw InvalidInputException("Unsupported geometry type %d", static_cast<int>(type));
 	}
 }
 
-static GEOSGeom_t *DeserializeInternal(BinaryReader &reader, GEOSContextHandle_t ctx) {
+static GEOSGeom_t *DeserializeInternal(BinaryReader &reader, ArenaAllocator &arena, GEOSContextHandle_t ctx) {
 
 	while (true) {
 		const auto le = reader.Read<uint8_t>();
@@ -301,22 +318,28 @@ static GEOSGeom_t *DeserializeInternal(BinaryReader &reader, GEOSContextHandle_t
 		const auto has_m = (flag & 0x02) != 0;
 
 		if (has_z && has_m) {
-			return DeserializeTemplated<VertexXYZM>(reader, ctx, type);
+			return DeserializeTemplated<VertexXYZM>(reader, arena, ctx, type);
 		}
 		if (has_z) {
-			return DeserializeTemplated<VertexXYZ>(reader, ctx, type);
+			return DeserializeTemplated<VertexXYZ>(reader, arena, ctx, type);
 		}
 		if (has_m) {
-			return DeserializeTemplated<VertexXYM>(reader, ctx, type);
+			return DeserializeTemplated<VertexXYM>(reader, arena, ctx, type);
 		} else {
-			return DeserializeTemplated<VertexXY>(reader, ctx, type);
+			return DeserializeTemplated<VertexXY>(reader, arena, ctx, type);
 		}
 	}
 }
 
-GEOSGeom_t *GeosSerde::Deserialize(GEOSContextHandle_t ctx, const char *buffer, size_t buffer_size) {
+GEOSGeom_t *GeosSerde::Deserialize(GEOSContextHandle_t ctx, ArenaAllocator &arena, const char *buffer,
+                                   size_t buffer_size) {
+	// GEOS always does full copies of the data,
+	// so reset the arena after each deserialization
+	arena.Reset();
+
+	// Deserialize the geometry
 	BinaryReader reader(buffer, buffer_size);
-	return DeserializeInternal(reader, ctx);
+	return DeserializeInternal(reader, arena, ctx);
 }
 
 } // namespace duckdb
