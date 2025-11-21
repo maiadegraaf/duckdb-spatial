@@ -7,10 +7,8 @@
 #include "duckdb/catalog/catalog_entry/duck_table_entry.hpp"
 #include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
 #include "duckdb/common/exception/transaction_exception.hpp"
-#include "duckdb/main/attached_database.hpp"
 #include "duckdb/storage/storage_manager.hpp"
 #include "duckdb/storage/table_io_manager.hpp"
-#include "duckdb/common/sort/sort.hpp"
 #include "duckdb/parallel/base_pipeline_event.hpp"
 
 namespace duckdb {

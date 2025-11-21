@@ -1,5 +1,4 @@
 #include "spatial/operators/spatial_join_physical.hpp"
-#include "spatial/geometry/geometry_type.hpp"
 #include "spatial/geometry/sgl.hpp"
 #include "spatial/spatial_types.hpp"
 #include "spatial_join_logical.hpp"
@@ -13,12 +12,16 @@
 #include "duckdb/planner/expression/bound_reference_expression.hpp"
 #include "duckdb/planner/expression/bound_conjunction_expression.hpp"
 #include "duckdb/storage/buffer_manager.hpp"
+#include "spatial/geometry/geometry_serialization.hpp"
+#include "spatial/util/math.hpp"
 
 namespace duckdb {
 
 //======================================================================================================================
 // Flat RTree
 //======================================================================================================================
+
+// #define DUCKDB_SPATIAL_DEBUG_JOIN
 
 namespace {
 
@@ -131,11 +134,12 @@ public:
 		return current_position++;
 	}
 
-	void Sort(vector<uint32_t> &curve) {
-		Sort(curve, 0, curve.size() - 1);
+	static void Sort(vector<uint32_t> &curve, typed_view<Box> &box_array, typed_view<uint32_t> &idx_array) {
+		Sort(curve, box_array, idx_array, 0, curve.size() - 1);
 	}
 
-	void Sort(vector<uint32_t> &curve, size_t l_idx, size_t r_idx) {
+	static void Sort(vector<uint32_t> &curve, typed_view<Box> &box_array, typed_view<uint32_t> &idx_array, size_t l_idx,
+	                 size_t r_idx) {
 		if (l_idx < r_idx) {
 			const auto pivot = curve[(l_idx + r_idx) >> 1];
 			auto pivot_l = l_idx - 1;
@@ -160,8 +164,55 @@ public:
 				std::swap(idx_array[pivot_l], idx_array[pivot_r]);
 			}
 
-			Sort(curve, l_idx, pivot_r);
-			Sort(curve, pivot_r + 1, r_idx);
+			Sort(curve, box_array, idx_array, l_idx, pivot_r);
+			Sort(curve, box_array, idx_array, pivot_r + 1, r_idx);
+		}
+	}
+
+	void STRSort(typed_view<Box> &box_array, typed_view<uint32_t> idx_array) {
+		// Perform Sort-tile-recursive (STR) packing
+
+		const auto num_leaf_nodes = (item_count + node_size - 1) / node_size;
+		const auto num_vertical_slices = static_cast<uint32_t>(std::ceil(std::sqrt(num_leaf_nodes)));
+		const auto slice_size = (item_count + num_vertical_slices - 1) / num_vertical_slices;
+
+		vector<uint32_t> indexes;
+		for (uint32_t i = 0; i < item_count; i++) {
+			indexes.push_back(i);
+		}
+
+		// Sort by x-axis into vertical slices
+		std::sort(indexes.begin(), indexes.end(),
+		          [&](uint32_t a, uint32_t b) { return box_array[a].Center().x < box_array[b].Center().x; });
+
+		// Then sort each vertical slice by y-axis
+		for (uint32_t slice_idx = 0; slice_idx < num_vertical_slices; slice_idx++) {
+			const auto slice_beg = slice_idx * slice_size;
+			const auto slice_end = MinValue<uint32_t>(slice_beg + slice_size, item_count);
+			std::sort(indexes.begin() + slice_beg, indexes.begin() + slice_end,
+			          [&](uint32_t a, uint32_t b) { return box_array[a].Center().y < box_array[b].Center().y; });
+		}
+
+		// Reorder the box_array and idx_array based on the sorted indexes
+		// DO this in-place. There cannot be any cycles since all indexes are unique
+		for (int i = 0; i < item_count; i++) {
+			if (indexes[i] == -1)
+				continue; // index `i` has been processed, skip
+			auto box = box_array[i];
+			auto idx = idx_array[i];
+
+			int x = i, y = indexes[i]; // `x` is the current index, `y` is the "target" index
+			while (y != i) {
+				indexes[x] = -1; // mark index as processed
+				box_array[x] = box_array[y];
+				idx_array[x] = idx_array[y];
+				x = y;
+				y = indexes[x];
+			}
+			// Now `x` is the index that satisfies `indices[x] == i`.
+			box_array[x] = box;
+			idx_array[x] = idx;
+			indexes[x] = -1;
 		}
 	}
 
@@ -175,6 +226,7 @@ public:
 
 		// Generate hilbert curve values
 		// TODO: Parallelize this with tasks when the number of items is large?
+
 		constexpr auto max_hilbert = std::numeric_limits<uint16_t>::max();
 		const auto hw = max_hilbert / (tree_box.max.x - tree_box.min.x);
 		const auto hh = max_hilbert / (tree_box.max.y - tree_box.min.y);
@@ -190,7 +242,8 @@ public:
 		}
 
 		// Now, sort the indices based on their curve value
-		Sort(curve);
+		Sort(curve, box_array, idx_array);
+		//STRSort(box_array, idx_array);
 
 		size_t layer_idx = 0;
 		size_t entry_idx = 0;
@@ -483,12 +536,12 @@ public:
 
 		auto &catalog = Catalog::GetSystemCatalog(context);
 		auto &entry = catalog.GetEntry<ScalarFunctionCatalogEntry>(context, DEFAULT_SCHEMA, "ST_IsEmpty");
-		auto func = entry.functions.GetFunctionByArguments(context, {GeoTypes::GEOMETRY()});
+		auto func = entry.functions.GetFunctionByArguments(context, {LogicalType::GEOMETRY()});
 
 		auto is_empty_expr = make_uniq<BoundFunctionExpression>(LogicalTypeId::BOOLEAN, func,
 		                                                        vector<unique_ptr<Expression>> {}, nullptr);
 		is_empty_expr->children.push_back(
-		    make_uniq_base<Expression, BoundReferenceExpression>(GeoTypes::GEOMETRY(), 0));
+		    make_uniq_base<Expression, BoundReferenceExpression>(LogicalType::GEOMETRY(), 0));
 
 		auto is_not_empty_expr =
 		    make_uniq<BoundOperatorExpression>(ExpressionType::OPERATOR_NOT, LogicalTypeId::BOOLEAN);
@@ -497,7 +550,7 @@ public:
 		auto is_not_null_expr =
 		    make_uniq<BoundOperatorExpression>(ExpressionType::OPERATOR_IS_NOT_NULL, LogicalTypeId::BOOLEAN);
 		is_not_null_expr->children.push_back(
-		    make_uniq_base<Expression, BoundReferenceExpression>(GeoTypes::GEOMETRY(), 0));
+		    make_uniq_base<Expression, BoundReferenceExpression>(LogicalType::GEOMETRY(), 0));
 
 		auto filter_expr = make_uniq_base<Expression, BoundConjunctionExpression>(
 		    ExpressionType::CONJUNCTION_AND, std::move(is_not_empty_expr), std::move(is_not_null_expr));
@@ -612,7 +665,7 @@ SinkFinalizeType PhysicalSpatialJoin::Finalize(Pipeline &pipeline, Event &event,
 	Vector row_pointer_vector(LogicalType::POINTER, reinterpret_cast<data_ptr_t>(rows_ptr));
 
 	auto &sel = *FlatVector::IncrementalSelectionVector();
-	Vector geom_vec(GeoTypes::GEOMETRY());
+	Vector geom_vec(LogicalType::GEOMETRY());
 	auto &validity = FlatVector::Validity(geom_vec);
 
 	do {
@@ -627,7 +680,7 @@ SinkFinalizeType PhysicalSpatialJoin::Finalize(Pipeline &pipeline, Event &event,
 		gstate.collection->Gather(row_pointer_vector, sel, row_count, build_side_key_col, geom_vec, sel, nullptr);
 
 		// Get a pointer to what we just gathered
-		const auto geom_ptr = FlatVector::GetData<geometry_t>(geom_vec);
+		const auto geom_ptr = FlatVector::GetData<string_t>(geom_vec);
 		// Push the bounding boxes into the R-Tree
 		for (idx_t row_idx = 0; row_idx < row_count; row_idx++) {
 			if (!validity.RowIsValid(row_idx)) {
@@ -637,7 +690,7 @@ SinkFinalizeType PhysicalSpatialJoin::Finalize(Pipeline &pipeline, Event &event,
 
 			const auto &geom = geom_ptr[row_idx];
 			Box2D<float> bbox;
-			if (!geom.TryGetCachedBounds(bbox)) {
+			if (!Serde::TryGetBounds(geom, bbox)) {
 				// Skip empty geometries
 				continue;
 			}
@@ -717,6 +770,24 @@ class SpatialJoinGlobalOperatorState final : public GlobalOperatorState {
 public:
 	unique_ptr<FlatRTree> rtree;
 	unique_ptr<TupleDataCollection> collection;
+
+#ifdef DUCKDB_SPATIAL_DEBUG_JOIN
+	// TODO: Move this into proper profiling metrics later
+	// Statistics
+	atomic<idx_t> total_rtree_probes = {0};
+	atomic<idx_t> total_rtree_successfull_probes = {0};
+	atomic<idx_t> total_rtree_candidates = {0};
+	atomic<idx_t> max_candidates = {0};
+	atomic<idx_t> min_candidates = {std::numeric_limits<idx_t>::max()};
+
+	~SpatialJoinGlobalOperatorState() override {
+		Printer::PrintF("Spatial Join RTree Probes: %llu\n", total_rtree_probes.load());
+		Printer::PrintF("Spatial Join RTree Successful Probes: %llu\n", total_rtree_successfull_probes.load());
+		Printer::PrintF("Spatial Join RTree Candidates: %llu\n", total_rtree_candidates.load());
+		Printer::PrintF("Spatial Join RTree Max Candidates per Probe: %llu\n", max_candidates.load());
+		Printer::PrintF("Spatial Join RTree Min Candidates per Probe: %llu\n", min_candidates.load());
+	}
+#endif
 };
 
 unique_ptr<OperatorState> PhysicalSpatialJoin::GetOperatorState(ExecutionContext &context) const {
@@ -819,21 +890,32 @@ OperatorResultType PhysicalSpatialJoin::ExecuteInternal(ExecutionContext &contex
 				continue;
 			}
 
-			const auto geom_ptr = UnifiedVectorFormat::GetData<geometry_t>(lstate.probe_side_key_vformat);
+			const auto geom_ptr = UnifiedVectorFormat::GetData<string_t>(lstate.probe_side_key_vformat);
 			const auto &geom = geom_ptr[geom_idx];
 
 			Box2D<float> bbox;
-			if (!geom.TryGetCachedBounds(bbox)) {
+			if (!Serde::TryGetBounds(geom, bbox)) {
 				lstate.input_index++;
 				continue;
 			}
 
 			gstate.rtree->InitScan(lstate.scan, bbox);
 
+#ifdef DUCKDB_SPATIAL_DEBUG_JOIN
+			gstate.total_rtree_probes += 1;
+#endif
+
 			if (!gstate.rtree->Scan(lstate.scan)) {
 				lstate.input_index++;
 				continue;
 			}
+
+#ifdef DUCKDB_SPATIAL_DEBUG_JOIN
+			gstate.total_rtree_successfull_probes += 1;
+			gstate.total_rtree_candidates += lstate.scan.matches_count;
+			gstate.max_candidates = MaxValue(gstate.max_candidates.load(), lstate.scan.matches_count);
+			gstate.min_candidates = MinValue(gstate.min_candidates.load(), lstate.scan.matches_count);
+#endif
 
 			lstate.state = SpatialJoinState::SCAN;
 		} // fall through
@@ -1024,14 +1106,16 @@ public:
 		column_ids.push_back(op.build_side_key_types.size() + op.build_side_payload_types.size());
 
 		// We dont need to keep the tuples aroun after scanning
-		state.collection->InitializeScan(scan_state, std::move(column_ids),
-		                                 TupleDataPinProperties::KEEP_EVERYTHING_PINNED);
+		state.collection->InitializeScan(scan_state, std::move(column_ids), TupleDataPinProperties::UNPIN_AFTER_DONE);
 
 		tuples_maximum = state.collection->Count();
 	}
 
 	const PhysicalSpatialJoin &op;
+
+	mutex scan_lock;
 	TupleDataParallelScanState scan_state;
+
 	// How many tuples we have scanned so far
 	idx_t tuples_maximum = 0;
 	atomic<idx_t> tuples_scanned = {0};
@@ -1039,10 +1123,17 @@ public:
 public:
 	idx_t MaxThreads() override {
 		const auto &state = op.op_state->Cast<SpatialJoinGlobalOperatorState>();
-		const auto count = state.collection->Count();
+		return state.collection->ChunkCount();
+	}
 
-		// Rough approximation of the number of threads to use
-		return count / (STANDARD_VECTOR_SIZE * 10ULL);
+	bool Scan(TupleDataLocalScanState &local_scan, DataChunk &chunk) {
+		const auto &collection = op.op_state->Cast<SpatialJoinGlobalOperatorState>().collection;
+
+		lock_guard<mutex> guard(scan_lock);
+		const auto not_empty = collection->Scan(scan_state, local_scan, chunk);
+		tuples_scanned += chunk.size();
+
+		return not_empty;
 	}
 };
 
@@ -1081,52 +1172,48 @@ unique_ptr<LocalSourceState> PhysicalSpatialJoin::GetLocalSourceState(ExecutionC
 	return std::move(lstate);
 }
 
-SourceResultType PhysicalSpatialJoin::GetData(ExecutionContext &context, DataChunk &chunk,
-                                              OperatorSourceInput &input) const {
+SourceResultType PhysicalSpatialJoin::GetDataInternal(ExecutionContext &context, DataChunk &chunk,
+                                                      OperatorSourceInput &input) const {
 	D_ASSERT(PropagatesBuildSide(join_type));
 
 	auto &gstate = input.global_state.Cast<SpatialJoinGlobalSourceState>();
 	auto &lstate = input.local_state.Cast<SpatialJoinLocalSourceState>();
 
-	const auto &tuples = gstate.op.op_state->Cast<SpatialJoinGlobalOperatorState>().collection;
+	if (!gstate.Scan(lstate.scan_state, lstate.scan_chunk)) {
+		return SourceResultType::FINISHED;
+	}
 
-	while (tuples->Scan(gstate.scan_state, lstate.scan_state, lstate.scan_chunk)) {
-		gstate.tuples_scanned += lstate.scan_chunk.size();
+	const auto matches = FlatVector::GetData<bool>(lstate.scan_chunk.data.back());
 
-		const auto matches = FlatVector::GetData<bool>(lstate.scan_chunk.data.back());
-
-		idx_t result_count = 0;
-		for (idx_t i = 0; i < lstate.scan_chunk.size(); i++) {
-			if (!matches[i]) {
-				lstate.match_sel.set_index(result_count++, i);
-			}
-		}
-
-		if (result_count > 0) {
-
-			const auto lhs_col_count = probe_side_output_columns.size();
-			const auto rhs_col_count = build_side_output_columns.size();
-
-			// Null the LHS columns
-			for (idx_t i = 0; i < lhs_col_count; i++) {
-				auto &target = chunk.data[i];
-				target.SetVectorType(VectorType::CONSTANT_VECTOR);
-				ConstantVector::SetNull(target, true);
-			}
-
-			// Set the RHS columns
-			for (idx_t i = 0; i < rhs_col_count; i++) {
-				auto &target = chunk.data[lhs_col_count + i];
-				// Offset by one here to skip the match column
-				target.Slice(lstate.scan_chunk.data[i], lstate.match_sel, result_count);
-			}
-
-			chunk.SetCardinality(result_count);
-			return SourceResultType::HAVE_MORE_OUTPUT;
+	idx_t result_count = 0;
+	for (idx_t i = 0; i < lstate.scan_chunk.size(); i++) {
+		if (!matches[i]) {
+			lstate.match_sel.set_index(result_count++, i);
 		}
 	}
 
-	return SourceResultType::FINISHED;
+	if (result_count > 0) {
+
+		const auto lhs_col_count = probe_side_output_columns.size();
+		const auto rhs_col_count = build_side_output_columns.size();
+
+		// Null the LHS columns
+		for (idx_t i = 0; i < lhs_col_count; i++) {
+			auto &target = chunk.data[i];
+			target.SetVectorType(VectorType::CONSTANT_VECTOR);
+			ConstantVector::SetNull(target, true);
+		}
+
+		// Set the RHS columns
+		for (idx_t i = 0; i < rhs_col_count; i++) {
+			auto &target = chunk.data[lhs_col_count + i];
+			// Offset by one here to skip the match column
+			target.Slice(lstate.scan_chunk.data[i], lstate.match_sel, result_count);
+		}
+	}
+
+	chunk.SetCardinality(result_count);
+	return SourceResultType::HAVE_MORE_OUTPUT;
 }
 
 //----------------------------------------------------------------------------------------------------------------------

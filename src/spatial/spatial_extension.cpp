@@ -14,9 +14,9 @@
 #include "spatial/modules/osm/osm_module.hpp"
 #include "spatial/modules/proj/proj_module.hpp"
 #include "spatial/modules/shapefile/shapefile_module.hpp"
+#include "spatial/modules/wkb/wkb_module.hpp"
 #include "spatial/operators/spatial_operator_extension.hpp"
 #include "spatial/operators/spatial_join_optimizer.hpp"
-#include "spatial/spatial_geoarrow.hpp"
 #include "spatial/spatial_types.hpp"
 
 namespace duckdb {
@@ -31,7 +31,6 @@ static void LoadInternal(ExtensionLoader &loader) {
 	RegisterSpatialAggregateFunctions(loader);
 	RegisterSpatialTableFunctions(loader);
 	SpatialJoinOptimizer::Register(loader);
-	GeoArrow::Register(loader);
 
 	RegisterProjModule(loader);
 	RegisterGDALModule(loader);
@@ -41,6 +40,7 @@ static void LoadInternal(ExtensionLoader &loader) {
 	RegisterOSMModule(loader);
 	RegisterShapefileModule(loader);
 	RegisterMapboxVectorTileModule(loader);
+	RegisterWKBModule(loader);
 
 	RTreeModule::RegisterIndex(loader);
 	RTreeModule::RegisterIndexPragmas(loader);

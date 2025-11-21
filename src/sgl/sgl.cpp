@@ -2382,6 +2382,86 @@ bool ops::get_euclidean_distance(const geometry &lhs_geom, const geometry &rhs_g
 	return found;
 }
 
+// Visit all non-collection geometries
+template <class CALLBACK>
+void visit_leaf_pairs(const geometry &lhs, const geometry &rhs, CALLBACK &&callback) {
+	const auto lhs_root = lhs.get_parent();
+	auto lhs_part = &lhs;
+
+	while (true) {
+		switch (lhs_part->get_type()) {
+		case geometry_type::POINT:
+		case geometry_type::LINESTRING:
+		case geometry_type::POLYGON: {
+
+			const auto rhs_root = rhs.get_parent();
+			auto rhs_part = &rhs;
+
+			while (true) {
+				switch (rhs_part->get_type()) {
+				case geometry_type::POINT:
+				case geometry_type::LINESTRING:
+				case geometry_type::POLYGON: {
+					// Found a pair of leaf geometries
+					// If the callback returns true, we stop visiting
+					if (callback(*lhs_part, *rhs_part)) {
+						return;
+					}
+				} break;
+				case geometry_type::MULTI_POINT:
+				case geometry_type::MULTI_LINESTRING:
+				case geometry_type::MULTI_POLYGON:
+				case geometry_type::GEOMETRY_COLLECTION:
+					if (rhs_part->is_empty()) {
+						break;
+					}
+					rhs_part = rhs_part->get_first_part();
+					continue;
+				default:
+					break;
+				}
+
+				while (true) {
+					const auto parent = rhs_part->get_parent();
+					if (parent == rhs_root) {
+						break;
+					}
+					if (rhs_part != parent->get_last_part()) {
+						rhs_part = rhs_part->get_next();
+						break;
+					}
+					rhs_part = parent;
+				}
+			}
+
+		} break;
+		case geometry_type::MULTI_POINT:
+		case geometry_type::MULTI_LINESTRING:
+		case geometry_type::MULTI_POLYGON:
+		case geometry_type::GEOMETRY_COLLECTION:
+			if (lhs_part->is_empty()) {
+				break;
+			}
+			lhs_part = lhs_part->get_first_part();
+			continue;
+		default:
+			break;
+		}
+
+		while (true) {
+			const auto parent = lhs_part->get_parent();
+			if (parent == lhs_root) {
+				return;
+			}
+			if (lhs_part != parent->get_last_part()) {
+				lhs_part = lhs_part->get_next();
+				break;
+			}
+			lhs_part = parent;
+		}
+	}
+}
+
 } // namespace sgl
 
 //======================================================================================================================
@@ -3130,6 +3210,7 @@ static double point_segment_dist_sq(const vertex_xy &p, const vertex_xy &a, cons
 	return diff.norm_sq();
 }
 
+// Check if point P is on segment QR
 static bool point_on_segment(const vertex_xy &p, const vertex_xy &q, const vertex_xy &r) {
 	return q.x >= std::min(p.x, r.x) && q.x <= std::max(p.x, r.x) && q.y >= std::min(p.y, r.y) &&
 	       q.y <= std::max(p.y, r.y);
@@ -3137,6 +3218,22 @@ static bool point_on_segment(const vertex_xy &p, const vertex_xy &q, const verte
 
 static bool segment_intersects(const vertex_xy &a1, const vertex_xy &a2, const vertex_xy &b1, const vertex_xy &b2) {
 	// Check if two segments intersect using the orientation method
+	// Handle degenerate cases where a segment is actually a single point
+	const bool a_is_point = (a1.x == a2.x && a1.y == a2.y);
+	const bool b_is_point = (b1.x == b2.x && b1.y == b2.y);
+
+	if (a_is_point && b_is_point) {
+		// Both are points: intersect only if identical
+		return (a1.x == b1.x && a1.y == b1.y);
+	}
+	if (a_is_point) {
+		// A is a point: check if A lies on segment B
+		return point_on_segment(a1, b1, b2);
+	}
+	if (b_is_point) {
+		// B is a point: check if B lies on segment A
+		return point_on_segment(b1, a1, a2);
+	}
 
 	const auto o1 = orient2d_fast(a1, a2, b1);
 	const auto o2 = orient2d_fast(a1, a2, b2);
@@ -3250,6 +3347,15 @@ static bool try_get_prepared_distance_lines(const prepared_geometry &lhs, const 
 			for (uint32_t i = lhs_beg_idx + 1; i < lhs_end_idx; i++) {
 				memcpy(&lhs_next, lhs_vertex_array + i * lhs_vertex_width, sizeof(vertex_xy));
 
+				// If this is a zero-length segment, skip it
+				// LINESTRINGs must have at least two distinct vertices to be valid, so this is safe. Even if we skip
+				// this vertex now, we must eventually reach a non-zero-length segment that includes this vertex as
+				// its start point. It will therefore still contribute to the distance calculation once we process that
+				// segment.
+				if (lhs_prev.x == lhs_next.x && lhs_prev.y == lhs_next.y) {
+					continue;
+				}
+
 				// Quick check: If the distance between the segment and the box (all the segments)
 				// is greater than min_dist, we can skip the exact distance check
 
@@ -3267,6 +3373,13 @@ static bool try_get_prepared_distance_lines(const prepared_geometry &lhs, const 
 				memcpy(&rhs_prev, rhs_vertex_array + rhs_beg_idx * rhs_vertex_width, sizeof(vertex_xy));
 				for (uint32_t j = rhs_beg_idx + 1; j < rhs_end_idx; j++) {
 					memcpy(&rhs_next, rhs_vertex_array + j * rhs_vertex_width, sizeof(vertex_xy));
+
+					// If this is a zero-length segment, skip it
+					// LINESTRINGs must have at least two distinct points to be valid, so this is safe.
+					// (see comment above)
+					if (rhs_prev.x == rhs_next.x && rhs_prev.y == rhs_next.y) {
+						continue;
+					}
 
 					// Quick check: If the distance between the segment bounds are greater than min_dist,
 					// we can skip the exact distance check

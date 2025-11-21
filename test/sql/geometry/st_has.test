@@ -1,7 +1,10 @@
+# name: test/sql/geometry/st_has.test
+# group: [geometry]
+
 require spatial
 
 # Test for both GEOMETRY and WKB_BLOB
-foreach FUNCTION ST_GeomFromText() ST_GeomFromText().ST_AsWKB()
+foreach FUNCTION ST_GeomFromText() ST_GeomFromText().ST_AsWKB()::WKB_BLOB
 
 # HasZ for a 2D geometry
 query I

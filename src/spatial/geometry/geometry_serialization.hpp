@@ -1,6 +1,9 @@
 #pragma once
 
+#include "bbox.hpp"
+
 #include <cstddef>
+#include <cstdint>
 
 namespace sgl {
 class geometry;
@@ -18,6 +21,8 @@ struct Serde {
 	static void Deserialize(sgl::geometry &result, ArenaAllocator &arena, const char *buffer, size_t buffer_size);
 	static void DeserializePrepared(sgl::prepared_geometry &result, ArenaAllocator &arena, const char *buffer,
 	                                size_t buffer_size);
+
+	static uint32_t TryGetBounds(const string_t &blob, Box2D<float> &bbox);
 };
 
 } // namespace duckdb

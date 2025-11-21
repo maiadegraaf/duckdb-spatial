@@ -4,8 +4,6 @@ namespace duckdb {
 
 class ExtensionLoader;
 
-struct GeoArrow {
-	static void Register(ExtensionLoader &db);
-};
+void RegisterWKBModule(ExtensionLoader &loader);
 
 } // namespace duckdb

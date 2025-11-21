@@ -73,6 +73,11 @@ SELECT ST_Centroid(ST_GeomFromText('POLYGON((0 0, 0 1, 1 1, 1 0, 0 0), (0.1 0.1,
 POINT (0.5 0.5)
 
 query I
-SELECT ST_Centroid(ST_GeomFromText('POLYGON((0 0, 0 1, 1 1, 1 0, 0 0), (0.5 0.1, 0.5 0.9, 0.9 0.9, 0.9 0.1, 0.5 0.1))'));
+SELECT ST_Y(ST_Centroid(ST_GeomFromText('POLYGON((0 0, 0 1, 1 1, 1 0, 0 0), (0.5 0.1, 0.5 0.9, 0.9 0.9, 0.9 0.1, 0.5 0.1))')));
 ----
-POINT (0.405882352941176 0.5)
+0.5
+
+query I
+SELECT ST_X(ST_Centroid(ST_GeomFromText('POLYGON((0 0, 0 1, 1 1, 1 0, 0 0), (0.5 0.1, 0.5 0.9, 0.9 0.9, 0.9 0.1, 0.5 0.1))')));
+----
+0.405882352941

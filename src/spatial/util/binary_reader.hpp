@@ -10,9 +10,18 @@ namespace duckdb {
 
 class BinaryReader {
 public:
+	BinaryReader() = default;
 	BinaryReader(const char *ptr, const char *end) : beg(ptr), end(end), ptr(ptr) {
 	}
 	BinaryReader(const char *buffer, const size_t size) : BinaryReader(buffer, buffer + size) {
+	}
+
+	bool IsAtEnd() const {
+		return ptr >= end;
+	}
+
+	void Reset() {
+		ptr = beg;
 	}
 
 	template <class T>

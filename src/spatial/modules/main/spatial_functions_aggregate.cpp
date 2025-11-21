@@ -1,7 +1,6 @@
 #include "spatial/geometry/bbox.hpp"
 #include "spatial/geometry/geometry_serialization.hpp"
 #include "spatial/geometry/sgl.hpp"
-#include "spatial/geometry/geometry_type.hpp"
 #include "spatial/modules/main/spatial_functions.hpp"
 #include "spatial/spatial_types.hpp"
 #include "spatial/util/function_builder.hpp"
@@ -143,7 +142,7 @@ void RegisterSpatialAggregateFunctions(ExtensionLoader &loader) {
 
 	// TODO: Dont use geometry_t here
 	const auto agg = AggregateFunction::UnaryAggregate<ExtentAggState, string_t, string_t, ExtentAggFunction>(
-	    GeoTypes::GEOMETRY(), GeoTypes::GEOMETRY());
+	    LogicalType::GEOMETRY(), LogicalType::GEOMETRY());
 
 	FunctionBuilder::RegisterAggregate(loader, "ST_Extent_Agg", [&](AggregateFunctionBuilder &func) {
 		func.SetFunction(agg);

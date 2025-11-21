@@ -155,7 +155,7 @@ struct ST_TileEnvelope {
 				variant.AddParameter("tile_zoom", LogicalType::INTEGER);
 				variant.AddParameter("tile_x", LogicalType::INTEGER);
 				variant.AddParameter("tile_y", LogicalType::INTEGER);
-				variant.SetReturnType(GeoTypes::GEOMETRY());
+				variant.SetReturnType(LogicalType::GEOMETRY());
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(ExecuteWebMercator);
 			});
@@ -417,34 +417,17 @@ public:
 
 	void SetGeometry(const string_t &geom_blob) {
 
-		BinaryReader cursor(geom_blob.GetData(), geom_blob.GetSize());
-		const auto type = static_cast<sgl::geometry_type>(cursor.Read<uint8_t>() + 1);
-		const auto flags = cursor.Read<uint8_t>();
-		cursor.Skip(sizeof(uint16_t));
-		cursor.Skip(sizeof(uint32_t)); // padding
+		BinaryReader reader(geom_blob.GetData(), geom_blob.GetSize());
 
-		// Parse flags
-		const auto has_z = (flags & 0x01) != 0;
-		const auto has_m = (flags & 0x02) != 0;
-		const auto has_bbox = (flags & 0x04) != 0;
-
-		const auto format_v1 = (flags & 0x40) != 0;
-		const auto format_v0 = (flags & 0x80) != 0;
-
-		if (format_v1 || format_v0) {
-			// Unsupported version, throw an error
-			throw NotImplementedException(
-			    "This geometry seems to be written with a newer version of the DuckDB spatial library that is not "
-			    "compatible with this version. Please upgrade your DuckDB installation.");
+		const auto le = reader.Read<uint8_t>();
+		if (le != 1) {
+			throw InvalidInputException("ST_AsMVT: Unsupported geometry endian-ness");
 		}
-
-		if (has_bbox) {
-			// Skip past bbox if present
-			cursor.Skip(sizeof(float) * 2 * (2 + has_z + has_m));
-		}
-
-		// Read the first type
-		cursor.Skip(sizeof(uint32_t));
+		const auto meta = reader.Read<uint32_t>();
+		const auto type = static_cast<sgl::geometry_type>((meta & 0x0000FFFF) % 1000);
+		const auto flag = (meta & 0x0000FFFF) / 1000;
+		const auto has_z = (flag & 0x01) != 0;
+		const auto has_m = (flag & 0x02) != 0;
 
 		const auto vertex_width = (2 + (has_z ? 1 : 0) + (has_m ? 1 : 0)) * sizeof(double);
 		const auto vertex_space = vertex_width - (2 * sizeof(double)); // Space for x and y
@@ -454,14 +437,17 @@ public:
 			geometry_type = 1; // MVT_POINT
 
 			// Read the point geometry
-			const auto vertex_count = cursor.Read<uint32_t>();
-			if (vertex_count == 0) {
-				// No vertices, skip
+			const auto x_double = reader.Read<double>();
+			const auto y_double = reader.Read<double>();
+			reader.Skip(vertex_space); // Skip z and m if present
+
+			if (std::isnan(x_double) && std::isnan(y_double)) {
+				// Empty point
 				throw InvalidInputException("ST_AsMVT: POINT geometry cant be empty");
 			}
-			const auto x = CastDouble(cursor.Read<double>());
-			const auto y = CastDouble(cursor.Read<double>());
-			cursor.Skip(vertex_space); // Skip z and m if present
+
+			const auto x = CastDouble(x_double);
+			const auto y = CastDouble(y_double);
 
 			geometry.push_back((1 & 0x7) | (1 << 3)); // MoveTo, 1 part
 			geometry.push_back(protozero::encode_zigzag32(x));
@@ -471,7 +457,7 @@ public:
 		case sgl::geometry_type::LINESTRING: {
 			geometry_type = 2; // MVT_LINESTRING
 
-			const auto vertex_count = cursor.Read<uint32_t>();
+			const auto vertex_count = reader.Read<uint32_t>();
 			if (vertex_count < 2) {
 				// Invalid linestring, skip
 				throw InvalidInputException("ST_AsMVT: LINESTRING geometry cant contain less than 2 vertices");
@@ -482,9 +468,9 @@ public:
 
 			for (uint32_t vertex_idx = 0; vertex_idx < vertex_count; vertex_idx++) {
 
-				const auto x = CastDouble(cursor.Read<double>());
-				const auto y = CastDouble(cursor.Read<double>());
-				cursor.Skip(vertex_space); // Skip z and m if present
+				const auto x = CastDouble(reader.Read<double>());
+				const auto y = CastDouble(reader.Read<double>());
+				reader.Skip(vertex_space); // Skip z and m if present
 
 				if (vertex_idx == 0) {
 					geometry.push_back((1 & 0x7) | (1 << 3)); // MoveTo, 1 part
@@ -503,7 +489,7 @@ public:
 		case sgl::geometry_type::POLYGON: {
 			geometry_type = 3; // MVT_POLYGON
 
-			const auto part_count = cursor.Read<uint32_t>();
+			const auto part_count = reader.Read<uint32_t>();
 			if (part_count == 0) {
 				// No parts, invalid
 				throw InvalidInputException("ST_AsMVT: POLYGON geometry cant be empty");
@@ -512,19 +498,17 @@ public:
 			int32_t cursor_x = 0;
 			int32_t cursor_y = 0;
 
-			auto ring_cursor = cursor;
-			cursor.Skip((part_count * 4) + (part_count % 2 == 1 ? 4 : 0)); // Skip part types and padding
 			for (uint32_t part_idx = 0; part_idx < part_count; part_idx++) {
-				const auto vertex_count = ring_cursor.Read<uint32_t>();
+				const auto vertex_count = reader.Read<uint32_t>();
 				if (vertex_count < 3) {
 					// Invalid polygon, skip
 					throw InvalidInputException("ST_AsMVT: POLYGON ring cant contain less than 3 vertices");
 				}
 
 				for (uint32_t vertex_idx = 0; vertex_idx < vertex_count; vertex_idx++) {
-					const auto x = CastDouble(cursor.Read<double>());
-					const auto y = CastDouble(cursor.Read<double>());
-					cursor.Skip(vertex_space); // Skip z and m if present
+					const auto x = CastDouble(reader.Read<double>());
+					const auto y = CastDouble(reader.Read<double>());
+					reader.Skip(vertex_space); // Skip z and m if present
 
 					if (vertex_idx == 0) {
 						geometry.push_back((1 & 0x7) | (1 << 3)); // MoveTo, 1 part
@@ -552,7 +536,7 @@ public:
 		case sgl::geometry_type::MULTI_POINT: {
 			geometry_type = 1; // MVT_POINT
 
-			const auto part_count = cursor.Read<uint32_t>();
+			const auto part_count = reader.Read<uint32_t>();
 			if (part_count == 0) {
 				throw InvalidInputException("ST_AsMVT: MULTI_POINT geometry cant be empty");
 			}
@@ -564,16 +548,20 @@ public:
 
 			// Read the parts
 			for (uint32_t part_idx = 0; part_idx < part_count; part_idx++) {
-				cursor.Skip(sizeof(uint32_t)); // Skip part type
-				const auto vertex_count = cursor.Read<uint32_t>();
-				if (vertex_count == 0) {
-					// No vertices, skip
+				reader.Skip(sizeof(uint32_t) + sizeof(uint8_t)); // Skip part type
+
+				// Read the point geometry
+				const auto x_double = reader.Read<double>();
+				const auto y_double = reader.Read<double>();
+				reader.Skip(vertex_space); // Skip z and m if present
+
+				if (std::isnan(x_double) && std::isnan(y_double)) {
+					// Empty point
 					throw InvalidInputException("ST_AsMVT: POINT geometry cant be empty");
 				}
 
-				const auto x = CastDouble(cursor.Read<double>());
-				const auto y = CastDouble(cursor.Read<double>());
-				cursor.Skip(vertex_space); // Skip z and m if present
+				const auto x = CastDouble(x_double);
+				const auto y = CastDouble(y_double);
 
 				geometry.push_back(protozero::encode_zigzag32(x - cursor_x));
 				geometry.push_back(protozero::encode_zigzag32(y - cursor_y));
@@ -586,7 +574,7 @@ public:
 			geometry_type = 2; // MVT_LINESTRING
 
 			// Read the multi-linestring geometry
-			const auto part_count = cursor.Read<uint32_t>();
+			const auto part_count = reader.Read<uint32_t>();
 			if (part_count == 0) {
 				// No parts, invalid
 				throw InvalidInputException("ST_AsMVT: MULTI_LINESTRING geometry cant be empty");
@@ -595,8 +583,8 @@ public:
 			int32_t cursor_y = 0;
 
 			for (uint32_t part_idx = 0; part_idx < part_count; part_idx++) {
-				cursor.Skip(sizeof(uint32_t)); // Skip part type
-				const auto vertex_count = cursor.Read<uint32_t>();
+				reader.Skip(sizeof(uint32_t) + sizeof(uint8_t)); // Skip part type
+				const auto vertex_count = reader.Read<uint32_t>();
 
 				if (vertex_count < 2) {
 					// Invalid linestring, skip
@@ -605,15 +593,15 @@ public:
 
 				for (uint32_t vertex_idx = 0; vertex_idx < vertex_count; vertex_idx++) {
 
-					const auto x = CastDouble(cursor.Read<double>());
-					const auto y = CastDouble(cursor.Read<double>());
-					cursor.Skip(vertex_space); // Skip z and m if present
+					const auto x = CastDouble(reader.Read<double>());
+					const auto y = CastDouble(reader.Read<double>());
+					reader.Skip(vertex_space); // Skip z and m if present
 
 					if (vertex_idx == 0) {
 						geometry.push_back((1 & 0x7) | (1 << 3)); // MoveTo, 1 part
 						geometry.push_back(protozero::encode_zigzag32(x - cursor_x));
 						geometry.push_back(protozero::encode_zigzag32(y - cursor_y));
-						geometry.push_back((2 & 0x7) | ((vertex_count - 2) << 3)); // LineTo, part count
+						geometry.push_back((2 & 0x7) | ((vertex_count - 1) << 3)); // LineTo, part count
 					} else {
 						geometry.push_back(protozero::encode_zigzag32(x - cursor_x));
 						geometry.push_back(protozero::encode_zigzag32(y - cursor_y));
@@ -628,7 +616,7 @@ public:
 			geometry_type = 3; // MVT_POLYGON
 
 			// Read the multi-linestring geometry
-			const auto poly_count = cursor.Read<uint32_t>();
+			const auto poly_count = reader.Read<uint32_t>();
 			if (poly_count == 0) {
 				// No parts, invalid
 				throw InvalidInputException("ST_AsMVT: MULTI_POLYGON geometry cant be empty");
@@ -638,27 +626,24 @@ public:
 			int32_t cursor_y = 0;
 
 			for (uint32_t poly_idx = 0; poly_idx < poly_count; poly_idx++) {
-				cursor.Skip(sizeof(uint32_t)); // Skip part type
-				const auto part_count = cursor.Read<uint32_t>();
+				reader.Skip(sizeof(uint32_t) + sizeof(uint8_t)); // Skip part type
+				const auto part_count = reader.Read<uint32_t>();
 				if (part_count == 0) {
 					// No parts, invalid
 					throw InvalidInputException("ST_AsMVT: POLYGON geometry cant be empty");
 				}
 
-				auto ring_cursor = cursor;
-				cursor.Skip((part_count * 4) + (part_count % 2 == 1 ? 4 : 0)); // Skip part types and padding
-
 				for (uint32_t part_idx = 0; part_idx < part_count; part_idx++) {
-					const auto vertex_count = ring_cursor.Read<uint32_t>();
+					const auto vertex_count = reader.Read<uint32_t>();
 					if (vertex_count < 3) {
 						// Invalid polygon, skip
 						throw InvalidInputException("ST_AsMVT: POLYGON ring cant contain less than 3 vertices");
 					}
 
 					for (uint32_t vertex_idx = 0; vertex_idx < vertex_count; vertex_idx++) {
-						const auto x = CastDouble(cursor.Read<double>());
-						const auto y = CastDouble(cursor.Read<double>());
-						cursor.Skip(vertex_space); // Skip z and m if present
+						const auto x = CastDouble(reader.Read<double>());
+						const auto y = CastDouble(reader.Read<double>());
+						reader.Skip(vertex_space); // Skip z and m if present
 
 						if (vertex_idx == 0) {
 							geometry.push_back((1 & 0x7) | (1 << 3)); // MoveTo, 1 part
@@ -925,7 +910,7 @@ struct ST_AsMVT {
 			// Look for the first geometry column
 			for (idx_t i = 0; i < StructType::GetChildCount(row_type); i++) {
 				auto &child = StructType::GetChildType(row_type, i);
-				if (child == GeoTypes::GEOMETRY()) {
+				if (child == LogicalType::GEOMETRY()) {
 					if (geom_idx != optional_idx::Invalid()) {
 						throw InvalidInputException("ST_AsMVT: only one geometry column is allowed in the input row");
 					}
@@ -937,7 +922,7 @@ struct ST_AsMVT {
 			for (idx_t i = 0; i < StructType::GetChildCount(row_type); i++) {
 				auto &child = StructType::GetChildType(row_type, i);
 				auto &child_name = StructType::GetChildName(row_type, i);
-				if (child == GeoTypes::GEOMETRY() && child_name == geom_name) {
+				if (child == LogicalType::GEOMETRY() && child_name == geom_name) {
 					if (geom_idx != optional_idx::Invalid()) {
 						throw InvalidInputException("ST_AsMVT: only one geometry column is allowed in the input row");
 					}

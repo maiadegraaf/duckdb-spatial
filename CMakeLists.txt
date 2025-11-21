@@ -4,7 +4,9 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # Set extension name here
 set(TARGET_NAME spatial)
 set(EXTENSION_NAME ${TARGET_NAME}_extension)
-set(CMAKE_CXX_STANDARD 11 CACHE STRING "C++ standard")
+set(CMAKE_CXX_STANDARD
+    11
+    CACHE STRING "C++ standard")
 
 if(EMSCRIPTEN)
   # _LINKED_LIBS influences only Wasm compilation it's unclear why this is
