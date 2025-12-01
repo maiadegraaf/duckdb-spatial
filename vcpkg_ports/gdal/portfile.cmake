@@ -12,6 +12,7 @@ vcpkg_from_github(
         duckdb_gdal_json.patch
         duckdb_gdal_msys.patch
         duckdb_gdal_remove_filehandler.patch
+        duckdb_gdal_windows_static.patch
 )
 # `vcpkg clean` stumbles over one subdir
 file(REMOVE_RECURSE "${SOURCE_PATH}/autotest")
