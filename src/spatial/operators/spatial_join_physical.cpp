@@ -512,7 +512,7 @@ public:
 unique_ptr<GlobalSinkState> PhysicalSpatialJoin::GetGlobalSinkState(ClientContext &context) const {
 
 	auto gstate = make_uniq<SpatialJoinGlobalState>();
-	gstate->collection = make_uniq<TupleDataCollection>(BufferManager::GetBufferManager(context), layout);
+	gstate->collection = make_uniq<TupleDataCollection>(BufferManager::GetBufferManager(context), layout, MemoryTag::EXTENSION);
 
 	return std::move(gstate);
 }
@@ -523,7 +523,7 @@ public:
 	                      const shared_ptr<TupleDataLayout> &layout)
 	    : build_side_key_executor(context), build_side_filter_executor(context) {
 		// Dont keep the tuples in memory after appending.
-		collection = make_uniq<TupleDataCollection>(BufferManager::GetBufferManager(context), layout);
+		collection = make_uniq<TupleDataCollection>(BufferManager::GetBufferManager(context), layout, MemoryTag::EXTENSION);
 		collection->InitializeAppend(append_state, TupleDataPinProperties::UNPIN_AFTER_DONE);
 
 		// TODO: Add other join condition expressions here

@@ -3004,7 +3004,7 @@ point_in_polygon_result prepared_geometry::contains(const vertex_xy &vert) const
 		const auto &box = level.entry_array[entry];
 
 		// Check if the vertex is in the box y-slice
-		D_ASSERT(box.min.y <= box.max.y);
+		SGL_ASSERT(box.min.y <= box.max.y);
 		if (box.min.y <= vert.y && box.max.y >= vert.y) {
 			if (depth != index.level_count - 1) {
 				// We are not at a leaf, so go downwards
