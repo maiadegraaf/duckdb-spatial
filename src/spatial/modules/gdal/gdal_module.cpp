@@ -246,7 +246,7 @@ public:
 
 #ifdef _WIN32
 		if (!FileSystem::IsRemoteFile(real_file_path) && fs.DirectoryExists(real_file_path)) {
-			pstatbuf->st_mode = S_IFDIR;
+			result->st_mode = S_IFDIR;
 			return 0;
 		}
 #endif
