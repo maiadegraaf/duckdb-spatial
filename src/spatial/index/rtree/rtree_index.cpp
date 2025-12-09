@@ -240,6 +240,9 @@ IndexStorageInfo RTreeIndex::SerializeToDisk(QueryContext context, const case_in
 	auto &leaf_allocator = tree->GetLeafAllocator();
 	auto &node_allocator = tree->GetNodeAllocator();
 
+	leaf_allocator.RemoveEmptyBuffers();
+	node_allocator.RemoveEmptyBuffers();
+
 	// Use the partial block manager to serialize allocator data.
 	auto &block_manager = table_io_manager.GetIndexBlockManager();
 	PartialBlockManager partial_block_manager(context, block_manager, PartialBlockType::FULL_CHECKPOINT);
@@ -261,6 +264,9 @@ IndexStorageInfo RTreeIndex::SerializeToWAL(const case_insensitive_map_t<Value> 
 
 	auto &leaf_allocator = tree->GetLeafAllocator();
 	auto &node_allocator = tree->GetNodeAllocator();
+
+	leaf_allocator.RemoveEmptyBuffers();
+	node_allocator.RemoveEmptyBuffers();
 
 	info.buffers.push_back(leaf_allocator.InitSerializationToWAL());
 	info.buffers.push_back(node_allocator.InitSerializationToWAL());
