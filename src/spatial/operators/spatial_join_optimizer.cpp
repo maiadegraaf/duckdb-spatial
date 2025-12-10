@@ -299,8 +299,6 @@ static void TrySwapAnyJoin(OptimizerExtensionInput &input, unique_ptr<LogicalOpe
 }
 
 static void InsertSpatialJoin(OptimizerExtensionInput &input, unique_ptr<LogicalOperator> &plan) {
-	auto &op = *plan;
-
 	if (TrySwapComparisonJoin(input, plan)) {
 		return;
 	}
