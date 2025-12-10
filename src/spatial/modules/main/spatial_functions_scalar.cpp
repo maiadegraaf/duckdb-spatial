@@ -6269,37 +6269,38 @@ struct ST_InteriorRingN {
     static void ExecuteGeometry(DataChunk &args, ExpressionState &state, Vector &result) {
         auto &lstate = LocalState::ResetAndGet(state);
 
-        BinaryExecutor::Execute<string_t, int64_t, string_t>(
+        BinaryExecutor::ExecuteWithNulls<string_t, int64_t, string_t>(
             args.data[0], args.data[1], result, args.size(),
-            [&](const string_t &blob, const int64_t &n) {
+            [&](const string_t &blob, const int64_t &n, ValidityMask &mask, idx_t idx) {
                 sgl::geometry geom;
                 lstate.Deserialize(blob, geom);
 
                 // ---- validate geometry ----
                 if (geom.get_type() != sgl::geometry_type::POLYGON) {
-                    // same semantics as ST_ExteriorRing: return NULL for non-polygons
-                    return string_t{};
+                    mask.SetInvalid(idx);
+				    return string_t {};
                 }
 
                 if (geom.is_empty()) {
-                    // empty polygon → empty linestring
-                    const sgl::geometry empty_ls(sgl::geometry_type::LINESTRING,
-                                                 geom.has_z(), geom.has_m());
-                    return lstate.Serialize(result, empty_ls);
+                    // empty polygon → NULL because ring index must be always out of bounds then
+                    mask.SetInvalid(idx);
+				    return string_t {};
                 }
 
                 if (n < 1) {
                     // invalid index → NULL
-                    return string_t{};
+                    mask.SetInvalid(idx);
+				    return string_t {};
                 }
 
                 const idx_t num_parts = geom.get_part_count(); // includes shell
                 // parts: 0 = exterior, 1..n = interior rings
                 const idx_t num_interior = num_parts > 0 ? num_parts - 1 : 0;
 
-                if ((idx_t)n > num_interior) {
+                if (static_cast<idx_t>(n) > num_interior) {
                     // ring doesn't exist → NULL
-                    return string_t{};
+                    mask.SetInvalid(idx);
+				    return string_t {};
                 }
 
                 // interior ring N = part N (because part 0 = shell)
@@ -6400,25 +6401,13 @@ struct ST_InteriorRingN {
 			auto poly = poly_entries[row_idx];
 
 			// read requested n for this row
-			int64_t nr = 0;
-			bool n_is_null = false;
-			if (n_format.validity.RowIsValid(n_format.sel->get_index(i))) {
-				nr = n_data[n_format.sel->get_index(i)];
-			} else {
-				n_is_null = true;
-			}
+			const auto n_idx = n_format.sel->get_index(i);
+			if(!n_format.validity.RowIsValid(n_idx)) {
+                FlatVector::SetNull(line_vec, i, true);
+                continue;
+            }
 
-			if (n_is_null) {
-				FlatVector::SetNull(line_vec, i, true);
-				continue;
-			}
-
-			if (poly.length == 0) {
-				// empty polygon -> return empty linestring
-				line_entries[i].offset = 0;
-				line_entries[i].length = 0;
-				continue;
-			}
+			const auto nr = n_data[n_idx];
 
 			const idx_t ring_count = poly.length;
 			const idx_t interior_count = (ring_count > 0 ? ring_count - 1 : 0);
@@ -6452,7 +6441,7 @@ struct ST_InteriorRingN {
     //------------------------------------------------------------------------------------------------------------------
     static constexpr auto DESCRIPTION =
         "Returns the N-th interior ring (hole) of a POLYGON as a LINESTRING. Indexing is 1-based  (n = 1 returns the first interior ring). "
-        "Returns NULL if the polygon has fewer than N interior rings.";
+        "Returns NULL if the polygon is empty or has fewer than N interior rings.";
 
     static constexpr auto EXAMPLE = R"(
 		SELECT ST_AsText(ST_InteriorRingN(ST_GeomFromText('POLYGON((0 0,10 0,10 10,0 10,0 0),(2 2,4 2,4 4,2 4,2 2))'), 1));
