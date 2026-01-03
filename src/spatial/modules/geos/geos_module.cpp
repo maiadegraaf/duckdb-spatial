@@ -366,7 +366,7 @@ struct ST_AsMVTGeom {
 			if (!bind_data.clip) {
 
 				// But first orient in place
-				snapped.orient_polygons(true);
+				snapped.orient_polygons(false);
 
 				res_data[out_idx] = lstate.Serialize(result, snapped);
 				continue;
@@ -389,7 +389,7 @@ struct ST_AsMVTGeom {
 			auto cleaned_clipped = clipped.get_gridded(1.0);
 
 			// Also orient the polygons in place
-			cleaned_clipped.orient_polygons(true);
+			cleaned_clipped.orient_polygons(false);
 
 			res_data[out_idx] = lstate.Serialize(result, cleaned_clipped);
 		}
