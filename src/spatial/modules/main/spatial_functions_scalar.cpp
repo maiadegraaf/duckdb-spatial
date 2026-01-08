@@ -4182,8 +4182,10 @@ struct ST_GeomFromHEXWKB {
 			for (idx_t hex_idx = 0; hex_idx < hex_size; hex_idx += 2) {
 				const auto byte_a = Blob::HEX_MAP[hex_ptr[hex_idx]];
 				const auto byte_b = Blob::HEX_MAP[hex_ptr[hex_idx + 1]];
-				D_ASSERT(byte_a != -1);
-				D_ASSERT(byte_b != -1);
+				if (byte_a == -1 || byte_b == -1) {
+					throw InvalidInputException("Invalid character in HEX WKB string: '%c%c'",
+					                            hex_ptr[hex_idx], hex_ptr[hex_idx + 1]);
+				}
 
 				blob_ptr[blob_idx++] = (byte_a << 4) + byte_b;
 			}
@@ -4233,6 +4235,7 @@ struct ST_GeomFromHEXWKB {
 
 					variant.SetInit(LocalState::Init);
 					variant.SetFunction(Execute);
+					variant.CanThrowErrors();
 				});
 
 				func.SetDescription(DESCRIPTION);
