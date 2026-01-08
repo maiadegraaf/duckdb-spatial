@@ -1,7 +1,8 @@
 #include "spatial/operators/spatial_join_physical.hpp"
+#include "spatial/operators/spatial_join_logical.hpp"
 #include "spatial/geometry/sgl.hpp"
+#include "spatial/geometry/bbox.hpp"
 #include "spatial/spatial_types.hpp"
-#include "spatial_join_logical.hpp"
 
 #include "duckdb/catalog/catalog_entry/scalar_function_catalog_entry.hpp"
 #include "duckdb/common/types/row/tuple_data_collection.hpp"
@@ -12,7 +13,7 @@
 #include "duckdb/planner/expression/bound_reference_expression.hpp"
 #include "duckdb/planner/expression/bound_conjunction_expression.hpp"
 #include "duckdb/storage/buffer_manager.hpp"
-#include "spatial/geometry/geometry_serialization.hpp"
+
 #include "spatial/util/math.hpp"
 
 namespace duckdb {
@@ -378,6 +379,25 @@ private:
 } // namespace
 
 //======================================================================================================================
+// Helpers
+//======================================================================================================================
+
+static unique_ptr<Expression> GetBBOXExpression(ClientContext &context, const LogicalType &geom_type) {
+	auto &catalog = Catalog::GetSystemCatalog(context);
+	auto &entry = catalog.GetEntry<ScalarFunctionCatalogEntry>(context, DEFAULT_SCHEMA, "ST_Extent_Approx");
+	auto func = entry.functions.GetFunctionByArguments(context, {geom_type});
+
+	auto child_expr = make_uniq<BoundReferenceExpression>(geom_type, 0);
+	vector<unique_ptr<Expression>> children;
+	children.push_back(std::move(child_expr));
+
+	auto bbox_expr = make_uniq<BoundFunctionExpression>(GeoTypes::BOX_2DF(), func, std::move(children), nullptr);
+
+	return std::move(bbox_expr);
+}
+
+
+//======================================================================================================================
 // Physical Spatial Join Operator
 //======================================================================================================================
 
@@ -665,12 +685,26 @@ SinkFinalizeType PhysicalSpatialJoin::Finalize(Pipeline &pipeline, Event &event,
 	Vector row_pointer_vector(LogicalType::POINTER, reinterpret_cast<data_ptr_t>(rows_ptr));
 
 	auto &sel = *FlatVector::IncrementalSelectionVector();
-	Vector geom_vec(LogicalType::GEOMETRY());
-	auto &validity = FlatVector::Validity(geom_vec);
+
+	DataChunk geom_chunk;
+	geom_chunk.Initialize(context, {build_side_key_types[0]});
+	auto &geom_vec = geom_chunk.data[0];
+
+	// Setup the bounding box
+	DataChunk bbox_chunk;
+	bbox_chunk.Initialize(context, {GeoTypes::BOX_2DF()});
+	auto bbox_expr = GetBBOXExpression(context, build_side_key_types[0]);
+	ExpressionExecutor bbox_executor(context);
+	bbox_executor.AddExpression(*bbox_expr);
 
 	do {
-		validity.Reset();
+
 		const auto row_count = iterator.GetCurrentChunkCount();
+
+		geom_chunk.Reset();
+		bbox_chunk.Reset();
+		geom_chunk.SetCardinality(row_count);
+		bbox_chunk.SetCardinality(row_count);
 
 		// We only need to fetch the build-side key column to build the rtree.
 		// The key column is always the first column in the layout.
@@ -679,21 +713,32 @@ SinkFinalizeType PhysicalSpatialJoin::Finalize(Pipeline &pipeline, Event &event,
 
 		gstate.collection->Gather(row_pointer_vector, sel, row_count, build_side_key_col, geom_vec, sel, nullptr);
 
-		// Get a pointer to what we just gathered
-		const auto geom_ptr = FlatVector::GetData<string_t>(geom_vec);
+		// This should be flat to begin with, but just to be sure
+		bbox_chunk.Flatten();
+
+		// Execute the bbox expression
+		bbox_executor.Execute(geom_chunk, bbox_chunk);
+		const auto &entries = StructVector::GetEntries(bbox_chunk.data[0]);
+		const auto xmin_data = FlatVector::GetData<float>(*entries[0]);
+		const auto ymin_data = FlatVector::GetData<float>(*entries[1]);
+		const auto xmax_data = FlatVector::GetData<float>(*entries[2]);
+		const auto ymax_data = FlatVector::GetData<float>(*entries[3]);
+
+
 		// Push the bounding boxes into the R-Tree
+		auto &validity = FlatVector::Validity(bbox_chunk.data[0]);
+
 		for (idx_t row_idx = 0; row_idx < row_count; row_idx++) {
 			if (!validity.RowIsValid(row_idx)) {
 				// Skip null geometries
 				continue;
 			}
 
-			const auto &geom = geom_ptr[row_idx];
 			Box2D<float> bbox;
-			if (!Serde::TryGetBounds(geom, bbox)) {
-				// Skip empty geometries
-				continue;
-			}
+			bbox.min.x = xmin_data[row_idx];
+			bbox.min.y = ymin_data[row_idx];
+			bbox.max.x = xmax_data[row_idx];
+			bbox.max.y = ymax_data[row_idx];
 
 			if (has_const_distance) {
 				// If this is a ST_DWithin join, we need to expand the bounding box by the constant distance
@@ -735,15 +780,23 @@ public:
 
 	DataChunk probe_side_row_chunk; // holds the projected lhs columns
 	DataChunk probe_side_key_chunk; // holds the lhs probe key
+	DataChunk probe_side_box_chunk; // holds the lhs probe key as a box
 	DataChunk build_side_key_chunk; // holds the rhs build key
 	DataChunk match_pred_arg_chunk; // references the lhs probe key and the rhs build key, used to compute the predicate
 
 	ExpressionExecutor join_probe_executor; // used to compute the probe key
 	ExpressionExecutor join_match_executor; // used to compute the predicate
+	ExpressionExecutor bbox_probe_executor; // used to compute the bounding box for the probe key
 
 	UnifiedVectorFormat probe_side_key_vformat; // used to access the probe side key, after its been computed
+	UnifiedVectorFormat probe_side_box_vformat; // used to access the probe side bounding box, after its been computed
+	UnifiedVectorFormat probe_side_box_xmin_vformat;
+	UnifiedVectorFormat probe_side_box_ymin_vformat;
+	UnifiedVectorFormat probe_side_box_xmax_vformat;
+	UnifiedVectorFormat probe_side_box_ymax_vformat;
 
-	unique_ptr<Expression> match_expr;
+	unique_ptr<Expression> match_expr; // to evaluate the predicate
+	unique_ptr<Expression> bound_expr; // to compute the bounding box of the probe key
 
 	SelectionVector probe_side_source_sel; // maps what output rows correspond to which input lhs rows
 	SelectionVector build_side_source_sel; // used when gathering the build side
@@ -758,7 +811,7 @@ public:
 	unsafe_unique_array<data_ptr_t> build_side_pointers = nullptr;
 
 	explicit SpatialJoinLocalOperatorState(ClientContext &context)
-	    : join_probe_executor(context), join_match_executor(context), probe_side_source_sel(STANDARD_VECTOR_SIZE),
+	    : join_probe_executor(context), join_match_executor(context), bbox_probe_executor(context), probe_side_source_sel(STANDARD_VECTOR_SIZE),
 	      build_side_source_sel(STANDARD_VECTOR_SIZE), build_side_target_sel(STANDARD_VECTOR_SIZE),
 	      match_sel(STANDARD_VECTOR_SIZE), lhs_match_sel(STANDARD_VECTOR_SIZE) {
 
@@ -804,9 +857,14 @@ unique_ptr<OperatorState> PhysicalSpatialJoin::GetOperatorState(ExecutionContext
 	// Add the probe side join key expression
 	lstate->join_probe_executor.AddExpression(*probe_side_key);
 
+	// Make bbox expression for probe side
+	lstate->bound_expr = GetBBOXExpression(context.client, probe_side_key->return_type);
+	lstate->bbox_probe_executor.AddExpression(*lstate->bound_expr);
+
 	// The chunks we need for the join
 	lstate->probe_side_row_chunk.Initialize(context.client, probe_side_output_types);
 	lstate->probe_side_key_chunk.Initialize(context.client, {probe_side_key->return_type});
+	lstate->probe_side_box_chunk.Initialize(context.client, {lstate->bound_expr->return_type});
 	lstate->build_side_key_chunk.Initialize(context.client, {build_side_key->return_type});
 	lstate->match_pred_arg_chunk.Initialize(context.client, {probe_side_key->return_type, build_side_key->return_type});
 
@@ -861,8 +919,19 @@ OperatorResultType PhysicalSpatialJoin::ExecuteInternal(ExecutionContext &contex
 		//--------------------------------------------------------------------------------------------------------------
 		case SpatialJoinState::INIT: {
 			// We have a new fresh input chunk
+			// Compute the probe side join key
 			lstate.join_probe_executor.Execute(input, lstate.probe_side_key_chunk);
 			lstate.probe_side_key_chunk.data[0].ToUnifiedFormat(input.size(), lstate.probe_side_key_vformat);
+
+			// Setup bounding box
+			lstate.bbox_probe_executor.Execute(lstate.probe_side_key_chunk, lstate.probe_side_box_chunk);
+			lstate.probe_side_box_chunk.data[0].ToUnifiedFormat(input.size(), lstate.probe_side_box_vformat);
+
+			const auto &entries = StructVector::GetEntries(lstate.probe_side_box_chunk.data[0]);
+			entries[0]->ToUnifiedFormat(input.size(), lstate.probe_side_box_xmin_vformat);
+			entries[1]->ToUnifiedFormat(input.size(), lstate.probe_side_box_ymin_vformat);
+			entries[2]->ToUnifiedFormat(input.size(), lstate.probe_side_box_xmax_vformat);
+			entries[3]->ToUnifiedFormat(input.size(), lstate.probe_side_box_ymax_vformat);
 
 			// Reference the columns that we actually care about
 			lstate.probe_side_row_chunk.ReferenceColumns(input, probe_side_output_columns);
@@ -884,20 +953,29 @@ OperatorResultType PhysicalSpatialJoin::ExecuteInternal(ExecutionContext &contex
 				continue;
 			}
 
-			const auto geom_idx = lstate.probe_side_key_vformat.sel->get_index(lstate.input_index);
-			if (!lstate.probe_side_key_vformat.validity.RowIsValid(geom_idx)) {
+			// Loop over the bounding boxes
+			const auto geom_idx = lstate.probe_side_box_vformat.sel->get_index(lstate.input_index);
+			if (!lstate.probe_side_box_vformat.validity.RowIsValid(geom_idx)) {
 				lstate.input_index++;
 				continue;
 			}
 
-			const auto geom_ptr = UnifiedVectorFormat::GetData<string_t>(lstate.probe_side_key_vformat);
-			const auto &geom = geom_ptr[geom_idx];
+			// Extract the bounding box
+			const auto xmin_data = UnifiedVectorFormat::GetData<float>(lstate.probe_side_box_xmin_vformat);
+			const auto ymin_data = UnifiedVectorFormat::GetData<float>(lstate.probe_side_box_ymin_vformat);
+			const auto xmax_data = UnifiedVectorFormat::GetData<float>(lstate.probe_side_box_xmax_vformat);
+			const auto ymax_data = UnifiedVectorFormat::GetData<float>(lstate.probe_side_box_ymax_vformat);
+
+			const auto xmin_idx = lstate.probe_side_box_xmin_vformat.sel->get_index(geom_idx);
+			const auto ymin_idx = lstate.probe_side_box_ymin_vformat.sel->get_index(geom_idx);
+			const auto xmax_idx = lstate.probe_side_box_xmax_vformat.sel->get_index(geom_idx);
+			const auto ymax_idx = lstate.probe_side_box_ymax_vformat.sel->get_index(geom_idx);
 
 			Box2D<float> bbox;
-			if (!Serde::TryGetBounds(geom, bbox)) {
-				lstate.input_index++;
-				continue;
-			}
+			bbox.min.x = xmin_data[xmin_idx];
+			bbox.min.y = ymin_data[ymin_idx];
+			bbox.max.x = xmax_data[xmax_idx];
+			bbox.max.y = ymax_data[ymax_idx];
 
 			gstate.rtree->InitScan(lstate.scan, bbox);
 
