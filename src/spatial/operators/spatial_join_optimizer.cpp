@@ -82,9 +82,8 @@ static bool IsSpatialJoinPredicate(const unique_ptr<Expression> &expr, const uno
 		return false;
 	}
 
-	// The function must operate on two GEOMETRY types
-	if (func.children[0]->return_type != LogicalType::GEOMETRY() ||
-	    func.children[1]->return_type != LogicalType::GEOMETRY()) {
+	// The function must return a boolean
+	if (func.return_type != LogicalType::BOOLEAN) {
 		return false;
 	}
 
