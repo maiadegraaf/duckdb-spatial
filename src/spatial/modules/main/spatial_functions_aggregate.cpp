@@ -149,6 +149,7 @@ void RegisterSpatialAggregateFunctions(ExtensionLoader &loader) {
 		func.SetFunction(agg);
 		func.SetDescription(DOC_DESCRIPTION);
 		func.SetExample(DOC_EXAMPLE);
+		func.CanThrowErrors();
 
 		func.SetTag("ext", "spatial");
 		func.SetTag("category", "construction");
@@ -158,6 +159,7 @@ void RegisterSpatialAggregateFunctions(ExtensionLoader &loader) {
 		func.SetFunction(agg);
 		func.SetDescription(DOC_ALIAS_DESCRIPTION);
 		func.SetExample(DOC_EXAMPLE);
+		func.CanThrowErrors();
 
 		func.SetTag("ext", "spatial");
 		func.SetTag("category", "construction");

@@ -191,7 +191,7 @@ public:
 	void SetDescription(const string &desc);
 	void SetExample(const string &ex);
 	void SetFunction(const AggregateFunction &function);
-
+	void CanThrowErrors();
 private:
 	explicit AggregateFunctionBuilder(const char *name) : set(name) {
 	}
@@ -213,6 +213,12 @@ inline void AggregateFunctionBuilder::SetExample(const string &ex) {
 }
 inline void AggregateFunctionBuilder::SetTag(const string &key, const string &value) {
 	tags[key] = value;
+}
+
+inline void AggregateFunctionBuilder::CanThrowErrors() {
+	for (auto &function : set.functions) {
+		function.errors = FunctionErrors::CAN_THROW_RUNTIME_ERROR;
+	}
 }
 
 //------------------------------------------------------------------------------
