@@ -1,0 +1,51 @@
+# name: test/sql/mvt/st_asmvtgeom.test
+# description: Test that ST_AsMVTGeom produces correct ring orientation according to MVT spec
+# group: [mvt]
+
+require spatial
+
+# Verify that ST_AsMVTGeom produces CW exterior rings in tile coordinates
+# 
+# Input: CCW Polygon in geographic coordinates (Y-up)
+# Expected: CW Polygon in tile coordinates (Y-down)
+# MVT Spec: "Exterior rings must be oriented clockwise [...] (when viewed in screen coordinates)"
+query I
+SELECT ST_AsText(
+    ST_AsMVTGeom(
+        ST_GeomFromText('POLYGON((0 0, 1 0, 1 1, 0 1, 0 0))'),
+        ST_Extent(ST_GeomFromText('POLYGON((0 0, 2 0, 2 2, 0 2, 0 0))')),
+        4096
+    )
+);
+----
+POLYGON ((2048 4096, 0 4096, 0 2048, 2048 2048, 2048 4096))
+
+# Verify Polygon with holes
+# 
+# Input: Polygon with CCW exterior and CW hole in geographic coordinates (Y-up)
+# Expected: Exterior is CW in screen coords (Y-down), interior is CCW (per MVT spec)
+query I
+SELECT ST_AsText(
+    ST_AsMVTGeom(
+        ST_GeomFromText('POLYGON((0 0, 4 0, 4 4, 0 4, 0 0), (1 1, 3 1, 3 3, 1 3, 1 1))'),
+        ST_Extent(ST_GeomFromText('POLYGON((0 0, 4 0, 4 4, 0 4, 0 0))')),
+        4096
+    )
+);
+----
+POLYGON ((4096 4096, 0 4096, 0 0, 4096 0, 4096 4096), (1024 1024, 1024 3072, 3072 3072, 3072 1024, 1024 1024))
+
+# Verify Multi-Polygon
+#
+# Input: Two CCW polygons in geographic coordinates (Y-up)
+# Expected: Both polygons are CW in screen coords (Y-down)
+query I
+SELECT ST_AsText(
+    ST_AsMVTGeom(
+        ST_GeomFromText('MULTIPOLYGON(((0 0, 1 0, 1 1, 0 1, 0 0)), ((2 2, 3 2, 3 3, 2 3, 2 2)))'),
+        ST_Extent(ST_GeomFromText('POLYGON((0 0, 4 0, 4 4, 0 4, 0 0))')),
+        4096
+    )
+);
+----
+MULTIPOLYGON (((1024 4096, 0 4096, 0 3072, 1024 3072, 1024 4096)), ((3072 2048, 2048 2048, 2048 1024, 3072 1024, 3072 2048)))
