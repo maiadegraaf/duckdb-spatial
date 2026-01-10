@@ -1353,6 +1353,7 @@ struct ST_AsSVG {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription(DESCRIPTION);
@@ -1992,6 +1993,7 @@ struct ST_CollectionExtract {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(ExecuteTyped);
+				variant.CanThrowErrors();
 			});
 
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
@@ -2000,6 +2002,7 @@ struct ST_CollectionExtract {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(ExecuteAuto);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription(DESCRIPTION);
@@ -2352,6 +2355,7 @@ struct ST_Azimuth {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(ExecuteGeometry);
+				variant.CanThrowErrors();
 			});
 
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
@@ -2992,6 +2996,7 @@ struct ST_Dump {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription(DESCRIPTION);
@@ -3223,6 +3228,7 @@ struct ST_Extent {
 
 				variant.SetFunction(ExecuteWKB);
 				variant.SetInit(LocalState::Init);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription(DESCRIPTION);
@@ -4183,8 +4189,10 @@ struct ST_GeomFromHEXWKB {
 			for (idx_t hex_idx = 0; hex_idx < hex_size; hex_idx += 2) {
 				const auto byte_a = Blob::HEX_MAP[hex_ptr[hex_idx]];
 				const auto byte_b = Blob::HEX_MAP[hex_ptr[hex_idx + 1]];
-				D_ASSERT(byte_a != -1);
-				D_ASSERT(byte_b != -1);
+				if (byte_a == -1 || byte_b == -1) {
+					throw InvalidInputException("Invalid character in HEX WKB string: '%c%c'",
+					                            hex_ptr[hex_idx], hex_ptr[hex_idx + 1]);
+				}
 
 				blob_ptr[blob_idx++] = (byte_a << 4) + byte_b;
 			}
@@ -4234,6 +4242,7 @@ struct ST_GeomFromHEXWKB {
 
 					variant.SetInit(LocalState::Init);
 					variant.SetFunction(Execute);
+					variant.CanThrowErrors();
 				});
 
 				func.SetDescription(DESCRIPTION);
@@ -4648,6 +4657,7 @@ struct ST_GeomFromGeoJSON {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
@@ -4656,6 +4666,7 @@ struct ST_GeomFromGeoJSON {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription(DESCRIPTION);
@@ -4778,6 +4789,7 @@ struct ST_GeomFromText {
 				variant.SetInit(LocalState::Init);
 				variant.SetBind(Bind);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
@@ -4788,6 +4800,7 @@ struct ST_GeomFromText {
 				variant.SetBind(Bind);
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription(DOCUMENTATION);
@@ -5068,6 +5081,7 @@ struct ST_GeomFromWKB {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(ExecutePoint);
+				variant.CanThrowErrors();
 			});
 
 			builder.AddVariant([](ScalarFunctionVariantBuilder &variant) {
@@ -5076,6 +5090,7 @@ struct ST_GeomFromWKB {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(ExecutePoint);
+				variant.CanThrowErrors();
 			});
 
 			builder.SetDescription("Deserialize a POINT_2D from a WKB encoded blob");
@@ -5392,6 +5407,7 @@ struct ST_LineInterpolatePoint {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(ExecuteGeometry);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription(DESCRIPTION);
@@ -5469,6 +5485,7 @@ struct ST_LineInterpolatePoints {
 
 				variant.SetFunction(ExecuteGeometry);
 				variant.SetInit(LocalState::Init);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription(DESCRIPTION);
@@ -5540,6 +5557,7 @@ struct ST_LineLocatePoint {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(ExecuteGeometry);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription(DESCRIPTION);
@@ -5601,6 +5619,7 @@ struct ST_LineSubstring {
 
 				variant.SetFunction(ExecuteGeometry);
 				variant.SetInit(LocalState::Init);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription(DESCRIPTION);
@@ -5690,6 +5709,7 @@ struct ST_LocateAlong {
 				variant.SetBind(Bind);
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(ExecuteGeometry);
+				variant.CanThrowErrors();
 			});
 
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
@@ -5700,6 +5720,7 @@ struct ST_LocateAlong {
 				variant.SetBind(Bind);
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(ExecuteGeometry);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription(DESCRIPTION);
@@ -5826,6 +5847,7 @@ struct ST_LocateBetween {
 				variant.SetBind(Bind);
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(ExecuteGeometry);
+				variant.CanThrowErrors();
 			});
 
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
@@ -5837,6 +5859,7 @@ struct ST_LocateBetween {
 				variant.SetBind(Bind);
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(ExecuteGeometry);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription(DESCRIPTION);
@@ -6047,6 +6070,7 @@ struct ST_Distance_Sphere {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(ExecuteGeometry);
+				variant.CanThrowErrors();
 			});
 
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
@@ -6222,6 +6246,7 @@ struct ST_Hilbert {
 
 				variant.SetFunction(ExecuteGeometryWithBounds);
 				variant.SetInit(LocalState::Init);
+				variant.CanThrowErrors();
 			});
 
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
@@ -6547,6 +6572,7 @@ struct ST_InterpolatePoint {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(ExecuteGeometry);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription(DESCRIPTION);
@@ -6722,6 +6748,7 @@ struct ST_IsClosed {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription(DESCRIPTION);
@@ -7170,6 +7197,7 @@ struct ST_MakeLine {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(ExecuteList);
+				variant.CanThrowErrors();
 
 				variant.SetDescription(DESCRIPTION_LIST);
 				variant.SetExample(EXAMPLE_LIST);
@@ -7182,6 +7210,7 @@ struct ST_MakeLine {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(ExecuteBinary);
+				variant.CanThrowErrors();
 
 				variant.SetDescription(DESCRIPTION_BINARY);
 				variant.SetExample(EXAMPLE_BINARY);
@@ -7320,6 +7349,7 @@ struct ST_MakePolygon {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(ExecuteFromShell);
+				variant.CanThrowErrors();
 
 				// TODO: Set example & docs
 				variant.SetDescription("Create a POLYGON from a LINESTRING shell");
@@ -7334,6 +7364,7 @@ struct ST_MakePolygon {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(ExecuteFromRings);
+				variant.CanThrowErrors();
 
 				// TODO: Set example & docs
 				variant.SetDescription("Create a POLYGON from a LINESTRING shell and a list of LINESTRING holes");
@@ -7436,6 +7467,7 @@ struct ST_MakeBox2D {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(ExecuteBinary);
+				variant.CanThrowErrors();
 
 				variant.SetDescription(DESCRIPTION_BINARY);
 				variant.SetExample(EXAMPLE_BINARY);
@@ -8511,6 +8543,7 @@ struct ST_QuadKey {
 				variant.AddParameter("level", LogicalType::INTEGER);
 				variant.SetReturnType(LogicalType::VARCHAR);
 				variant.SetFunction(ExecuteLonLat);
+				variant.CanThrowErrors();
 			});
 
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
@@ -8519,6 +8552,7 @@ struct ST_QuadKey {
 				variant.SetReturnType(LogicalType::VARCHAR);
 				variant.SetFunction(ExecuteGeometry);
 				variant.SetInit(LocalState::Init);
+				variant.CanThrowErrors();
 			});
 
 			func.SetTag("ext", "spatial");
@@ -9195,6 +9229,7 @@ struct PointAccessFunctionBase {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 
 				variant.SetDescription(OP::DESCRIPTION);
 				variant.SetExample(OP::EXAMPLE);

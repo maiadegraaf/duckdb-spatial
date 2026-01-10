@@ -419,6 +419,7 @@ struct ST_Transform {
 				variant.SetInit(ProjFunctionLocalState::Init);
 				variant.SetBind(Bind);
 				variant.SetFunction(ExecuteBox);
+				variant.CanThrowErrors();
 			});
 
 			func.AddVariant([&](ScalarFunctionVariantBuilder &variant) {
@@ -431,6 +432,7 @@ struct ST_Transform {
 				variant.SetInit(ProjFunctionLocalState::Init);
 				variant.SetBind(Bind);
 				variant.SetFunction(ExecuteBox);
+				variant.CanThrowErrors();
 			});
 
 			func.AddVariant([&](ScalarFunctionVariantBuilder &variant) {
@@ -442,6 +444,7 @@ struct ST_Transform {
 				variant.SetInit(ProjFunctionLocalState::Init);
 				variant.SetBind(Bind);
 				variant.SetFunction(ExecutePoint);
+				variant.CanThrowErrors();
 			});
 
 			func.AddVariant([&](ScalarFunctionVariantBuilder &variant) {
@@ -454,6 +457,7 @@ struct ST_Transform {
 				variant.SetInit(ProjFunctionLocalState::Init);
 				variant.SetBind(Bind);
 				variant.SetFunction(ExecutePoint);
+				variant.CanThrowErrors();
 			});
 
 			func.AddVariant([&](ScalarFunctionVariantBuilder &variant) {
@@ -465,6 +469,7 @@ struct ST_Transform {
 				variant.SetInit(ProjFunctionLocalState::Init);
 				variant.SetBind(Bind);
 				variant.SetFunction(ExecuteGeometry);
+				variant.CanThrowErrors();
 			});
 
 			func.AddVariant([&](ScalarFunctionVariantBuilder &variant) {
@@ -477,6 +482,7 @@ struct ST_Transform {
 				variant.SetInit(ProjFunctionLocalState::Init);
 				variant.SetBind(Bind);
 				variant.SetFunction(ExecuteGeometry);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription(DESCRIPTION);
@@ -689,12 +695,14 @@ struct ST_Area_Spheroid {
 
 				variant.SetInit(GeodesicLocalState::InitPolygon);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("poly", GeoTypes::POLYGON_2D());
 				variant.SetReturnType(LogicalType::DOUBLE);
 				variant.SetFunction(ExecutePolygon);
+				variant.CanThrowErrors();
 			});
 
 			func.SetExample(EXAMPLE);
@@ -845,12 +853,14 @@ struct ST_Perimeter_Spheroid {
 
 				variant.SetInit(GeodesicLocalState::InitPolygon);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("poly", GeoTypes::POLYGON_2D());
 				variant.SetReturnType(LogicalType::DOUBLE);
 				variant.SetFunction(ExecutePolygon);
+				variant.CanThrowErrors();
 			});
 
 			func.SetExample(EXAMPLE);
@@ -979,12 +989,14 @@ struct ST_Length_Spheroid {
 
 				variant.SetInit(GeodesicLocalState::InitLine);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
 				variant.AddParameter("line", GeoTypes::LINESTRING_2D());
 				variant.SetReturnType(LogicalType::DOUBLE);
 				variant.SetFunction(ExecuteLineString);
+				variant.CanThrowErrors();
 			});
 
 			func.SetExample(EXAMPLE);
@@ -1044,6 +1056,7 @@ struct ST_Distance_Spheroid {
 				variant.SetReturnType(LogicalType::DOUBLE);
 
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.SetExample(EXAMPLE);
@@ -1097,6 +1110,7 @@ struct ST_DWithin_Spheroid {
 				variant.SetReturnType(LogicalType::BOOLEAN);
 
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.SetExample(EXAMPLE);
@@ -1139,6 +1153,7 @@ struct DuckDB_Proj_Version {
 				variant.SetReturnType(LogicalType::VARCHAR);
 
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.SetExample(EXAMPLE);
@@ -1179,6 +1194,7 @@ struct DuckDB_Proj_Compiled_Version {
 				variant.SetReturnType(LogicalType::VARCHAR);
 
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.SetExample(EXAMPLE);

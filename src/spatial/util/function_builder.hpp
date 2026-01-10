@@ -55,6 +55,7 @@ public:
 	void SetBind(bind_scalar_function_t bind);
 	void SetDescription(const string &desc);
 	void SetExample(const string &ex);
+	void CanThrowErrors();
 
 private:
 	explicit ScalarFunctionVariantBuilder() : function({}, LogicalTypeId::INVALID, nullptr) {
@@ -92,6 +93,10 @@ inline void ScalarFunctionVariantBuilder::SetDescription(const string &desc) {
 
 inline void ScalarFunctionVariantBuilder::SetExample(const string &ex) {
 	description.examples.emplace_back(ex);
+}
+
+inline void ScalarFunctionVariantBuilder::CanThrowErrors() {
+	function.errors = FunctionErrors::CAN_THROW_RUNTIME_ERROR;
 }
 
 //------------------------------------------------------------------------------
@@ -186,7 +191,7 @@ public:
 	void SetDescription(const string &desc);
 	void SetExample(const string &ex);
 	void SetFunction(const AggregateFunction &function);
-
+	void CanThrowErrors();
 private:
 	explicit AggregateFunctionBuilder(const char *name) : set(name) {
 	}
@@ -208,6 +213,12 @@ inline void AggregateFunctionBuilder::SetExample(const string &ex) {
 }
 inline void AggregateFunctionBuilder::SetTag(const string &key, const string &value) {
 	tags[key] = value;
+}
+
+inline void AggregateFunctionBuilder::CanThrowErrors() {
+	for (auto &function : set.functions) {
+		function.errors = FunctionErrors::CAN_THROW_RUNTIME_ERROR;
+	}
 }
 
 //------------------------------------------------------------------------------

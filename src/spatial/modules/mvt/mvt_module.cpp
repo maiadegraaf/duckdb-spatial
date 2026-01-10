@@ -158,6 +158,7 @@ struct ST_TileEnvelope {
 				variant.SetReturnType(GeoTypes::GEOMETRY());
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(ExecuteWebMercator);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription(DESCRIPTION);
@@ -1282,6 +1283,7 @@ struct ST_AsMVT {
 			func.SetDescription(DESCRIPTION);
 			func.SetTag("ext", "spatial");
 			func.SetTag("category", "construction");
+			func.CanThrowErrors();
 		});
 	}
 };
