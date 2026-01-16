@@ -27,7 +27,7 @@ jobs:
     name: Build extension binaries
     uses: duckdb/extension-ci-tools/.github/workflows/_extension_distribution.yml@v1.4-andium
     with:
-      duckdb_version: v1.4.3
+      duckdb_version: v1.5.0
       extension_name: spatial
       ci_tools_version: v1.4-andium
       vcpkg_commit: ce613c41372b23b1f51333815feb3edd87ef8a8b
@@ -38,7 +38,7 @@ jobs:
     uses: duckdb/extension-ci-tools/.github/workflows/_extension_deploy.yml@v1.4-andium
     secrets: inherit
     with:
-      duckdb_version: v1.4.3
+      duckdb_version: v1.5.0
       ci_tools_version: v1.4-andium
       extension_name: spatial
       deploy_latest: ${{ startsWith(github.ref, 'refs/heads/v') || github.ref == 'refs/heads/main' }}
