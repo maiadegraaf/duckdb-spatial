@@ -228,7 +228,7 @@ public:
 				return new DuckDBFileHandle(std::move(file));
 			}
 		} catch (std::exception &ex) {
-			// Failed to open file via DuckDB File System. If this doesnt have a VSI prefix we can return an error here.
+			// Failed to open file via DuckDB File System. If this doesn't have a VSI prefix we can return an error here.
 			if (strncmp(file_name, "/vsi", 4) != 0 && !IsStdCharDev(file_name)) {
 				if (bSetError) {
 					VSIError(VSIE_FileError, "Failed to open file %s: %s", file_name, ex.what());
@@ -1047,7 +1047,7 @@ struct ST_Read : ArrowTableFunction {
 	    | `allowed_drivers` | VARCHAR[] | A list of GDAL driver names that are allowed to be used to open the file. If empty, all drivers are allowed. |
 	    | `sibling_files` | VARCHAR[] | A list of sibling files that are required to open the file. E.g., the ESRI Shapefile driver requires a .shx file to be present. Although most of the time these can be discovered automatically. |
 	    | `spatial_filter_box` | BOX_2D | If set to a BOX_2D, the table function will only return rows that intersect with the given bounding box. Similar to spatial_filter. |
-	    | `keep_wkb` | BOOLEAN | If set, the table function will return geometries in a wkb_geometry column with the type WKB_BLOB (which can be cast to BLOB) instead of GEOMETRY. This is useful if you want to use DuckDB with more exotic geometry subtypes that DuckDB spatial doesnt support representing in the GEOMETRY type yet. |
+	    | `keep_wkb` | BOOLEAN | If set, the table function will return geometries in a wkb_geometry column with the type WKB_BLOB (which can be cast to BLOB) instead of GEOMETRY. This is useful if you want to use DuckDB with more exotic geometry subtypes that DuckDB spatial doesn't support representing in the GEOMETRY type yet. |
 
 	    Note that GDAL is single-threaded, so this table function will not be able to make full use of parallelism.
 
@@ -2034,7 +2034,7 @@ void RegisterGDALModule(ExtensionLoader &loader) {
 
 		// Set GDAL error handler
 		CPLSetErrorHandler([](CPLErr e, int code, const char *raw_msg) {
-			// DuckDB doesnt do warnings, so we only throw on errors
+			// DuckDB doesn't do warnings, so we only throw on errors
 			if (e != CE_Failure && e != CE_Fatal) {
 				return;
 			}
