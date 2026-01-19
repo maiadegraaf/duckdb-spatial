@@ -393,6 +393,10 @@ struct ST_AsMVTGeom {
 
 			res_data[out_idx] = lstate.Serialize(result, cleaned_clipped);
 		}
+
+		if (args.AllConstant() || args.size() == 1) {
+			result.SetVectorType(VectorType::CONSTANT_VECTOR);
+		}
 	}
 
 	//------------------------------------------------------------------------------------------------------------------
