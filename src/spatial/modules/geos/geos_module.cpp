@@ -374,7 +374,7 @@ struct ST_AsMVTGeom {
 			if (!bind_data.clip) {
 
 				// But first orient in place
-				snapped.orient_polygons(true);
+				snapped.orient_polygons(false);
 
 				res_data[out_idx] = lstate.Serialize(result, snapped);
 				continue;
@@ -397,9 +397,13 @@ struct ST_AsMVTGeom {
 			auto cleaned_clipped = clipped.get_gridded(1.0);
 
 			// Also orient the polygons in place
-			cleaned_clipped.orient_polygons(true);
+			cleaned_clipped.orient_polygons(false);
 
 			res_data[out_idx] = lstate.Serialize(result, cleaned_clipped);
+		}
+
+		if (args.AllConstant() || args.size() == 1) {
+			result.SetVectorType(VectorType::CONSTANT_VECTOR);
 		}
 	}
 
@@ -415,6 +419,7 @@ struct ST_AsMVTGeom {
 				variant.AddParameter("buffer", LogicalType::BIGINT);
 				variant.AddParameter("clip_geom", LogicalType::BOOLEAN);
 				variant.SetReturnType(LogicalType::GEOMETRY());
+				variant.CanThrowErrors();
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
@@ -426,6 +431,7 @@ struct ST_AsMVTGeom {
 				variant.AddParameter("extent", LogicalType::BIGINT);
 				variant.AddParameter("buffer", LogicalType::BIGINT);
 				variant.SetReturnType(LogicalType::GEOMETRY());
+				variant.CanThrowErrors();
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
@@ -436,6 +442,7 @@ struct ST_AsMVTGeom {
 				variant.AddParameter("bounds", GeoTypes::BOX_2D());
 				variant.AddParameter("extent", LogicalType::BIGINT);
 				variant.SetReturnType(LogicalType::GEOMETRY());
+				variant.CanThrowErrors();
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
@@ -445,6 +452,7 @@ struct ST_AsMVTGeom {
 				variant.AddParameter("geom", LogicalType::GEOMETRY());
 				variant.AddParameter("bounds", GeoTypes::BOX_2D());
 				variant.SetReturnType(LogicalType::GEOMETRY());
+				variant.CanThrowErrors();
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
@@ -487,6 +495,7 @@ struct ST_Boundary {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription("Returns the \"boundary\" of a geometry");
@@ -586,6 +595,7 @@ struct ST_Buffer {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
@@ -596,6 +606,7 @@ struct ST_Buffer {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(ExecuteWithSegments);
+				variant.CanThrowErrors();
 			});
 
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
@@ -609,6 +620,7 @@ struct ST_Buffer {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(ExecuteWithStyle);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription(DESCRIPTION);
@@ -644,6 +656,7 @@ struct ST_BuildArea {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription(DESCRIPTION);
@@ -670,6 +683,7 @@ struct ST_Contains : AsymmetricPreparedBinaryFunction<ST_Contains> {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription(R"(
@@ -704,6 +718,7 @@ struct ST_ContainsProperly : AsymmetricPreparedBinaryFunction<ST_ContainsProperl
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription(R"(
@@ -738,6 +753,7 @@ struct ST_WithinProperly : AsymmetricPreparedBinaryFunction<ST_WithinProperly> {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription(R"(
@@ -774,6 +790,7 @@ struct ST_ConcaveHull {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription(
@@ -806,6 +823,7 @@ struct ST_ConvexHull {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription("Returns the convex hull enclosing the geometry");
@@ -885,6 +903,7 @@ struct ST_CoverageInvalidEdges {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
@@ -894,6 +913,7 @@ struct ST_CoverageInvalidEdges {
 				variant.SetInit(LocalState::Init);
 				variant.SetBind(Bind);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription(R"(
@@ -971,6 +991,7 @@ struct ST_CoverageSimplify {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
@@ -981,6 +1002,7 @@ struct ST_CoverageSimplify {
 				variant.SetInit(LocalState::Init);
 				variant.SetBind(Bind);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription(R"(
@@ -1045,6 +1067,7 @@ struct ST_CoverageUnion {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription(R"(
@@ -1073,6 +1096,7 @@ struct ST_CoveredBy : AsymmetricPreparedBinaryFunction<ST_CoveredBy> {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription("Returns true if geom1 is \"covered by\" geom2");
@@ -1098,6 +1122,7 @@ struct ST_Covers : AsymmetricPreparedBinaryFunction<ST_Covers> {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription("Returns true if the geom1 \"covers\" geom2");
@@ -1123,6 +1148,7 @@ struct ST_Crosses : SymmetricPreparedBinaryFunction<ST_Crosses> {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription("Returns true if geom1 \"crosses\" geom2");
@@ -1154,6 +1180,7 @@ struct ST_Difference {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription("Returns the \"difference\" between two geometries");
@@ -1179,6 +1206,7 @@ struct ST_Disjoint : SymmetricPreparedBinaryFunction<ST_Disjoint> {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription("Returns true if the geometries are disjoint");
@@ -1204,6 +1232,7 @@ struct ST_Distance : SymmetricPreparedBinaryFunction<ST_Distance, double> {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription("Returns the planar distance between two geometries");
@@ -1295,6 +1324,7 @@ struct ST_DistanceWithin {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription(R"(
@@ -1327,6 +1357,7 @@ struct ST_Equals {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription("Returns true if the geometries are \"equal\"");
@@ -1355,6 +1386,7 @@ struct ST_Envelope {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription("Returns the minimum bounding rectangle of a geometry as a polygon geometry");
@@ -1386,6 +1418,7 @@ struct ST_Intersection {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription("Returns the intersection of two geometries");
@@ -1413,6 +1446,7 @@ struct ST_Intersects : SymmetricPreparedBinaryFunction<ST_Intersects> {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription("Returns true if the geometries intersect");
@@ -1439,6 +1473,7 @@ struct ST_IsRing {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription("Returns true if the geometry is a ring (both ST_IsClosed and ST_IsSimple).");
@@ -1465,6 +1500,7 @@ struct ST_IsSimple {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription("Returns true if the geometry is simple");
@@ -1497,6 +1533,7 @@ struct ST_IsValid {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription("Returns true if the geometry is valid");
@@ -1536,6 +1573,7 @@ struct ST_LineMerge {
 				variant.SetReturnType(LogicalType::GEOMETRY());
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
@@ -1544,6 +1582,7 @@ struct ST_LineMerge {
 				variant.SetReturnType(LogicalType::GEOMETRY());
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(ExecuteWithDirection);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription(R"("Merges" the input line geometry, optionally taking direction into account.)");
@@ -1572,6 +1611,7 @@ struct ST_MakeValid {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription("Returns a valid representation of the geometry");
@@ -1653,6 +1693,7 @@ struct ST_MaximumInscribedCircle {
 				variant.SetReturnType(result_type);
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.AddVariant([&](ScalarFunctionVariantBuilder &variant) {
@@ -1661,6 +1702,7 @@ struct ST_MaximumInscribedCircle {
 				variant.SetReturnType(result_type);
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(ExecuteWithTolerance);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription(R"(
@@ -1704,6 +1746,7 @@ struct ST_MinimumRotatedRectangle {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription("Returns the minimum rotated rectangle that bounds the input geometry, finding the "
@@ -1746,6 +1789,7 @@ struct ST_Node {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription(DESCRIPTION);
@@ -1773,6 +1817,7 @@ struct ST_Normalize {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription("Returns the \"normalized\" representation of the geometry");
@@ -1799,6 +1844,7 @@ struct ST_Overlaps : SymmetricPreparedBinaryFunction<ST_Overlaps> {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription("Returns true if the geometries overlap");
@@ -1827,6 +1873,7 @@ struct ST_PointOnSurface {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription("Returns a point guaranteed to lie on the surface of the geometry");
@@ -1886,6 +1933,7 @@ struct ST_Polygonize {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription("Returns a polygonized representation of the input geometries");
@@ -1924,6 +1972,7 @@ struct ST_ReducePrecision {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription("Returns the geometry with all vertices reduced to the given precision");
@@ -1963,6 +2012,7 @@ struct ST_RemoveRepeatedPoints {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
@@ -1972,6 +2022,7 @@ struct ST_RemoveRepeatedPoints {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(ExecuteWithTolerance);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription("Returns the geometry with repeated points removed");
@@ -2000,6 +2051,7 @@ struct ST_Reverse {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription("Returns the geometry with the order of its vertices reversed");
@@ -2030,6 +2082,7 @@ struct ST_ShortestLine {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription("Returns the shortest line between two geometries");
@@ -2058,6 +2111,7 @@ struct ST_Simplify {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription("Returns a simplified version of the geometry");
@@ -2087,6 +2141,7 @@ struct ST_SimplifyPreserveTopology {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription("Returns a simplified version of the geometry that preserves topology");
@@ -2112,6 +2167,7 @@ struct ST_Touches : SymmetricPreparedBinaryFunction<ST_Touches> {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription("Returns true if the geometries touch");
@@ -2142,6 +2198,7 @@ struct ST_Union {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription("Returns the union of two geometries");
@@ -2170,6 +2227,7 @@ struct ST_VoronoiDiagram {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription("Returns the Voronoi diagram of the supplied MultiPoint geometry");
@@ -2195,6 +2253,7 @@ struct ST_Within : AsymmetricPreparedBinaryFunction<ST_Within> {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription("Returns true if the first geometry is within the second");
@@ -2323,6 +2382,7 @@ struct ST_MemUnion_Agg : GeosUnaryAggFunction {
 
 		FunctionBuilder::RegisterAggregate(loader, "ST_MemUnion_Agg", [&](AggregateFunctionBuilder &func) {
 			func.SetFunction(agg);
+			func.CanThrowErrors();
 			func.SetDescription(R"(Computes the union of a set of input geometries.
 				"Slower, but might be more memory efficient than ST_UnionAgg as each geometry is merged into the union individually rather than all at once.)");
 
@@ -2348,6 +2408,7 @@ struct ST_Intersection_Agg : GeosUnaryAggFunction {
 
 		FunctionBuilder::RegisterAggregate(loader, "ST_Intersection_Agg", [&](AggregateFunctionBuilder &func) {
 			func.SetFunction(agg);
+			func.CanThrowErrors();
 			func.SetDescription("Computes the intersection of a set of geometries");
 
 			func.SetTag("ext", "spatial");
@@ -2540,6 +2601,7 @@ struct ST_Union_Agg {
 
 		FunctionBuilder::RegisterAggregate(loader, "ST_Union_Agg", [&](AggregateFunctionBuilder &func) {
 			func.SetFunction(agg);
+			func.CanThrowErrors();
 			func.SetDescription("Computes the union of a set of input geometries");
 
 			func.SetTag("ext", "spatial");
@@ -2805,11 +2867,13 @@ struct ST_CoverageSimplify_Agg : GEOSCoverageAggFunction {
 
 		FunctionBuilder::RegisterAggregate(loader, "ST_CoverageSimplify_Agg", [&](AggregateFunctionBuilder &func) {
 			func.SetFunction(agg);
+			func.CanThrowErrors();
 			func.SetDescription("Simplifies a set of geometries while maintaining coverage");
 
 			// TODO: this is a hack
 			agg.arguments.push_back(LogicalType::BOOLEAN);
 			func.SetFunction(agg);
+			func.CanThrowErrors();
 
 			func.SetTag("ext", "spatial");
 			func.SetTag("category", "construction");
@@ -2876,6 +2940,7 @@ struct ST_CoverageUnion_Agg : GEOSCoverageAggFunction {
 
 		FunctionBuilder::RegisterAggregate(loader, "ST_CoverageUnion_Agg", [&](AggregateFunctionBuilder &func) {
 			func.SetFunction(agg);
+			func.CanThrowErrors();
 			func.SetDescription("Unions a set of geometries while maintaining coverage");
 
 			func.SetTag("ext", "spatial");
@@ -2966,10 +3031,12 @@ struct ST_CoverageInvalidEdges_Agg : GEOSCoverageAggFunction {
 
 		FunctionBuilder::RegisterAggregate(loader, "ST_CoverageInvalidEdges_Agg", [&](AggregateFunctionBuilder &func) {
 			func.SetFunction(agg);
+			func.CanThrowErrors();
 
 			// TODO: this is a hack
 			agg.arguments.push_back(LogicalType::DOUBLE);
 			func.SetFunction(agg);
+			func.CanThrowErrors();
 
 			func.SetDescription("Returns the invalid edges of a coverage geometry");
 

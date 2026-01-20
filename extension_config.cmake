@@ -14,3 +14,5 @@ duckdb_extension_load(spatial
         INCLUDE_DIR ${CMAKE_CURRENT_LIST_DIR}/src/spatial
         ${DO_TESTS}
 )
+
+duckdb_extension_load(json)

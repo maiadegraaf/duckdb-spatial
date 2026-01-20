@@ -5,13 +5,13 @@ name: Main Extension Distribution Pipeline
 on:
   pull_request:
     branches:
-      - main
+      - v1.5-variegata
     paths-ignore:
       - '**/README.md'
       - 'doc/**'
   push:
     branches:
-      - main
+      - v1.5-variegata
     paths-ignore:
       - '**/README.md'
       - 'doc/**'
@@ -28,7 +28,7 @@ jobs:
     uses: duckdb/extension-ci-tools/.github/workflows/_extension_distribution.yml@main
     with:
       duckdb_version: v1.5-variegata
-      ci_tools_version: v1.5-variegata
+      ci_tools_version: main
       extension_name: spatial
       vcpkg_commit: 84bab45d415d22042bd0b9081aea57f362da3f35
 
@@ -39,6 +39,6 @@ jobs:
     secrets: inherit
     with:
       duckdb_version: v1.5-variegata
-      ci_tools_version: v1.5-variegata
+      ci_tools_version: main
       extension_name: spatial
       deploy_latest: ${{ startsWith(github.ref, 'refs/heads/v') || github.ref == 'refs/heads/main' }}

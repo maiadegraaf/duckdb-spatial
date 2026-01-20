@@ -1325,6 +1325,7 @@ struct ST_AsSVG {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription(DESCRIPTION);
@@ -1964,6 +1965,7 @@ struct ST_CollectionExtract {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(ExecuteTyped);
+				variant.CanThrowErrors();
 			});
 
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
@@ -1972,6 +1974,7 @@ struct ST_CollectionExtract {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(ExecuteAuto);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription(DESCRIPTION);
@@ -2324,6 +2327,7 @@ struct ST_Azimuth {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(ExecuteGeometry);
+				variant.CanThrowErrors();
 			});
 
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
@@ -2964,6 +2968,7 @@ struct ST_Dump {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription(DESCRIPTION);
@@ -3127,6 +3132,7 @@ struct ST_Extent {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription(DESCRIPTION);
@@ -3367,8 +3373,9 @@ struct ST_ExteriorRing {
 			    }
 
 			    if (geom.is_empty()) {
-				    const sgl::geometry empty(sgl::geometry_type::LINESTRING, geom.has_z(), geom.has_m());
-				    return lstate.Serialize(result, empty);
+				    // Polygon empty -> return empty linestring
+				    sgl::geometry empty_linestring(sgl::geometry_type::LINESTRING, geom.has_z(), geom.has_m());
+				    return lstate.Serialize(result, empty_linestring);
 			    }
 
 			    const auto shell = geom.get_first_part();
@@ -4056,8 +4063,10 @@ struct ST_GeomFromHEXWKB {
 			for (idx_t hex_idx = 0; hex_idx < hex_size; hex_idx += 2) {
 				const auto byte_a = Blob::HEX_MAP[hex_ptr[hex_idx]];
 				const auto byte_b = Blob::HEX_MAP[hex_ptr[hex_idx + 1]];
-				D_ASSERT(byte_a != -1);
-				D_ASSERT(byte_b != -1);
+				if (byte_a == -1 || byte_b == -1) {
+					throw InvalidInputException("Invalid character in HEX WKB string: '%c%c'",
+					                            hex_ptr[hex_idx], hex_ptr[hex_idx + 1]);
+				}
 
 				blob_ptr[blob_idx++] = (byte_a << 4) + byte_b;
 			}
@@ -4084,7 +4093,7 @@ struct ST_GeomFromHEXWKB {
 	static constexpr auto DESCRIPTION = R"(
 		Deserialize a GEOMETRY from a HEX(E)WKB encoded string
 
-		DuckDB spatial doesnt currently differentiate between `WKB` and `EWKB`, so `ST_GeomFromHEXWKB` and `ST_GeomFromHEXEWKB" are just aliases of eachother.
+		DuckDB spatial doesn't currently differentiate between `WKB` and `EWKB`, so `ST_GeomFromHEXWKB` and `ST_GeomFromHEXEWKB` are just aliases of each other.
 	)";
 
 	static constexpr auto EXAMPLE = "";
@@ -4107,6 +4116,7 @@ struct ST_GeomFromHEXWKB {
 
 					variant.SetInit(LocalState::Init);
 					variant.SetFunction(Execute);
+					variant.CanThrowErrors();
 				});
 
 				func.SetDescription(DESCRIPTION);
@@ -4521,6 +4531,7 @@ struct ST_GeomFromGeoJSON {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
@@ -4529,6 +4540,7 @@ struct ST_GeomFromGeoJSON {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription(DESCRIPTION);
@@ -4651,6 +4663,7 @@ struct ST_GeomFromText {
 				variant.SetInit(LocalState::Init);
 				variant.SetBind(Bind);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
@@ -4661,6 +4674,7 @@ struct ST_GeomFromText {
 				variant.SetBind(Bind);
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription(DOCUMENTATION);
@@ -4941,6 +4955,7 @@ struct ST_GeomFromWKB {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(ExecutePoint);
+				variant.CanThrowErrors();
 			});
 
 			builder.SetDescription("Deserialize a POINT_2D from a WKB encoded blob");
@@ -5188,6 +5203,7 @@ struct ST_LineInterpolatePoint {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(ExecuteGeometry);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription(DESCRIPTION);
@@ -5265,6 +5281,7 @@ struct ST_LineInterpolatePoints {
 
 				variant.SetFunction(ExecuteGeometry);
 				variant.SetInit(LocalState::Init);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription(DESCRIPTION);
@@ -5336,6 +5353,7 @@ struct ST_LineLocatePoint {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(ExecuteGeometry);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription(DESCRIPTION);
@@ -5397,6 +5415,7 @@ struct ST_LineSubstring {
 
 				variant.SetFunction(ExecuteGeometry);
 				variant.SetInit(LocalState::Init);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription(DESCRIPTION);
@@ -5486,6 +5505,7 @@ struct ST_LocateAlong {
 				variant.SetBind(Bind);
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(ExecuteGeometry);
+				variant.CanThrowErrors();
 			});
 
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
@@ -5496,6 +5516,7 @@ struct ST_LocateAlong {
 				variant.SetBind(Bind);
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(ExecuteGeometry);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription(DESCRIPTION);
@@ -5622,6 +5643,7 @@ struct ST_LocateBetween {
 				variant.SetBind(Bind);
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(ExecuteGeometry);
+				variant.CanThrowErrors();
 			});
 
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
@@ -5633,6 +5655,7 @@ struct ST_LocateBetween {
 				variant.SetBind(Bind);
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(ExecuteGeometry);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription(DESCRIPTION);
@@ -5808,6 +5831,7 @@ struct ST_Distance_Sphere {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(ExecuteGeometry);
+				variant.CanThrowErrors();
 			});
 
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
@@ -5983,6 +6007,7 @@ struct ST_Hilbert {
 
 				variant.SetFunction(ExecuteGeometryWithBounds);
 				variant.SetInit(LocalState::Init);
+				variant.CanThrowErrors();
 			});
 
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
@@ -6017,6 +6042,230 @@ struct ST_Hilbert {
 		});
 	}
 };
+
+//======================================================================================================================
+// ST_InteriorRingN
+//======================================================================================================================
+
+struct ST_InteriorRingN {
+
+    //------------------------------------------------------------------------------------------------------------------
+    // GEOMETRY
+    //------------------------------------------------------------------------------------------------------------------
+    static void ExecuteGeometry(DataChunk &args, ExpressionState &state, Vector &result) {
+        auto &lstate = LocalState::ResetAndGet(state);
+
+        BinaryExecutor::ExecuteWithNulls<string_t, int64_t, string_t>(
+            args.data[0], args.data[1], result, args.size(),
+            [&](const string_t &blob, const int64_t &n, ValidityMask &mask, idx_t idx) {
+                sgl::geometry geom;
+                lstate.Deserialize(blob, geom);
+
+                // ---- validate geometry ----
+                if (geom.get_type() != sgl::geometry_type::POLYGON) {
+                    mask.SetInvalid(idx);
+				    return string_t {};
+                }
+
+                if (geom.is_empty()) {
+                    // empty polygon → NULL because ring index must be always out of bounds then
+                    mask.SetInvalid(idx);
+				    return string_t {};
+                }
+
+                if (n < 1) {
+                    // invalid index → NULL
+                    mask.SetInvalid(idx);
+				    return string_t {};
+                }
+
+                const idx_t num_parts = geom.get_part_count(); // includes shell
+                // parts: 0 = exterior, 1..n = interior rings
+                const idx_t num_interior = num_parts > 0 ? num_parts - 1 : 0;
+
+                if (static_cast<idx_t>(n) > num_interior) {
+                    // ring doesn't exist → NULL
+                    mask.SetInvalid(idx);
+				    return string_t {};
+                }
+
+                // interior ring N = part N (because part 0 = shell)
+                const auto *ring = geom.get_first_part();
+                for (idx_t i = 0; i < (idx_t)n; i++) {
+                    ring = ring->get_next();
+                }
+
+                D_ASSERT(ring != nullptr);
+                return lstate.Serialize(result, *ring);
+            }
+        );
+    }
+
+    //------------------------------------------------------------------------------------------------------------------
+    // POLYGON_2D
+    //------------------------------------------------------------------------------------------------------------------
+    static void ExecutePolygon(DataChunk &args, ExpressionState &state, Vector &result) {
+		D_ASSERT(args.data.size() == 2);
+		auto &poly_vec = args.data[0];
+		auto &n_vec = args.data[1];
+
+		// same layout as ST_ExteriorRing::ExecutePolygon
+		auto poly_entries = ListVector::GetData(poly_vec);
+		auto &ring_vec = ListVector::GetEntry(poly_vec);
+		auto ring_entries = ListVector::GetData(ring_vec);
+		auto &vertex_vec = ListVector::GetEntry(ring_vec);
+		auto &vertex_vec_children = StructVector::GetEntries(vertex_vec);
+		auto poly_x_data = FlatVector::GetData<double>(*vertex_vec_children[0]);
+		auto poly_y_data = FlatVector::GetData<double>(*vertex_vec_children[1]);
+
+		auto count = args.size();
+		UnifiedVectorFormat poly_format;
+		poly_vec.ToUnifiedFormat(count, poly_format);
+
+		// We'll need to build the result list length: sum of selected interior ring lengths
+		idx_t total_vertex_count = 0;
+
+		// To inspect n per-row, extract unified format for n (it might be constant)
+		UnifiedVectorFormat n_format;
+		n_vec.ToUnifiedFormat(count, n_format);
+		auto n_data = FlatVector::GetData<int64_t>(n_vec);
+
+		for (idx_t i = 0; i < count; i++) {
+			auto row_idx = poly_format.sel->get_index(i);
+			if (!poly_format.validity.RowIsValid(row_idx)) {
+				continue;
+			}
+			auto poly = poly_entries[row_idx];
+			if (poly.length == 0) {
+				// empty polygon -> nothing to add
+				continue;
+			}
+
+			// read requested n for this row
+			int64_t nr = 0;
+			// handle constant / flat
+			if (n_format.validity.RowIsValid(n_format.sel->get_index(i))) {
+				nr = n_data[n_format.sel->get_index(i)];
+			} else {
+				// n is null -> will produce NULL result later
+				continue;
+			}
+
+			// polygon has poly.length rings: first is exterior, rest are interior
+			const idx_t ring_count = poly.length;             // >=1 normally
+			const idx_t interior_count = (ring_count > 0 ? ring_count - 1 : 0);
+
+			if (nr < 1 || nr > static_cast<int64_t>(interior_count)) {
+				// out of range or invalid -> no vertices added (result will be NULL or empty)
+				continue;
+			}
+
+			// interior ring index in ring_entries: poly.offset + nr (since 1 -> first interior at offset+1)
+			auto &ring = ring_entries[poly.offset + static_cast<idx_t>(nr)];
+			total_vertex_count += ring.length;
+		}
+
+		// Allocate result
+		auto &line_vec = result;
+		ListVector::Reserve(line_vec, total_vertex_count);
+		ListVector::SetListSize(line_vec, total_vertex_count);
+
+		auto line_entries = ListVector::GetData(line_vec);
+		auto &line_coord_vec = StructVector::GetEntries(ListVector::GetEntry(line_vec));
+		auto line_data_x = FlatVector::GetData<double>(*line_coord_vec[0]);
+		auto line_data_y = FlatVector::GetData<double>(*line_coord_vec[1]);
+
+		// Fill results
+		idx_t line_data_offset = 0;
+		for (idx_t i = 0; i < count; i++) {
+			auto row_idx = poly_format.sel->get_index(i);
+			if (!poly_format.validity.RowIsValid(row_idx)) {
+				FlatVector::SetNull(line_vec, i, true);
+				continue;
+			}
+
+			auto poly = poly_entries[row_idx];
+
+			// read requested n for this row
+			const auto n_idx = n_format.sel->get_index(i);
+			if(!n_format.validity.RowIsValid(n_idx)) {
+                FlatVector::SetNull(line_vec, i, true);
+                continue;
+            }
+
+			const auto nr = n_data[n_idx];
+
+			const idx_t ring_count = poly.length;
+			const idx_t interior_count = (ring_count > 0 ? ring_count - 1 : 0);
+
+			if (nr < 1 || nr > static_cast<int64_t>(interior_count)) {
+				// out of range -> NULL result
+				FlatVector::SetNull(line_vec, i, true);
+				continue;
+			}
+
+			auto &ring = ring_entries[poly.offset + static_cast<idx_t>(nr)]; // offset + 1..N -> interior rings
+			auto &line_entry = line_entries[i];
+			line_entry.offset = line_data_offset;
+			line_entry.length = ring.length;
+
+			for (idx_t coord_idx = 0; coord_idx < ring.length; coord_idx++) {
+				line_data_x[line_entry.offset + coord_idx] = poly_x_data[ring.offset + coord_idx];
+				line_data_y[line_entry.offset + coord_idx] = poly_y_data[ring.offset + coord_idx];
+			}
+
+			line_data_offset += ring.length;
+		}
+
+		if (count == 1) {
+			result.SetVectorType(VectorType::CONSTANT_VECTOR);
+		}
+	}
+
+    //------------------------------------------------------------------------------------------------------------------
+    // Documentation
+    //------------------------------------------------------------------------------------------------------------------
+    static constexpr auto DESCRIPTION =
+        "Returns the N-th interior ring (hole) of a POLYGON as a LINESTRING. Indexing is 1-based  (n = 1 returns the first interior ring). "
+        "Returns NULL if the polygon is empty or has fewer than N interior rings.";
+
+    static constexpr auto EXAMPLE = R"(
+		SELECT ST_AsText(ST_InteriorRingN(ST_GeomFromText('POLYGON((0 0,10 0,10 10,0 10,0 0),(2 2,4 2,4 4,2 4,2 2))'), 1));
+	)";
+
+    //------------------------------------------------------------------------------------------------------------------
+    // Register
+    //------------------------------------------------------------------------------------------------------------------
+    static void Register(ExtensionLoader &loader) {
+        FunctionBuilder::RegisterScalar(loader, "ST_InteriorRingN", [](ScalarFunctionBuilder &func) {
+            func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+                variant.AddParameter("geom", LogicalType::GEOMETRY());
+                variant.AddParameter("n", LogicalType::BIGINT);
+                variant.SetReturnType(LogicalType::GEOMETRY());
+
+                variant.SetInit(LocalState::Init);
+                variant.SetFunction(ExecuteGeometry);
+            	variant.CanThrowErrors();
+            });
+
+            func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+                variant.AddParameter("polygon", GeoTypes::POLYGON_2D());
+                variant.AddParameter("n", LogicalType::BIGINT);
+                variant.SetReturnType(GeoTypes::LINESTRING_2D());
+
+                variant.SetFunction(ExecutePolygon);
+            	variant.CanThrowErrors();
+            });
+
+            func.SetDescription(DESCRIPTION);
+            func.SetExample(EXAMPLE);
+
+            func.SetTag("ext", "spatial");
+            func.SetTag("category", "property");
+        });
+    }
+};
+
 
 //======================================================================================================================
 // ST_InterpolatePoint
@@ -6086,6 +6335,7 @@ struct ST_InterpolatePoint {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(ExecuteGeometry);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription(DESCRIPTION);
@@ -6261,6 +6511,7 @@ struct ST_IsClosed {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 			});
 
 			func.SetDescription(DESCRIPTION);
@@ -6709,6 +6960,7 @@ struct ST_MakeLine {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(ExecuteList);
+				variant.CanThrowErrors();
 
 				variant.SetDescription(DESCRIPTION_LIST);
 				variant.SetExample(EXAMPLE_LIST);
@@ -6721,6 +6973,7 @@ struct ST_MakeLine {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(ExecuteBinary);
+				variant.CanThrowErrors();
 
 				variant.SetDescription(DESCRIPTION_BINARY);
 				variant.SetExample(EXAMPLE_BINARY);
@@ -6859,6 +7112,7 @@ struct ST_MakePolygon {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(ExecuteFromShell);
+				variant.CanThrowErrors();
 
 				// TODO: Set example & docs
 				variant.SetDescription("Create a POLYGON from a LINESTRING shell");
@@ -6873,6 +7127,7 @@ struct ST_MakePolygon {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(ExecuteFromRings);
+				variant.CanThrowErrors();
 
 				// TODO: Set example & docs
 				variant.SetDescription("Create a POLYGON from a LINESTRING shell and a list of LINESTRING holes");
@@ -6975,6 +7230,7 @@ struct ST_MakeBox2D {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(ExecuteBinary);
+				variant.CanThrowErrors();
 
 				variant.SetDescription(DESCRIPTION_BINARY);
 				variant.SetExample(EXAMPLE_BINARY);
@@ -8050,6 +8306,7 @@ struct ST_QuadKey {
 				variant.AddParameter("level", LogicalType::INTEGER);
 				variant.SetReturnType(LogicalType::VARCHAR);
 				variant.SetFunction(ExecuteLonLat);
+				variant.CanThrowErrors();
 			});
 
 			func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
@@ -8058,6 +8315,7 @@ struct ST_QuadKey {
 				variant.SetReturnType(LogicalType::VARCHAR);
 				variant.SetFunction(ExecuteGeometry);
 				variant.SetInit(LocalState::Init);
+				variant.CanThrowErrors();
 			});
 
 			func.SetTag("ext", "spatial");
@@ -8734,6 +8992,7 @@ struct PointAccessFunctionBase {
 
 				variant.SetInit(LocalState::Init);
 				variant.SetFunction(Execute);
+				variant.CanThrowErrors();
 
 				variant.SetDescription(OP::DESCRIPTION);
 				variant.SetExample(OP::EXAMPLE);
@@ -9171,6 +9430,7 @@ void RegisterSpatialScalarFunctions(ExtensionLoader &loader) {
 	ST_ZMFlag::Register(loader);
 	ST_Distance_Sphere::Register(loader);
 	ST_Hilbert::Register(loader);
+	ST_InteriorRingN::Register(loader);
 	ST_InterpolatePoint::Register(loader);
 	ST_Intersects::Register(loader);
 	ST_IntersectsExtent::Register(loader);
