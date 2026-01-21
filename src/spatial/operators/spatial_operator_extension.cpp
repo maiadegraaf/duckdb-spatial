@@ -3,6 +3,7 @@
 #include "spatial/operators/spatial_join_logical.hpp"
 
 #include "duckdb/main/database.hpp"
+#include "duckdb/planner/operator_extension.hpp"
 
 namespace duckdb {
 
@@ -42,7 +43,7 @@ public:
 } // namespace
 
 void RegisterSpatialOperatorExtension(DatabaseInstance &db) {
-	db.config.operator_extensions.push_back(make_uniq<SpatialOperatorExtension>());
+	OperatorExtension::Register(db.config, make_shared_ptr<SpatialOperatorExtension>());
 }
 
 } // namespace duckdb

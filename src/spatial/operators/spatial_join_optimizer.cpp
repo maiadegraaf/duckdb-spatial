@@ -1,14 +1,16 @@
 #include "spatial_join_optimizer.hpp"
 #include "spatial_join_logical.hpp"
 #include "spatial/util/distance_extract.hpp"
+#include "spatial/spatial_types.hpp"
 
 #include "duckdb/main/database.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
 #include "duckdb/planner/operator/logical_any_join.hpp"
 #include "duckdb/catalog/catalog_entry/scalar_function_catalog_entry.hpp"
+#include "duckdb/optimizer/optimizer_extension.hpp"
 #include "duckdb/planner/operator/logical_comparison_join.hpp"
 #include "duckdb/planner/operator/logical_filter.hpp"
-#include "spatial/spatial_types.hpp"
+
 
 namespace duckdb {
 
@@ -320,8 +322,9 @@ void SpatialJoinOptimizer::Register(ExtensionLoader &loader) {
 	OptimizerExtension optimizer;
 	optimizer.optimize_function = TryInsertSpatialJoin;
 
+
 	auto &db = loader.GetDatabaseInstance();
-	db.config.optimizer_extensions.push_back(optimizer);
+	OptimizerExtension::Register(db.config, optimizer);
 }
 
 } // namespace duckdb

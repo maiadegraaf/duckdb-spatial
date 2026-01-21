@@ -1,3 +1,12 @@
+#include "spatial/geometry/bbox.hpp"
+#include "spatial/index/rtree/rtree_index.hpp"
+#include "spatial/index/rtree/rtree_index_create_logical.hpp"
+#include "spatial/index/rtree/rtree_index_scan.hpp"
+#include "spatial/index/rtree/rtree_module.hpp"
+#include "spatial/spatial_types.hpp"
+#include "spatial/geometry/geometry_serialization.hpp"
+#include "spatial/util/math.hpp"
+
 #include "duckdb/catalog/catalog_entry/duck_table_entry.hpp"
 #include "duckdb/function/table/table_scan.hpp"
 #include "duckdb/optimizer/column_binding_replacer.hpp"
@@ -18,14 +27,6 @@
 #include "duckdb/planner/filter/expression_filter.hpp"
 #include "duckdb/main/database.hpp"
 
-#include "spatial/geometry/bbox.hpp"
-#include "spatial/index/rtree/rtree_index.hpp"
-#include "spatial/index/rtree/rtree_index_create_logical.hpp"
-#include "spatial/index/rtree/rtree_index_scan.hpp"
-#include "spatial/index/rtree/rtree_module.hpp"
-#include "spatial/spatial_types.hpp"
-#include "spatial/geometry/geometry_serialization.hpp"
-#include "spatial/util/math.hpp"
 
 namespace duckdb {
 //-----------------------------------------------------------------------------
@@ -313,7 +314,9 @@ public:
 void RTreeModule::RegisterIndexPlanScan(ExtensionLoader &loader) {
 	// Register the optimizer extension
 	auto &db = loader.GetDatabaseInstance();
-	db.config.optimizer_extensions.push_back(RTreeIndexScanOptimizer());
+	RTreeIndexScanOptimizer optimizer;
+
+	OptimizerExtension::Register(db.config, optimizer);
 }
 
 } // namespace duckdb
