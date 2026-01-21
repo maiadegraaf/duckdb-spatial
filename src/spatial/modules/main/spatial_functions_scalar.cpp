@@ -9342,6 +9342,11 @@ struct ST_MMin : VertexAggFunctionBase<ST_MMin, VertexMinAggOp> {
 	static constexpr auto ORDINATE = VertexOrdinate::M;
 };
 
+constexpr const char * ST_M::NAME;
+constexpr const char * ST_X::NAME;
+constexpr const char * ST_Y::NAME;
+constexpr const char * ST_Z::NAME;
+
 } // namespace
 
 // Helper to access the constant distance from the bind data
