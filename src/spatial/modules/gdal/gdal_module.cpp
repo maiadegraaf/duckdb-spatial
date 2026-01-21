@@ -27,6 +27,7 @@
 #include "cpl_vsi.h"
 #include "cpl_vsi_error.h"
 #include "cpl_vsi_virtual.h"
+#include "duckdb/main/settings.hpp"
 
 namespace duckdb {
 namespace {
@@ -209,7 +210,7 @@ public:
 			}
 
 			// Fall back to GDAL instead (if external access is enabled)
-			if (!context.db->config.options.enable_external_access) {
+			if (!Settings::Get<EnableExternalAccessSetting>(context)) {
 				if (set_error) {
 					VSIError(VSIE_FileError, "%s", error_data.RawMessage().c_str());
 				}
@@ -410,7 +411,7 @@ public:
 	string AddPrefix(const string &value) const {
 		// If the user explicitly asked for a VSI prefix, we don't add our own
 		if (StringUtil::StartsWith(value, "/vsi")) {
-			if (!context.db->config.options.enable_external_access) {
+			if (!Settings::Get<EnableExternalAccessSetting>(context)) {
 				throw PermissionException("Cannot open file '%s' with VSI prefix: External access is disabled", value);
 			}
 			return value;
@@ -1023,7 +1024,7 @@ static constexpr auto DOCUMENTATION = R"(
 	    | `allowed_drivers` | VARCHAR[] | A list of GDAL driver names that are allowed to be used to open the file. If empty, all drivers are allowed. |
 	    | `sibling_files` | VARCHAR[] | A list of sibling files that are required to open the file. E.g., the ESRI Shapefile driver requires a .shx file to be present. Although most of the time these can be discovered automatically. |
 	    | `spatial_filter_box` | BOX_2D | If set to a BOX_2D, the table function will only return rows that intersect with the given bounding box. Similar to spatial_filter. |
-	    | `keep_wkb` | BOOLEAN | If set, the table function will return geometries in a wkb_geometry column with the type WKB_BLOB (which can be cast to BLOB) instead of GEOMETRY. This is useful if you want to use DuckDB with more exotic geometry subtypes that DuckDB spatial doesnt support representing in the GEOMETRY type yet. |
+	    | `keep_wkb` | BOOLEAN | If set, the table function will return geometries in a wkb_geometry column with the type WKB_BLOB (which can be cast to BLOB) instead of GEOMETRY. This is useful if you want to use DuckDB with more exotic geometry subtypes that DuckDB spatial doesn't support representing in the GEOMETRY type yet. |
 
 	    Note that GDAL is single-threaded, so this table function will not be able to make full use of parallelism.
 
@@ -1778,7 +1779,7 @@ void RegisterGDALModule(ExtensionLoader &loader) {
 
 		// Set GDAL error handler
 		CPLSetErrorHandler([](CPLErr e, int code, const char *raw_msg) {
-			// DuckDB doesnt do warnings, so we only throw on errors
+			// DuckDB doesn't do warnings, so we only throw on errors
 			if (e != CE_Failure && e != CE_Fatal) {
 				return;
 			}
