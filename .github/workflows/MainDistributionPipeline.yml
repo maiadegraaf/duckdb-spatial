@@ -31,6 +31,7 @@ jobs:
       ci_tools_version: main
       extension_name: spatial
       vcpkg_commit: 84bab45d415d22042bd0b9081aea57f362da3f35
+      exclude_archs: 'linux_amd64_musl'
 
   duckdb-latest-deploy:
     name: Deploy extension binaries
@@ -42,3 +43,4 @@ jobs:
       ci_tools_version: main
       extension_name: spatial
       deploy_latest: ${{ startsWith(github.ref, 'refs/heads/v') || github.ref == 'refs/heads/main' }}
+      exclude_archs: 'linux_amd64_musl'
